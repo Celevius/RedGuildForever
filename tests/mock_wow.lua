@@ -89,6 +89,11 @@ function methods.GetChecked(t) return rawget(t, "_checked") or false end
 function methods.SetText(t, v) rawset(t, "_text", v) end
 function methods.GetText(t) return rawget(t, "_text") end
 function methods.Click(t) run(t, "OnClick") end
+function methods.HasFocus(t) return rawget(t, "_focus") or false end
+function methods.SetFocus(t) rawset(t, "_focus", true) end
+function methods.ClearFocus(t) rawset(t, "_focus", false) end
+function methods.IsEnabled(t) return rawget(t, "_enabled") ~= false end
+function methods.SetEnabled(t, v) rawset(t, "_enabled", v and true or false) end
 
 frameStub = function()
     return setmetatable({}, {

@@ -382,9 +382,16 @@ local function buildStandingsPage(parent)
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("New member until " .. ns.Setting("minEP") .. " EP", 0.4, 0.78, 1, true)
             end
+            if ns.CanEditNotes() then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("Click to edit", 0, 1, 0)
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnClick", function(self)
+            if self.entry and ns.CanEditNotes() then ns.OpenEditor(self.entry.name) end
+        end)
     end)
     page.list:SetPoint("TOPLEFT", 4, -30)
     page.list:SetPoint("BOTTOMRIGHT", -26, 4)
@@ -597,62 +604,327 @@ function ns.ToggleBench()
 end
 
 ns.On("RGF_POINTS_CHANGED", function() ns.RefreshStandings() end)
+
+------------------------------------------------------------------------
+-- Player editor for the guild leader and officers
+-- Opens from a click on a player in the standings, the menu or /rgf edit.
+------------------------------------------------------------------------
+local editor
+
+local function smallButton(parent, label, onClick)
+    local b = button(parent, label, 46, onClick)
+    b:SetHeight(20)
+    return b
+end
+
+local function boxNumber(box)
+    return tonumber(box:GetText()) or 0
+end
+
+local function buildEditor()
+    local f = window("RedGuildForeverEditFrame", 400, 430, "Edit Player", ICON_STANDINGS)
+    f:ClearAllPoints()
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+    f:SetFrameStrata("DIALOG")
+
+    f.name = text(f, "GameFontNormalLarge")
+    f.name:SetPoint("TOPLEFT", 66, -30)
+    f.name:SetWidth(300)
+    f.sub = text(f, "GameFontHighlightSmall")
+    f.sub:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -3)
+    f.sub:SetWidth(300)
+
+    local inset = f.Inset
+    local function label(textValue, y)
+        local fs = text(inset, "GameFontNormal")
+        fs:SetPoint("TOPLEFT", 14, y)
+        fs:SetText(textValue)
+        return fs
+    end
+    local function rowLabel(textValue, y)
+        local fs = text(inset, "GameFontHighlightSmall")
+        fs:SetPoint("TOPLEFT", 20, y)
+        fs:SetText(textValue)
+        return fs
+    end
+
+    -- Points
+    label("Points", -12)
+    rowLabel("Effort Points", -40)
+    f.ep = ns.UIInputBox(inset, 70, true)
+    f.ep:SetPoint("TOPLEFT", 130, -36)
+    rowLabel("Gear Points", -68)
+    f.gp = ns.UIInputBox(inset, 70, true)
+    f.gp:SetPoint("TOPLEFT", 130, -64)
+
+    local function bump(box, amount)
+        box:SetText(tostring(math.max(0, boxNumber(box) + amount)))
+        f.UpdatePreview()
+    end
+    local prev = f.ep
+    for _, amount in ipairs({ -100, 25, 100 }) do
+        local b = smallButton(inset, (amount > 0 and "+" or "") .. amount, function() bump(f.ep, amount) end)
+        b:SetPoint("LEFT", prev, "RIGHT", prev == f.ep and 10 or 2, 0)
+        prev = b
+    end
+    prev = f.gp
+    for _, amount in ipairs({ -100, 50, 100 }) do
+        local b = smallButton(inset, (amount > 0 and "+" or "") .. amount, function() bump(f.gp, amount) end)
+        b:SetPoint("LEFT", prev, "RIGHT", prev == f.gp and 10 or 2, 0)
+        prev = b
+    end
+
+    f.preview = text(inset, "GameFontHighlightSmall")
+    f.preview:SetPoint("TOPLEFT", 20, -94)
+    f.preview:SetWidth(340)
+
+    rowLabel("Reason", -122)
+    f.reason = ns.UIInputBox(inset, 220, false)
+    f.reason:SetMaxLetters(40)
+    f.reason:SetPoint("TOPLEFT", 130, -118)
+
+    f.save = button(inset, "Save points", 120, function() f.Save() end)
+    f.save:SetPoint("TOPLEFT", 126, -144)
+
+    function f.UpdatePreview()
+        local ep, gp = boxNumber(f.ep), math.max(boxNumber(f.gp), ns.Setting("baseGP"))
+        local cur = f.current
+        local changed = cur and (ep ~= cur.ep or gp ~= cur.gp)
+        local line = "Priority |cffffd100" .. ns.FormatPR(ep / gp) .. "|r"
+        if changed then line = line .. "  (now " .. ns.FormatPR(cur.pr) .. ")" end
+        if boxNumber(f.gp) < ns.Setting("baseGP") then
+            line = line .. "  |cffff8040GP can not go below " .. ns.Setting("baseGP") .. "|r"
+        end
+        f.preview:SetText(line)
+        f.save:SetEnabled(changed and true or false)
+    end
+    f.ep:SetScript("OnTextChanged", function() f.UpdatePreview() end)
+    f.gp:SetScript("OnTextChanged", function() f.UpdatePreview() end)
+
+    function f.Save()
+        if not f.target then return end
+        ns.SetExactPoints(f.target, boxNumber(f.ep), boxNumber(f.gp), f.reason:GetText())
+        f.reason:SetText("")
+        f.ep:ClearFocus()
+        f.gp:ClearFocus()
+        f.Load(f.target)
+    end
+    f.ep:SetScript("OnEnterPressed", function() f.Save() end)
+    f.gp:SetScript("OnEnterPressed", function() f.Save() end)
+    f.reason:SetScript("OnEnterPressed", function() f.Save() end)
+
+    -- Alt
+    label("Alt", -184)
+    f.altText = text(inset, "GameFontHighlightSmall")
+    f.altText:SetPoint("TOPLEFT", 20, -210)
+    f.altText:SetWidth(340)
+    f.mainLabel = rowLabel("Main character", -238)
+    f.mainBox = ns.UIInputBox(inset, 150, false)
+    f.mainBox:SetMaxLetters(40)
+    f.mainBox:SetPoint("TOPLEFT", 130, -234)
+    f.link = button(inset, "Link as alt", 100, function()
+        local main = ns.TypedMember and ns.TypedMember(f.mainBox:GetText())
+        if main and ns.SetAlt(f.target, main) then
+            f.mainBox:SetText("")
+            f.mainBox:ClearFocus()
+            f.Load(f.target)
+        end
+    end)
+    f.link:SetPoint("LEFT", f.mainBox, "RIGHT", 6, 0)
+    f.mainBox:SetScript("OnEnterPressed", function() f.link:Click() end)
+    f.unlink = button(inset, "Make main again", 140, function()
+        if ns.UnsetAlt(f.target) then f.Load(f.target) end
+    end)
+    f.unlink:SetPoint("TOPLEFT", 126, -232)
+
+    -- Bench
+    label("Bench", -274)
+    f.benchText = text(inset, "GameFontHighlightSmall")
+    f.benchText:SetPoint("TOPLEFT", 20, -300)
+    f.benchButton = button(inset, "Add to bench", 140, function()
+        if f.onBench then ns.BenchRemove(f.target) else ns.BenchAdd(f.target) end
+        f.Load(f.target)
+    end)
+    f.benchButton:SetPoint("TOPLEFT", 126, -296)
+
+    -- bottom strip
+    f.undo = button(f, "Undo last change", 140, function()
+        ns.Command("undo")
+        if f.target then f.Load(f.target) end
+    end)
+    f.undo:SetPoint("BOTTOMLEFT", 6, 4)
+    f.close = button(f, "Close", 90, function() f:Hide() end)
+    f.close:SetPoint("BOTTOMRIGHT", -6, 4)
+
+    function f.Load(name)
+        f.target = name
+        local m = ns.members[name]
+        local ep, gp, pr, main = ns.GetPoints(name)
+        f.current = { ep = ep, gp = gp, pr = pr }
+        f.name:SetText(ns.ShortName(name))
+        f.name:SetTextColor(classColor(m and m.class))
+        local alts = ns.AltsOf(main or name)
+        local sub
+        if main and main ~= name then
+            sub = "Alt of " .. ns.ShortName(main) .. ", points are shared with the main"
+        elseif #alts > 0 then
+            sub = "Main with " .. #alts .. (#alts == 1 and " alt" or " alts")
+        else
+            sub = "Main"
+        end
+        if ep < ns.Setting("minEP") then sub = sub .. ", |cff66c7ffnew member|r" end
+        f.sub:SetText(sub)
+
+        if not f.ep:HasFocus() then f.ep:SetText(tostring(ep)) end
+        if not f.gp:HasFocus() then f.gp:SetText(tostring(gp)) end
+        f.UpdatePreview()
+
+        local isAlt = main and main ~= name
+        f.unlink:SetShown(isAlt and true or false)
+        f.mainLabel:SetShown(not isAlt)
+        f.mainBox:SetShown(not isAlt)
+        f.link:SetShown(not isAlt)
+        if isAlt then
+            f.altText:SetText(ns.ShortName(name) .. " uses the points of " .. ns.ShortName(main) .. ".")
+        elseif #alts > 0 then
+            local names = {}
+            for _, a in ipairs(alts) do table.insert(names, ns.ShortName(a)) end
+            f.altText:SetText("Alts " .. table.concat(names, ", ") .. ". To link this player as an alt, unlink these first.")
+        else
+            f.altText:SetText("Type the main to share points with it.")
+        end
+
+        f.onBench = false
+        for _, b in ipairs(ns.Bench()) do if b == name then f.onBench = true end end
+        f.benchText:SetText(f.onBench and "On the bench" or "Not on the bench")
+        f.benchButton:SetText(f.onBench and "Remove from bench" or "Add to bench")
+    end
+
+    return f
+end
+
+function ns.OpenEditor(name)
+    if not ns.CanEditNotes() then
+        ns.Print("only the guild leader and officers who can edit officer notes can change points")
+        return false
+    end
+    local full = ns.FindMember(name)
+    if not full then
+        ns.Print((name or "?") .. " is not in the guild")
+        return false
+    end
+    editor = editor or buildEditor()
+    ns.editor = editor
+    editor.Load(full)
+    editor:Show()
+    return true
+end
+
+local function refreshEditor()
+    if editor and editor:IsShown() and editor.target then editor.Load(editor.target) end
+end
+ns.On("RGF_POINTS_CHANGED", refreshEditor)
+ns.On("RGF_BENCH_CHANGED", refreshEditor)
 ns.On("RGF_BENCH_CHANGED", function() ns.RefreshStandings() end)
 
 ------------------------------------------------------------------------
 -- Loot master window
+-- Shows at a glance who wants the item for main spec, who for off spec,
+-- who passed and who has not answered yet. The winner is marked.
 ------------------------------------------------------------------------
 local lm
 
 local bidColumns = {
-    { key = "name", label = "Name", w = 150 },
-    { key = "spec", label = "Spec", w = 48 },
+    { key = "name", label = "Name", w = 168 },
+    { key = "spec", label = "Answer", w = 76 },
     { key = "ep", label = "EP", w = 56, justify = "RIGHT" },
     { key = "gp", label = "GP", w = 56, justify = "RIGHT" },
     { key = "pr", label = "Priority", w = 70, justify = "RIGHT" },
     { key = "roll", label = "Roll", w = 44, justify = "RIGHT" },
-    { key = "action", label = "", w = 72 },
+    { key = "action", label = "", w = 86 },
 }
 
+local SECTION_COLORS = {
+    MS = { 0.25, 1, 0.25 },
+    OS = { 0.4, 0.78, 1 },
+    PASS = { 0.6, 0.6, 0.6 },
+    WAIT = { 1, 0.5, 0.25 },
+}
+
+local function inputBox(parent, width, numeric)
+    local box = create("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetSize(width, 20)
+    box:SetAutoFocus(false)
+    if numeric then box:SetNumeric(true) end
+    box:SetMaxLetters(7)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    return box
+end
+ns.UIInputBox = inputBox
+
 local function buildLootMaster()
-    local f = window("RedGuildForeverLootFrame", 500, 440, "Loot", ICON_UNKNOWN)
+    local f = window("RedGuildForeverLootFrame", 580, 520, "Loot Master", ICON_UNKNOWN)
     f:ClearAllPoints()
-    f:SetPoint("RIGHT", UIParent, "RIGHT", -120, 40)
+    f:SetPoint("RIGHT", UIParent, "RIGHT", -80, 20)
 
     f.item = text(f, "GameFontNormalLarge")
     f.item:SetPoint("TOPLEFT", 66, -30)
-    f.item:SetWidth(330)
+    f.item:SetWidth(420)
     f.price = text(f, "GameFontHighlightSmall")
     f.price:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
-    f.price:SetWidth(330)
+    f.price:SetWidth(420)
 
-    -- the item itself, top right like an equipment slot
     f.slot = itemButton(f, 37)
     f.slot:SetPoint("TOPRIGHT", -14, -27)
 
-    -- price tier row inside the inset
+    -- price row
     local tierLabel = text(f.Inset, "GameFontNormalSmall")
     tierLabel:SetPoint("TOPLEFT", 10, -12)
     tierLabel:SetText("Drops from")
     f.tierButtons = {}
     local prev = tierLabel
     for _, tier in ipairs(ns.defaults.tierOrder) do
-        local b = button(f.Inset, ns.defaults.tierNames[tier], 108, function() ns.SetAuctionTier(tier) end)
-        b:SetPoint("LEFT", prev, "RIGHT", prev == tierLabel and 10 or 2, 0)
+        local b = button(f.Inset, ns.defaults.tierNames[tier], 100, function() ns.SetAuctionTier(tier) end)
+        b:SetPoint("LEFT", prev, "RIGHT", prev == tierLabel and 8 or 2, 0)
         f.tierButtons[tier] = b
         prev = b
     end
+    local priceLabel = text(f.Inset, "GameFontNormalSmall")
+    priceLabel:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+    priceLabel:SetText("Price")
+    f.priceBox = inputBox(f.Inset, 46, true)
+    f.priceBox:SetPoint("LEFT", priceLabel, "RIGHT", 8, 0)
+    local function setPrice()
+        if ns.SetAuctionPrice(f.priceBox:GetText()) then f.priceBox:ClearFocus() end
+    end
+    f.priceBox:SetScript("OnEnterPressed", setPrice)
+    f.priceSet = button(f.Inset, "Set", 44, setPrice)
+    f.priceSet:SetPoint("LEFT", f.priceBox, "RIGHT", 4, 0)
 
-    f.state = text(f.Inset, "GameFontNormalSmall")
-    f.state:SetPoint("TOPLEFT", 10, -40)
-    f.state:SetWidth(460)
+    f.state = text(f.Inset, "GameFontNormal")
+    f.state:SetPoint("TOPLEFT", 10, -42)
+    f.state:SetWidth(540)
+    f.counts = text(f.Inset, "GameFontHighlightSmall")
+    f.counts:SetPoint("TOPLEFT", 10, -60)
+    f.counts:SetWidth(540)
 
     local listHolder = CreateFrame("Frame", nil, f.Inset)
-    listHolder:SetPoint("TOPLEFT", 0, -56)
+    listHolder:SetPoint("TOPLEFT", 0, -74)
     listHolder:SetPoint("BOTTOMRIGHT")
     headerRow(listHolder, bidColumns)
-    f.list = scrollList(listHolder, 24, function(row)
+    f.list = scrollList(listHolder, 22, function(row)
         rowCells(row, bidColumns)
+        row.section = text(row, "GameFontNormal")
+        row.section:SetPoint("LEFT", 6, 0)
+        row.section:SetWidth(400)
+        row.sectionLine = row:CreateTexture(nil, "BACKGROUND")
+        row.sectionLine:SetPoint("BOTTOMLEFT", 2, 1)
+        row.sectionLine:SetPoint("BOTTOMRIGHT", -2, 1)
+        row.sectionLine:SetHeight(1)
+        row.sectionLine:SetColorTexture(1, 0.82, 0, 0.35)
+        row.winner = text(row, "GameFontNormalSmall", "RIGHT")
+        row.winner:SetPoint("RIGHT", -74, 0)
+        row.winner:SetText("|cff40ff40Winner|r")
         row.award = button(row, "Award", 66, function()
             if row.bid then ns.Award(row.bid.name) end
         end)
@@ -685,6 +957,67 @@ local function buildLootMaster()
     return f
 end
 
+local function showSection(row, label, count, key)
+    row.bid = nil
+    for _, cell in pairs(row.cells) do cell:SetText("") end
+    local c = SECTION_COLORS[key]
+    row.section:SetText(label .. "  |cffffffff" .. count .. "|r")
+    row.section:SetTextColor(c[1], c[2], c[3])
+    row.section:Show()
+    row.sectionLine:Show()
+    row.winner:Hide()
+    row.award:Hide()
+    row:Show()
+end
+
+local function showBid(row, b, isWinner, canAward)
+    row.bid = b
+    row.section:Hide()
+    row.sectionLine:Hide()
+    local label = ns.ShortName(b.name)
+    if b.main and b.main ~= b.name then label = label .. " |cff999999(" .. ns.ShortName(b.main) .. ")|r" end
+    row.cells.name:SetText(label)
+    local m = ns.members[b.name]
+    row.cells.name:SetTextColor(classColor(m and m.class))
+    local c = SECTION_COLORS[b.spec] or SECTION_COLORS.PASS
+    row.cells.spec:SetText(b.spec == "MS" and "Main Spec" or (b.spec == "OS" and "Off Spec" or "Pass"))
+    row.cells.spec:SetTextColor(c[1], c[2], c[3])
+    row.cells.ep:SetText(b.ep)
+    row.cells.gp:SetText(b.gp)
+    if b.spec == "MS" then
+        row.cells.pr:SetText(ns.FormatPR(b.pr))
+        if b.newcomer then row.cells.pr:SetTextColor(0.4, 0.78, 1) else row.cells.pr:SetTextColor(1, 0.82, 0) end
+    elseif b.spec == "OS" then
+        row.cells.pr:SetText("free")
+        row.cells.pr:SetTextColor(0.7, 0.7, 0.7)
+    else
+        row.cells.pr:SetText("")
+    end
+    row.cells.roll:SetText(b.roll or (b.wantsRoll and "..." or ""))
+    row.winner:SetShown(isWinner)
+    row.award:SetShown(canAward)
+    row:Show()
+end
+
+local function showWaiting(row, name)
+    row.bid = nil
+    row.section:Hide()
+    row.sectionLine:Hide()
+    row.cells.name:SetText(ns.ShortName(name))
+    local m = ns.members[name]
+    local r, g, b = classColor(m and m.class)
+    row.cells.name:SetTextColor(r * 0.6, g * 0.6, b * 0.6)
+    row.cells.spec:SetText("No answer")
+    row.cells.spec:SetTextColor(SECTION_COLORS.WAIT[1], SECTION_COLORS.WAIT[2], SECTION_COLORS.WAIT[3])
+    row.cells.ep:SetText("")
+    row.cells.gp:SetText("")
+    row.cells.pr:SetText("")
+    row.cells.roll:SetText("")
+    row.winner:Hide()
+    row.award:Hide()
+    row:Show()
+end
+
 function ns.RefreshLootMaster()
     local a = ns.auction
     if not a then
@@ -701,41 +1034,47 @@ function ns.RefreshLootMaster()
     for tier, b in pairs(lm.tierButtons) do
         b:SetEnabled(not a.fixed and tier ~= a.tier)
     end
+    if not lm.priceBox:HasFocus() then lm.priceBox:SetText(tostring(a.price)) end
 
-    local list = ns.SortedBids(a)
+    local o = ns.AuctionOverview(a)
     local tied = ns.TiedForFirst(a)
     if not a.open then
-        if #list == 0 then
+        if #o.all == 0 then
             lm.state:SetText("Bidding is closed. Nobody wants it, give it to the bank or disenchant it.")
         elseif #tied > 0 then
             lm.state:SetText("Bidding is closed. |cffff8040Tie for first place|r, waiting for /roll.")
         else
-            lm.state:SetText("Bidding is closed. Award the item to the first player.")
+            lm.state:SetText("Bidding is closed. Award the item to the winner.")
         end
     end
-    for i, b in ipairs(list) do
-        local row = lm.list:Row(i)
-        row.bid = b
-        local label = ns.ShortName(b.name)
-        if b.main and b.main ~= b.name then label = label .. " |cff999999(" .. ns.ShortName(b.main) .. ")|r" end
-        row.cells.name:SetText(label)
-        local m = ns.members[b.name]
-        row.cells.name:SetTextColor(classColor(m and m.class))
-        row.cells.spec:SetText(b.spec == "MS" and "Main" or "Off")
-        if b.spec == "MS" then row.cells.spec:SetTextColor(0.25, 1, 0.25) else row.cells.spec:SetTextColor(0.7, 0.7, 0.7) end
-        row.cells.ep:SetText(b.ep)
-        row.cells.gp:SetText(b.gp)
-        if b.spec == "MS" then
-            row.cells.pr:SetText(ns.FormatPR(b.pr))
-            if b.newcomer then row.cells.pr:SetTextColor(0.4, 0.78, 1) else row.cells.pr:SetTextColor(1, 0.82, 0) end
-        else
-            row.cells.pr:SetText("free")
-            row.cells.pr:SetTextColor(0.7, 0.7, 0.7)
-        end
-        row.cells.roll:SetText(b.roll or (b.wantsRoll and "..." or ""))
-        row:Show()
+    lm.counts:SetText(string.format(
+        "|cff40ff40Main Spec %d|r     |cff66c7ffOff Spec %d|r     |cff999999Pass %d|r     |cffff8040No answer %d|r",
+        #o.ms, #o.os, #o.passed, #o.waiting))
+
+    local n = 0
+    local function nextRow()
+        n = n + 1
+        return lm.list:Row(n)
     end
-    lm.list:SetCount(#list)
+    local winner = (#tied == 0) and o.winner or nil
+    local sections = {
+        { key = "MS", label = "Main Spec", list = o.ms },
+        { key = "OS", label = "Off Spec", list = o.os },
+        { key = "PASS", label = "Passed", list = o.passed },
+    }
+    for _, sec in ipairs(sections) do
+        if #sec.list > 0 then
+            showSection(nextRow(), sec.label, #sec.list, sec.key)
+            for _, b in ipairs(sec.list) do
+                showBid(nextRow(), b, b == winner, sec.key ~= "PASS")
+            end
+        end
+    end
+    if #o.waiting > 0 then
+        showSection(nextRow(), "No answer yet", #o.waiting, "WAIT")
+        for _, name in ipairs(o.waiting) do showWaiting(nextRow(), name) end
+    end
+    lm.list:SetCount(n)
     lm.closeBids:SetEnabled(a.open)
     lm.rolls:SetEnabled(not a.open and #tied > 0)
 end
@@ -857,7 +1196,6 @@ if StaticPopupDialogs then
         OnAccept = function()
             local n = ns.Decay()
             ns.Print("decay done for " .. n .. " players")
-            ns.SendChat("Weekly EPGP decay of " .. ns.Setting("decayPercent") .. " percent is done.", "GUILD")
         end,
         timeout = 0,
         whileDead = true,

@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.2.0"
+ns.version = "1.3.0"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -79,7 +79,11 @@ function ns.CanViewNotes()
     return f and f() and true or false
 end
 
+-- The addon never writes in guild or officer chat, only raid, party and whispers.
+local blockedChannels = { GUILD = true, OFFICER = true }
+
 function ns.SendChat(msg, channel, target)
+    if blockedChannels[channel] then return false end
     local f = pick(C_ChatInfo, "SendChatMessage", "SendChatMessage")
     if not f then return false end
     return pcall(f, msg, channel, nil, target)

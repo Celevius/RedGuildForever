@@ -2,6 +2,22 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.3.0 (8 October 2026)
+
+### Added
+* Player editor for the guild leader and officers. Click a player in the standings, use **Edit target** in the minimap menu, or type `/rgf edit Cel Dru`
+* In the editor you can set exact EP and GP, use quick buttons like +100 EP, add a reason that shows up in the history, link or unlink an alt and put the player on or off the bench. Every change can be undone
+* The loot master window shows every answer in sections, **Main Spec**, **Off Spec**, **Passed** and **No answer yet**, with a count for each and the winner marked
+* The loot master can type any price for the current item
+* The loot master gets the bid popup himself and can bid on items like everyone else
+
+### Changed
+* Players who pass now stay visible to the loot master instead of disappearing from the list
+* The loot window is called **Loot Master** and is a bit larger
+
+### Removed
+* The message in guild chat after the weekly decay. The addon never writes in guild or officer chat anymore, loot announcements stay in raid chat
+
 ## 1.2.0 (8 October 2026)
 
 ### Added

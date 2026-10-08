@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.2.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.3.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -95,16 +95,31 @@ You never need to type a command. Click the coin button at the minimap.
 ## For the loot master
 
 1. Type `/rgf bid ` and shift click the item. Add `boss` or `rare` for end boss or very rare items, or switch it in the loot window
-2. Wait for the bids. Bidding closes by itself after 30 seconds, or click **Close bids**
-3. On a tie the addon asks the tied players to `/roll` and marks the highest roll
-4. Click **Award** next to the winner, or **Bank or DE** if nobody wants it
+2. The **Loot Master** window shows every answer in sections, Main Spec, Off Spec, Passed and No answer yet, and marks the winner. You get the bid popup too and can bid yourself
+3. Change the price with the **Normal boss**, **End boss** and **Very rare** buttons, or type any price and click **Set**
+4. Bidding closes by itself after 30 seconds, or click **Close bids**
+5. On a tie the addon asks the tied players to `/roll` and marks the highest roll
+6. Click **Award** next to the winner, or **Bank or Disenchant** if nobody wants it
 
-Everything is announced in raid chat, so everyone can follow.
+Loot is announced in raid chat, so everyone can follow. The addon never writes in guild or officer chat.
 
 ## For officers
 
+The guild leader and every officer who may edit officer notes can change all data.
+
+**Editing a player.** Click a player in the standings, choose **Edit target** in the minimap menu, or type `/rgf edit Cel Dru`. In the editor you can
+
+* set exact EP and GP, or use the quick buttons like +100 EP
+* add a reason, which shows up in the History tab
+* link the player as an alt of a main, or make an alt a main again
+* put the player on the bench or take them off
+
+Every change can be undone with **Undo last change**.
+
+
 | Command | What it does |
 |---|---|
+| `/rgf edit Cel Dru` | open the editor, without a name for your target |
 | `/rgf raid` | 100 EP to the raid and the bench |
 | `/rgf ontime` | 25 EP to the raid and the bench |
 | `/rgf bench` | open the bench, or `bench add Cel Dru`, `bench remove Cel Dru`, `bench clear` |

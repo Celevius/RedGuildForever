@@ -28,6 +28,11 @@ local function noErrors()
     for _, p in ipairs(W.printed) do
         if p:find("error", 1, true) then error("addon printed an error: " .. p, 2) end
     end
+    for _, c in ipairs(W.chat) do
+        if c.channel == "GUILD" or c.channel == "OFFICER" then
+            error("addon wrote in " .. c.channel .. " chat: " .. c.msg, 2)
+        end
+    end
 end
 
 -- fresh addon with a guild roster
@@ -608,6 +613,132 @@ test("addon list next to the minimap", function()
     RedGuildForever_OnAddonCompartmentLeave()
     local toc = io.open("RedGuildForever.toc"):read("*a")
     assert(toc:find("AddonCompartmentFunc: RedGuildForever_OnAddonCompartmentClick", 1, true), "toc entry")
+    noErrors()
+end)
+
+test("never writes in guild chat, also not after the decay", function()
+    setup(guild())
+    StaticPopupDialogs["REDGUILDFOREVER_DECAY"].OnAccept()
+    W.flush()
+    eq(note("Lisa Brightwater"), "900,450", "decay ran")
+    eq(ns.SendChat("hello", "GUILD"), false, "guild chat blocked")
+    eq(ns.SendChat("hello", "OFFICER"), false, "officer chat blocked")
+    noErrors()
+end)
+
+test("officers edit points in the editor", function()
+    setup(guild())
+    assert(ns.OpenEditor("Lisa"), "opens with the first name")
+    local e = ns.editor
+    eq(e.target, "Lisa Brightwater-Forever")
+    eq(e.ep:GetText(), "1000") eq(e.gp:GetText(), "500")
+    eq(e.save:IsEnabled(), false, "nothing changed yet")
+    e.ep:SetText("1200") e.UpdatePreview()
+    e.gp:SetText("50")   e.UpdatePreview() -- below the base
+    assert(e.preview:GetText():find("can not go below 100"), e.preview:GetText())
+    e.reason:SetText("missed raid fix")
+    e.save:Click()
+    W.flush()
+    eq(note("Lisa Brightwater"), "1200,100", "saved with GP floor")
+    eq(e.ep:GetText(), "1200", "editor reloaded")
+    local log = RedGuildForeverDB.log
+    assert(log[#log].label:find("missed raid fix"), "reason in history")
+    e.undo:Click()
+    W.flush()
+    eq(note("Lisa Brightwater"), "1000,500", "undo from the editor")
+    noErrors()
+end)
+
+test("editor quick buttons, alts and bench", function()
+    setup(guild())
+    ns.OpenEditor("Anna Frost")
+    local e = ns.editor
+    e.UpdatePreview()
+    -- quick buttons sit next to the EP box, +100 adds to the box
+    e.ep:SetText("500")
+    e.ep:SetText(tostring(tonumber(e.ep:GetText()) + 100)) e.UpdatePreview()
+    e.save:Click() W.flush()
+    eq(note("Anna Frost"), "600,200")
+    -- an alt edits the points of its main
+    ns.OpenEditor("Tom Spark")
+    assert(e.sub:GetText():find("Alt of Tom Hammer"), e.sub:GetText())
+    e.ep:SetText("250") e.UpdatePreview()
+    e.save:Click() W.flush()
+    eq(note("Tom Hammer"), "250,100", "main changed")
+    eq(note("Tom Spark"), "@Tom Hammer", "alt note kept")
+    -- make the alt a main again, then link Ben to Anna by typing
+    e.unlink:Click() W.flush()
+    eq(note("Tom Spark"), "0,100")
+    ns.OpenEditor("Ben Swift")
+    e.mainBox:SetText("anna")
+    e.link:Click() W.flush()
+    eq(note("Ben Swift"), "@Anna Frost")
+    -- bench toggle
+    ns.OpenEditor("Max Ironhide")
+    eq(e.benchButton:GetText(), "Add to bench")
+    e.benchButton:Click()
+    eq(ns.Bench()[1], "Max Ironhide-Forever")
+    eq(e.benchButton:GetText(), "Remove from bench")
+    e.benchButton:Click()
+    eq(#ns.Bench(), 0)
+    noErrors()
+end)
+
+test("members cannot open the editor", function()
+    setup(guild())
+    W.canEdit = false
+    eq(ns.OpenEditor("Lisa"), false)
+    ns.Command("edit Lisa")
+    noErrors()
+end)
+
+test("loot master gets the bid popup and can bid himself", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    local shown
+    ns.On("RGF_INCOMING_AUCTION", function(inc) shown = inc end)
+    ns.StartAuction(W.link(50, "Shiny Boots"))
+    assert(shown, "popup for the loot master without waiting for the server")
+    eq(shown.owner, "Cel Dru-Forever")
+    ns.SendBid(shown, "MS")
+    eq(ns.auction.bids["Cel Dru-Forever"].spec, "MS", "own bid recorded")
+    -- the echo of his own message must not reset the bid
+    W.deliver(ns, "Cel Dru")
+    eq(shown.myBid, "MS", "bid kept after echo")
+    ns.SetAuctionTier("boss")
+    eq(shown.price, 150, "own popup gets the new price")
+    local closed
+    ns.On("RGF_INCOMING_CLOSED", function(inc) closed = inc end)
+    ns.Award("Cel Dru-Forever")
+    eq(closed, shown, "own popup closes after the award")
+    noErrors()
+end)
+
+test("loot master overview shows answers, passes and missing players", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Anna Frost", "Ben Swift" }
+    ns.StartAuction(W.link(51, "Gloves"))
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Max Ironhide", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    ns.RecordBid("Ben Swift", "PASS")
+    local o = ns.AuctionOverview(ns.auction)
+    eq(#o.ms, 2) eq(#o.os, 1) eq(#o.passed, 1)
+    eq(#o.waiting, 1, "the loot master himself has not answered")
+    eq(o.waiting[1], "Cel Dru-Forever")
+    eq(o.winner.name, "Max Ironhide-Forever", "highest priority")
+    -- changing your mind moves you between sections
+    ns.RecordBid("Ben Swift", "MS")
+    o = ns.AuctionOverview(ns.auction)
+    eq(#o.passed, 0) eq(#o.ms, 3)
+    -- custom price for this item
+    assert(ns.SetAuctionPrice(42))
+    eq(ns.auction.tier, "custom")
+    ns.Award("Max Ironhide")
+    W.flush()
+    eq(note("Max Ironhide"), "1000,142", "custom price charged")
     noErrors()
 end)
 

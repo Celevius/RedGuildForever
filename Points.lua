@@ -303,6 +303,31 @@ function ns.Adjust(name, dEP, dGP)
     return main
 end
 
+-- Set exact EP and GP for a player (alts change their main). Undoable.
+function ns.SetExactPoints(name, ep, gp, reason)
+    if not ns.CanEditNotes() then
+        ns.Print("you need permission to edit officer notes")
+        return nil
+    end
+    ep, gp = tonumber(ep), tonumber(gp)
+    if not ep or not gp then return nil end
+    ep = math.floor(ep)
+    gp = math.max(math.floor(gp), ns.Setting("baseGP"))
+    local main = ns.MainOf(name)
+    if not main or not ns.members[main] then
+        ns.Print((name or "?") .. " is not in the guild")
+        return nil
+    end
+    local oldEP, oldGP = ns.GetPoints(main)
+    if oldEP == ep and oldGP == gp then return main end
+    local label = string.format("%s set to %d EP and %d GP", ns.ShortName(main), ep, gp)
+    if reason and reason ~= "" then label = label .. ", " .. reason end
+    ns.BeginAction(label)
+    ns.Adjust(main, ep - oldEP, gp - oldGP)
+    ns.EndAction()
+    return main
+end
+
 -- Give EP to a list of characters, each player only once even with alts.
 function ns.AwardEP(names, amount, label)
     local done, skipped = {}, {}

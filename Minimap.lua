@@ -30,6 +30,7 @@ function ns.MenuEntries()
         local more = {
             { divider = true },
             { title = "Officer" },
+            { text = "Edit target", func = function() ns.Command("edit") end },
             { text = "Give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.Command("raid") end },
             { text = "Give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.Command("ontime") end },
             { text = "Add target to bench", func = function()

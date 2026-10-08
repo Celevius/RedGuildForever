@@ -25,12 +25,20 @@ local function refreshBid(bid)
     bid.newcomer = ep < ns.Setting("minEP")
 end
 
+-- Returns all bids in winning order, then main spec, off spec and passes.
 function ns.SortedBids(auction)
-    local ms, os = {}, {}
+    local ms, os, passed = {}, {}, {}
     for _, bid in pairs(auction.bids) do
         refreshBid(bid)
-        if bid.spec == "MS" then table.insert(ms, bid) else table.insert(os, bid) end
+        if bid.spec == "MS" then
+            table.insert(ms, bid)
+        elseif bid.spec == "OS" then
+            table.insert(os, bid)
+        else
+            table.insert(passed, bid)
+        end
     end
+    table.sort(passed, function(a, b) return a.name < b.name end)
     table.sort(ms, function(a, b)
         if a.newcomer ~= b.newcomer then return not a.newcomer end
         if math.abs(a.pr - b.pr) > EPSILON then return a.pr > b.pr end
@@ -44,7 +52,18 @@ function ns.SortedBids(auction)
     local all = {}
     for _, b in ipairs(ms) do table.insert(all, b) end
     for _, b in ipairs(os) do table.insert(all, b) end
-    return all, ms, os
+    return all, ms, os, passed
+end
+
+-- Everything the loot master needs to see: who bid what and who is still missing.
+function ns.AuctionOverview(auction)
+    local all, ms, os, passed = ns.SortedBids(auction)
+    local waiting = {}
+    for _, name in ipairs(auction.expected or {}) do
+        if not auction.bids[name] then table.insert(waiting, name) end
+    end
+    table.sort(waiting)
+    return { all = all, ms = ms, os = os, passed = passed, waiting = waiting, winner = all[1] }
 end
 
 -- Bidders that are tied for first place and still need to /roll.
@@ -119,10 +138,14 @@ function ns.StartAuction(link, tier)
         id = newId(), link = link, itemID = itemID, icon = icon,
         tier = tier, price = price, fixed = fixed,
         bids = {}, open = true, endsAt = (GetTime and GetTime() or 0) + seconds,
-        owner = ns.PlayerName(),
+        owner = ns.PlayerName(), expected = ns.RaidMembers(),
     }
     ns.auction = auction
-    ns.SendComm(table.concat({ "A", auction.id, seconds, price, link }, SEP), IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "WHISPER"), not IsInGroup() and UnitName("player") or nil)
+    if IsInGroup() then
+        ns.SendComm(table.concat({ "A", auction.id, seconds, price, link }, SEP), IsInRaid() and "RAID" or "PARTY")
+    end
+    -- the loot master gets the same bid popup as everyone else
+    ns.ReceiveAuction(auction.id, ns.PlayerName(), UnitName("player"), link, price, seconds)
     ns.Announce(string.format("Bids open for %s (%s, %d GP). Use the popup or whisper me ms or os. %d seconds.",
         link, fixed and "fixed price" or ns.defaults.tierNames[tier], price, seconds))
     ns.After(seconds, function()
@@ -139,25 +162,44 @@ function ns.SetAuctionTier(tier)
     a.price = ns.ItemPrice(a.link, tier)
     local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
     if channel then ns.SendComm(table.concat({ "P", a.id, a.price }, SEP), channel) end
+    if ns.incoming[a.id] then
+        ns.incoming[a.id].price = a.price
+        ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[a.id])
+    end
     if a.open then
         ns.Announce(string.format("%s now costs %d GP (%s).", a.link, a.price, ns.defaults.tierNames[tier]))
     end
     ns.Fire("RGF_AUCTION_CHANGED")
 end
 
+-- Passes are kept, so the loot master sees who said no.
+-- The loot master can type any price for this one item.
+function ns.SetAuctionPrice(gp)
+    local a = ns.auction
+    gp = tonumber(gp)
+    if not a or not gp or gp < 0 then return false end
+    a.price = math.floor(gp)
+    a.tier = "custom"
+    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+    if channel then ns.SendComm(table.concat({ "P", a.id, a.price }, SEP), channel) end
+    if ns.incoming[a.id] then
+        ns.incoming[a.id].price = a.price
+        ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[a.id])
+    end
+    if a.open then ns.Announce(string.format("%s now costs %d GP.", a.link, a.price)) end
+    ns.Fire("RGF_AUCTION_CHANGED")
+    return true
+end
+
 function ns.RecordBid(name, spec)
     local a = ns.auction
     if not a or not a.open then return false end
+    if spec ~= "MS" and spec ~= "OS" and spec ~= "PASS" then return false end
     local full = ns.Resolve(name)
-    if spec == "PASS" then
-        a.bids[full] = nil
-    elseif spec == "MS" or spec == "OS" then
-        local bid = a.bids[full] or { name = full }
-        bid.spec = spec
-        a.bids[full] = bid
-    else
-        return false
-    end
+    local bid = a.bids[full] or { name = full }
+    bid.spec = spec
+    bid.at = GetTime and GetTime() or 0
+    a.bids[full] = bid
     ns.Fire("RGF_AUCTION_CHANGED")
     return true
 end
@@ -196,6 +238,14 @@ function ns.RequestRolls()
     ns.Fire("RGF_AUCTION_CHANGED")
 end
 
+local function closeOwnPopup(a, winner)
+    local inc = ns.incoming[a.id]
+    if inc then
+        ns.incoming[a.id] = nil
+        ns.Fire("RGF_INCOMING_CLOSED", inc, winner)
+    end
+end
+
 -- Award to a bidder or to the guild bank (name nil).
 function ns.Award(name)
     local a = ns.auction
@@ -205,6 +255,7 @@ function ns.Award(name)
     if not name then
         ns.Announce(a.link .. " goes to the guild bank or gets disenchanted. It costs 0 GP.")
         if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
+        closeOwnPopup(a)
         ns.auction = nil
         ns.Fire("RGF_AUCTION_CHANGED")
         return true
@@ -212,6 +263,7 @@ function ns.Award(name)
     local full = ns.Resolve(name)
     local bid = a.bids[full]
     local spec = bid and bid.spec or "MS"
+    if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
     local cost = spec == "MS" and a.price or 0
     ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
     local main = ns.Adjust(full, 0, cost)
@@ -225,6 +277,7 @@ function ns.Award(name)
         ns.Announce(string.format("%s gets %s for off spec. It is free.", who, a.link))
     end
     if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
+    closeOwnPopup(a, full)
     ns.lastAward = { link = a.link, name = full, cost = cost }
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
@@ -237,6 +290,7 @@ function ns.CancelAuction()
     local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
     if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
     ns.Announce("Bidding for " .. a.link .. " was cancelled.")
+    closeOwnPopup(a)
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
 end
@@ -305,16 +359,26 @@ end)
 ------------------------------------------------------------------------
 -- Raider side
 ------------------------------------------------------------------------
+-- Show the bid popup. The loot master calls this himself, everyone else
+-- gets it by addon message. A second call for the same item keeps the bid.
+function ns.ReceiveAuction(id, owner, ownerRaw, link, price, seconds)
+    if not id or not link then return end
+    local inc = ns.incoming[id]
+    if not inc then
+        inc = {
+            id = id, owner = owner, ownerRaw = ownerRaw or owner, link = link,
+            duration = seconds or 30,
+            endsAt = (GetTime and GetTime() or 0) + (seconds or 30),
+        }
+        ns.incoming[id] = inc
+    end
+    inc.price = price or inc.price or 0
+    ns.Fire("RGF_INCOMING_AUCTION", inc)
+end
+
 ns.OnComm("A", function(text, sender, _, rawSender)
     local p = ns.SplitWithTail(text, 5)
-    local id, seconds, price, link = p[2], tonumber(p[3]), tonumber(p[4]), p[5]
-    if not id or not link then return end
-    ns.incoming[id] = {
-        id = id, owner = sender, ownerRaw = rawSender or sender, link = link, price = price or 0,
-        duration = seconds or 30,
-        endsAt = (GetTime and GetTime() or 0) + (seconds or 30),
-    }
-    ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[id])
+    ns.ReceiveAuction(p[2], sender, rawSender, p[5], tonumber(p[4]), tonumber(p[3]))
 end)
 
 ns.OnComm("P", function(text)

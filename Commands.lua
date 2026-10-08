@@ -30,6 +30,8 @@ local function typedMember(name)
     return nil
 end
 
+ns.TypedMember = typedMember
+
 local function joinWords(w, from, to)
     local parts = {}
     for i = from, to or #w do table.insert(parts, w[i]) end
@@ -74,6 +76,7 @@ local help = {
     "/rgf bid [item]  open bidding, shift click the item into the command",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Officers|r",
+    "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
     "/rgf raid  give raid EP to the raid and the bench",
     "/rgf ontime  give the on time bonus to the raid and the bench",
     "/rgf bench  open the bench, or /rgf bench add Cel Dru, remove Cel Dru, clear",
@@ -242,6 +245,21 @@ function ns.Command(line)
             ns.SendComm("SR", "GUILD")
             ns.Print("asking officers for the standings")
         end
+
+    elseif cmd == "edit" then
+        if not needOfficer() then return end
+        local full
+        if w[2] then
+            full = typedMember(joinWords(w, 2))
+        else
+            local name, realm = UnitName("target")
+            if name and UnitIsPlayer("target") then
+                full = typedMember(realm and realm ~= "" and (name .. "-" .. realm) or name)
+            else
+                ns.Print("type /rgf edit Cel Dru, or target a player first")
+            end
+        end
+        if full then ns.OpenEditor(full) end
 
     elseif cmd == "minimap" then
         local hidden = RedGuildForeverDB.minimap and RedGuildForeverDB.minimap.hide
