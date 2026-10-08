@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.5.0"
+ns.version = "1.5.1"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -185,12 +185,46 @@ function ns.ShortName(full)
     return full
 end
 
+-- Realms the game knows (our realm and connected realms), to tell a realm
+-- apart from a last name.
+function ns.IsKnownRealm(part)
+    if not part or part == "" then return false end
+    if part == ns.MyRealm() then return true end
+    if GetAutoCompleteRealms then
+        local ok, realms = pcall(GetAutoCompleteRealms)
+        if ok and type(realms) == "table" then
+            for _, r in ipairs(realms) do if r == part then return true end end
+        end
+    end
+    return false
+end
+
+-- The full name of a unit. Forever returns the first name and the last name
+-- ("Cel", "Dru") where other clients return the name and the realm, so the
+-- second value is only treated as a realm when it really is one.
+function ns.UnitFullName(unit)
+    local name, second = UnitName(unit)
+    if type(name) ~= "string" or name == "" then return nil end
+    if type(second) ~= "string" or second == "" then
+        if ns.Resolve then return ns.Resolve(name) end
+        return ns.FullName(name)
+    end
+    local asLastName = name .. " " .. second
+    local asRealm = name .. "-" .. second
+    if ns.FindMember then
+        local hit = ns.FindMember(asLastName)
+        if hit then return hit end
+    end
+    if unit ~= "player" and ns.IsKnownRealm(second) then
+        if ns.Resolve then return ns.Resolve(asRealm) end
+        return ns.FullName(asRealm)
+    end
+    if ns.Resolve then return ns.Resolve(asLastName) end
+    return ns.FullName(asLastName)
+end
+
 function ns.PlayerName()
-    local name, realm = UnitName("player")
-    if realm and realm ~= "" then name = name .. "-" .. realm end
-    -- the guild roster knows the full name, use it when the game gives us less
-    if ns.Resolve then return ns.Resolve(name) end
-    return ns.FullName(name)
+    return ns.UnitFullName("player")
 end
 
 ------------------------------------------------------------------------

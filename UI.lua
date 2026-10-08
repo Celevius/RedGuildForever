@@ -703,12 +703,12 @@ local function buildMain()
     local clear = button(f.benchButtons, "Clear bench", 104, function() ns.BenchClear() end)
     clear:SetPoint("RIGHT")
     local add = button(f.benchButtons, "Add target", 104, function()
-        local unitName, realm = UnitName("target")
-        if not unitName or not UnitIsPlayer("target") then
+        local full = UnitIsPlayer("target") and ns.UnitFullName("target")
+        if not full then
             ns.Print("target a player first, or type /rgf bench add Name")
             return
         end
-        ns.BenchAdd(realm and realm ~= "" and (unitName .. "-" .. realm) or unitName)
+        ns.BenchAdd(full)
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 

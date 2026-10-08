@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.5.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.5.1, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 

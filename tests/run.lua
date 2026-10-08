@@ -44,6 +44,8 @@ local function setup(roster)
     W.raid, W.inRaid = {}, false
     W.canEdit, W.canView = true, true
     W.guildInfo = ""
+    W.units = {}
+    W.realms = nil
     W.rank = nil
     W.server = 1760000000
     W.itemSlots = {}
@@ -1110,6 +1112,73 @@ test("Loot Master button, settings and test mode in the menu", function()
     ns.Command("test")
     eq(ns.IsTest(), true, "/rgf test toggles")
     noErrors()
+end)
+
+test("own name when the game returns first and last name separately", function()
+    setup(guild())
+    W.units.player = { "Cel", "Dru" }
+    eq(ns.PlayerName(), "Cel Dru-Forever", "not Cel-Dru")
+    eq(ns.ShortName(ns.PlayerName()), "Cel Dru")
+    -- raid EP reaches your own character
+    W.inRaid = true
+    W.raid = { "Cel Dru" }
+    ns.AwardEP(ns.RaidMembers(), 100, "Raid night")
+    eq(note("Cel Dru"), "100,100")
+    -- your own bid is listed under your real name
+    ns.StartAuction(W.link(80, "Own Bid Helm"))
+    ns.SendBid(ns.incoming[ns.auction.id], "MS")
+    assert(ns.auction.bids["Cel Dru-Forever"], "own bid under Cel Dru")
+    eq(ns.auction.bids["Cel-Dru-Forever"], nil)
+    -- the standings window shows your priority
+    ns.ToggleStandings(1)
+    noErrors()
+end)
+
+test("own name is right even before the guild roster loaded", function()
+    setup({})
+    W.units.player = { "Cel", "Dru" }
+    eq(ns.PlayerName(), "Cel Dru-Forever")
+end)
+
+test("targets and party members with first and last name", function()
+    setup(guild())
+    W.units.target = { "Anna", "Frost" }
+    ns.ToggleStandings(2)
+    ns.Command("edit")
+    eq(ns.editor.target, "Anna Frost-Forever", "edit target")
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    for _, item in ipairs(menu.items) do if item.text == "Add target to bench" then item.fn() end end
+    eq(ns.Bench()[1], "Anna Frost-Forever", "bench target")
+    -- a group without raid, party members come from UnitName too
+    W.inRaid = false
+    _G.IsInGroup = function() return true end
+    _G.GetNumGroupMembers = function() return 2 end
+    W.units.party1 = { "Lisa", "Brightwater" }
+    local list = ns.RaidMembers()
+    eq(list[2], "Lisa Brightwater-Forever")
+    noErrors()
+end)
+
+test("a real realm is still a realm", function()
+    setup(guild())
+    W.realms = { "Forever", "Otherrealm" }
+    W.units.target = { "Some Stranger", "Otherrealm" }
+    eq(ns.UnitFullName("target"), "Some Stranger-Otherrealm")
+    W.units.target = { "Some", "Stranger" }
+    eq(ns.UnitFullName("target"), "Some Stranger-Forever", "unknown second part is a last name")
+end)
+
+test("names written with a dash find the guild member", function()
+    setup(guild())
+    eq(ns.FindMember("Cel-Dru"), "Cel Dru-Forever")
+    eq(ns.FindMember("Lisa-Brightwater-Forever"), "Lisa Brightwater-Forever")
+    eq(ns.Resolve("Cel-Dru"), "Cel Dru-Forever")
+    -- a whisper or addon message from "Cel-Dru" counts as Cel Dru
+    W.inRaid = true
+    ns.StartAuction(W.link(81, "Dash Ring"))
+    ns.Fire("CHAT_MSG_WHISPER", "ms", "Lisa-Brightwater")
+    assert(ns.auction.bids["Lisa Brightwater-Forever"], "whisper bid matched")
 end)
 
 test("members cannot change points", function()

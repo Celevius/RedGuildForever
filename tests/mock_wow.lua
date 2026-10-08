@@ -125,7 +125,15 @@ function M.install()
     _G.GetTime = function() return M.now end
     _G.time = os.time
     _G.date = os.date
-    _G.UnitName = function(unit) if unit == "player" then return M.player end end
+    -- M.units holds the two values UnitName returns, like Forever does:
+    -- { "Cel", "Dru" } for first and last name, or { "Name", "Realm" } elsewhere
+    M.units = M.units or {}
+    _G.UnitName = function(unit)
+        local u = M.units[unit]
+        if u then return u[1], u[2] end
+        if unit == "player" then return M.player end
+    end
+    _G.GetAutoCompleteRealms = function() return M.realms or { M.realm } end
     _G.UnitIsPlayer = function() return true end
     _G.GetNormalizedRealmName = function() return M.realm end
     _G.GetRealmName = function() return M.realm end

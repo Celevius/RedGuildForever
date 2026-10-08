@@ -2,6 +2,13 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.5.1 (8 October 2026)
+
+### Fixed
+* Your own character was shown as "Cel-Dru" instead of "Cel Dru". Forever returns the first and the last name separately where other clients return the name and the realm, and the addon took the last name for a realm. Because of that your own character was not matched to the guild, so it could miss raid EP and its bids were listed under the wrong name
+* The same fix for your target (Edit target, Add target to bench) and for party members
+* Names written with a dash, like "Cel-Dru", are now matched to the guild member "Cel Dru" everywhere, also in whispers and messages from other players
+
 ## 1.5.0 (8 October 2026)
 
 ### Added

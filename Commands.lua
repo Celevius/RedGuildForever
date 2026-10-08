@@ -262,9 +262,9 @@ function ns.Command(line)
         if w[2] then
             full = typedMember(joinWords(w, 2))
         else
-            local name, realm = UnitName("target")
-            if name and UnitIsPlayer("target") then
-                full = typedMember(realm and realm ~= "" and (name .. "-" .. realm) or name)
+            local target = UnitIsPlayer("target") and ns.UnitFullName("target")
+            if target then
+                full = typedMember(target)
             else
                 ns.Print("type /rgf edit Cel Dru, or target a player first")
             end

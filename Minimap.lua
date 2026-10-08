@@ -35,9 +35,9 @@ function ns.MenuEntries()
             { text = "Give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.Command("raid") end },
             { text = "Give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.Command("ontime") end },
             { text = "Add target to bench", func = function()
-                local name, realm = UnitName("target")
-                if name and UnitIsPlayer("target") then
-                    local ok, full = ns.BenchAdd(realm and realm ~= "" and (name .. "-" .. realm) or name)
+                local target = UnitIsPlayer("target") and ns.UnitFullName("target")
+                if target then
+                    local ok, full = ns.BenchAdd(target)
                     ns.Print(ok and (ns.ShortName(full) .. " is on the bench") or "already on the bench")
                 else
                     ns.Print("target a player first")

@@ -227,6 +227,19 @@ function ns.FindMember(name, loose)
     local hit = ns.lookup[full:lower()]
     if hit then return hit end
 
+    -- "Cel-Dru" or "Cel-Dru-Forever", where a dash stands for the space
+    -- between first and last name
+    local base, tail = ns.SplitRealm(clean)
+    if tail then
+        local realm = ns.IsKnownRealm(tail) and tail or nil
+        local nameParts = realm and base or clean
+        local candidate = nameParts:gsub("%s*%-%s*", " ")
+        if realm then candidate = candidate .. "-" .. realm end
+        local asLastName = ns.FullName(candidate)
+        hit = asLastName and ns.lookup[asLastName:lower()]
+        if hit then return hit end
+    end
+
     local wanted = ns.SplitRealm(clean):lower()
     local hasSpace = wanted:find(" ", 1, true) ~= nil
     local exact, first, prefix = {}, {}, {}
@@ -633,10 +646,8 @@ function ns.RaidMembers()
     else
         table.insert(list, ns.PlayerName())
         for i = 1, count - 1 do
-            local name, realm = UnitName("party" .. i)
-            if name then
-                table.insert(list, ns.Resolve(realm and realm ~= "" and (name .. "-" .. realm) or name))
-            end
+            local full = ns.UnitFullName("party" .. i)
+            if full then table.insert(list, full) end
         end
     end
     return list

@@ -163,7 +163,7 @@ function ns.StartAuction(link, tier)
         ns.SendComm(table.concat({ "A", auction.id, seconds, price, link }, SEP), IsInRaid() and "RAID" or "PARTY")
     end
     -- the loot master gets the same bid popup as everyone else
-    ns.ReceiveAuction(auction.id, ns.PlayerName(), UnitName("player"), link, price, seconds)
+    ns.ReceiveAuction(auction.id, ns.PlayerName(), ns.PlayerName(), link, price, seconds)
     say(a, string.format("Bids open for %s (%s, %d GP). Use the popup or whisper me ms or os. %d seconds.",
         link, fixed and "fixed price" or ns.defaults.tierNames[tier], price, seconds))
     ns.After(seconds, function()
