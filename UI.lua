@@ -315,6 +315,14 @@ local function itemName(link)
     return link and link:match("%[(.-)%]") or "?"
 end
 
+-- building blocks for the other window files
+ns.UI = {
+    create = create, sound = sound, classColor = classColor, text = text,
+    setPortrait = setPortrait, setTitle = setTitle, window = window, button = button,
+    columnHeader = columnHeader, headerRow = headerRow, scrollList = scrollList,
+    rowCells = rowCells, checkbox = checkbox, itemButton = itemButton, itemName = itemName,
+}
+
 ------------------------------------------------------------------------
 -- Standings window with tabs Standings, Bench, History
 ------------------------------------------------------------------------
@@ -345,8 +353,8 @@ local function showPage(id)
     if not main then return end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
-    main.standingsButtons:SetShown(id == 1 and ns.CanEditNotes())
-    main.benchButtons:SetShown(id == 2 and ns.CanEditNotes())
+    main.standingsButtons:SetShown(id == 1 and ns.CanEdit())
+    main.benchButtons:SetShown(id == 2 and ns.CanEdit())
     main.showAll:SetShown(id == 1)
     ns.RefreshStandings()
 end
@@ -382,7 +390,7 @@ local function buildStandingsPage(parent)
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("New member until " .. ns.Setting("minEP") .. " EP", 0.4, 0.78, 1, true)
             end
-            if ns.CanEditNotes() then
+            if ns.CanEdit() then
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("Click to edit", 0, 1, 0)
             end
@@ -390,7 +398,7 @@ local function buildStandingsPage(parent)
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         row:SetScript("OnClick", function(self)
-            if self.entry and ns.CanEditNotes() then ns.OpenEditor(self.entry.name) end
+            if self.entry and ns.CanEdit() then ns.OpenEditor(self.entry.name) end
         end)
     end)
     page.list:SetPoint("TOPLEFT", 4, -30)
@@ -414,6 +422,108 @@ local function buildBenchPage(parent)
     page.hint:SetPoint("BOTTOM", 0, 10)
     page.hint:SetText("Benched players get the same EP as the raid.")
     return page
+end
+
+-- Sync tab: where the data lives, sync, backup, import and start fresh
+local function buildSyncPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+
+    local title = text(page, "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetText("Where the points are saved")
+    local info = text(page, "GameFontHighlightSmall")
+    info:SetPoint("TOPLEFT", 12, -32)
+    info:SetWidth(470)
+    info:SetWordWrap(true)
+    info:SetText("Every player keeps a copy of the points in the addon's save file. Sync shares the newest data with everyone online, the newest change of each player wins. Officers send their data, members only receive.")
+
+    page.state = text(page, "GameFontHighlight")
+    page.state:SetPoint("TOPLEFT", 12, -72)
+    page.state:SetWidth(470)
+    page.state:SetWordWrap(true)
+
+    page.sync = button(page, "Sync now", 110, function() ns.Sync() end)
+    page.sync:SetPoint("TOPLEFT", 10, -106)
+    page.fresh = button(page, "Start fresh", 110, function()
+        if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
+    end)
+    page.fresh:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
+    page.notes = button(page, "Import officer notes", 150, function()
+        local n = ns.ImportOfficerNotes()
+        ns.Print(n > 0 and ("imported " .. n .. " players from the officer notes") or "no points found in the officer notes")
+    end)
+    page.notes:SetPoint("LEFT", page.fresh, "RIGHT", 4, 0)
+
+    local backupTitle = text(page, "GameFontNormal")
+    backupTitle:SetPoint("TOPLEFT", 12, -144)
+    backupTitle:SetText("Backup")
+    local backupInfo = text(page, "GameFontHighlightSmall")
+    backupInfo:SetPoint("TOPLEFT", 12, -164)
+    backupInfo:SetWidth(470)
+    backupInfo:SetWordWrap(true)
+    backupInfo:SetText("Show backup, then press Ctrl C and keep the text in Discord or a file. To restore, paste a backup here with Ctrl V and click Import backup.")
+
+    local holder = create("Frame", nil, page, "InsetFrameTemplate")
+    holder:SetPoint("TOPLEFT", 10, -196)
+    holder:SetPoint("BOTTOMRIGHT", -10, 40)
+    local scroll = create("ScrollFrame", nil, holder, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 6, -6)
+    scroll:SetPoint("BOTTOMRIGHT", -28, 6)
+    local box = CreateFrame("EditBox", nil, scroll)
+    box:SetMultiLine(true)
+    box:SetAutoFocus(false)
+    box:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+    box:SetWidth(430)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    scroll:SetScrollChild(box)
+    page.box = box
+
+    page.show = button(page, "Show backup", 120, function()
+        box:SetText(ns.ExportText())
+        box:SetFocus()
+        box:HighlightText()
+    end)
+    page.show:SetPoint("BOTTOMLEFT", 10, 10)
+    page.import = button(page, "Import backup", 120, function()
+        local changes, err = ns.ImportText(box:GetText())
+        if changes then
+            ns.Print("backup imported, " .. changes .. " players changed")
+            box:SetText("")
+        else
+            ns.Print(err)
+        end
+    end)
+    page.import:SetPoint("LEFT", page.show, "RIGHT", 4, 0)
+    return page
+end
+
+local function refreshSyncPage(page)
+    local lines = {}
+    if not ns.HasData() then
+        table.insert(lines, "|cffff8040No data loaded yet.|r Click Sync now to get it from the other officers.")
+        if ns.CanEdit() then
+            table.insert(lines, "If your guild is new, click Start fresh. If you used version 1.3 or older, import the officer notes.")
+        end
+    else
+        local count = 0
+        for _ in pairs(ns.Players()) do count = count + 1 end
+        table.insert(lines, count .. " players in the data.")
+    end
+    local si = ns.syncInfo or {}
+    if si.running then
+        table.insert(lines, "Sync is running...")
+    elseif si.last then
+        local who = {}
+        for name in pairs(si.from or {}) do table.insert(who, ns.ShortName(name)) end
+        table.sort(who)
+        table.insert(lines, "Last sync at " .. date("%H:%M", si.last) .. " with " .. (#who > 0 and table.concat(who, ", ") or "nobody"))
+    end
+    page.state:SetText(table.concat(lines, "\n"))
+    local officer = ns.CanEdit()
+    page.fresh:SetShown(officer and not ns.HasData())
+    page.notes:SetShown(officer)
+    page.import:SetShown(officer)
 end
 
 local function buildHistoryPage(parent)
@@ -448,12 +558,13 @@ local function buildMain()
         buildStandingsPage(f.Inset),
         buildBenchPage(f.Inset),
         buildHistoryPage(f.Inset),
+        buildSyncPage(f.Inset),
     }
 
     -- bottom strip
-    f.refresh = button(f, "Refresh", 90, function()
+    f.refresh = button(f, "Sync", 90, function()
         ns.RequestRoster()
-        if ns.CanViewNotes() then ns.QueueBroadcast(0) else ns.SendComm("SR", "GUILD") end
+        ns.Sync()
     end)
     f.refresh:SetPoint("BOTTOMLEFT", 6, 4)
 
@@ -484,7 +595,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Bench", "History" }, showPage)
+    tabs(f, name, { "Standings", "Bench", "History", "Sync" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -534,7 +645,7 @@ local function refreshBenchPage(page)
         row.cells.name:SetText(ns.ShortName(name))
         local m = ns.members[name]
         row.cells.name:SetTextColor(classColor(m and m.class))
-        row.remove:SetShown(ns.CanEditNotes())
+        row.remove:SetShown(ns.CanEdit())
         row:Show()
     end
     page.list:SetCount(#list)
@@ -563,8 +674,10 @@ function ns.RefreshStandings()
         count = refreshStandingsPage(main.pages[1])
     elseif tab == 2 then
         refreshBenchPage(main.pages[2])
-    else
+    elseif tab == 3 then
         refreshHistoryPage(main.pages[3])
+    else
+        refreshSyncPage(main.pages[4])
     end
 
     local me = ns.PlayerName()
@@ -578,12 +691,12 @@ function ns.RefreshStandings()
         status = #ns.Bench() .. " players on the bench"
     elseif tab == 3 then
         status = "Changes made by officers on this computer"
-    elseif ns.CanViewNotes() then
-        status = count .. " players, blue priority means new member"
-    elseif ns.synced.from then
-        status = count .. " players, sent by " .. ns.ShortName(ns.synced.from) .. " at " .. date("%H:%M", ns.synced.at)
+    elseif tab == 4 then
+        status = "Sync and backup"
+    elseif not ns.HasData() then
+        status = "|cffff8040No data yet, click Sync|r"
     else
-        status = "Waiting for an officer to send the standings"
+        status = count .. " players, blue priority means new member"
     end
     main.status:SetText(status)
 end
@@ -804,8 +917,8 @@ local function buildEditor()
 end
 
 function ns.OpenEditor(name)
-    if not ns.CanEditNotes() then
-        ns.Print("only the guild leader and officers who can edit officer notes can change points")
+    if not ns.CanEdit() then
+        ns.Print("only the guild leader and officers can change points")
         return false
     end
     local full = ns.FindMember(name)
@@ -826,6 +939,7 @@ end
 ns.On("RGF_POINTS_CHANGED", refreshEditor)
 ns.On("RGF_BENCH_CHANGED", refreshEditor)
 ns.On("RGF_BENCH_CHANGED", function() ns.RefreshStandings() end)
+ns.On("RGF_SYNC_DONE", function() ns.RefreshStandings() end)
 
 ------------------------------------------------------------------------
 -- Loot master window
@@ -1189,6 +1303,18 @@ end)
 -- Decay confirmation, the normal Blizzard yes or no dialog
 ------------------------------------------------------------------------
 if StaticPopupDialogs then
+    StaticPopupDialogs["REDGUILDFOREVER_FRESH"] = {
+        text = "Start with empty EPGP data for this guild?\nOnly do this for a new guild. If other officers have data, click Sync instead.",
+        button1 = YES or "Yes",
+        button2 = NO or "No",
+        OnAccept = function()
+            if ns.StartFresh() then ns.Print("started with empty data, you can now give EP") end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
     StaticPopupDialogs["REDGUILDFOREVER_DECAY"] = {
         text = "Shrink all EP and GP by %s percent?\nDo this once a week.",
         button1 = YES or "Yes",

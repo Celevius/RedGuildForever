@@ -62,8 +62,8 @@ local function twoMembers(w, from)
 end
 
 local function needOfficer()
-    if ns.CanEditNotes() then return true end
-    ns.Print("only officers who can edit officer notes can do that")
+    if ns.CanEdit() then return true end
+    ns.Print("only the guild leader and officers can do that")
     return false
 end
 
@@ -73,7 +73,8 @@ local help = {
     "/rgf minimap  show or hide the minimap button",
     "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
     "|cffffd100Loot master|r",
-    "/rgf bid [item]  open bidding, shift click the item into the command",
+    "/rgf bid  open the Start Bidding window, or /rgf bid [item] to start right away",
+    "/rgf test  try the loot master window alone with fake bids",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Officers|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
@@ -87,7 +88,8 @@ local help = {
     "/rgf decay  weekly decay",
     "/rgf undo  undo the last change from this session",
     "/rgf price [item] 250  fixed price for an item, or clear",
-    "/rgf sync  send the standings to everyone",
+    "/rgf sync  sync the data with everyone online",
+    "/rgf export  open the Sync tab with backup export and import",
     "/rgf log  show the last changes",
 }
 
@@ -135,7 +137,7 @@ function ns.Command(line)
     elseif cmd == "bid" or cmd == "auction" then
         local link = itemLink(line)
         if not link then
-            ns.Print("type /rgf bid and then shift click the item")
+            ns.OpenPicker()
             return
         end
         local after = line:sub((line:find(link, 1, true) or 0) + #link):lower()
@@ -237,14 +239,18 @@ function ns.Command(line)
         end
 
     elseif cmd == "sync" then
-        if ns.CanViewNotes() then
-            ns.RequestRoster()
-            ns.QueueBroadcast(1)
-            ns.Print("sending standings to the guild")
-        else
-            ns.SendComm("SR", "GUILD")
-            ns.Print("asking officers for the standings")
-        end
+        ns.RequestRoster()
+        ns.Sync()
+
+    elseif cmd == "export" then
+        ns.ToggleStandings(4)
+
+    elseif cmd == "fresh" then
+        if not needOfficer() then return end
+        if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
+
+    elseif cmd == "test" then
+        ns.OpenPicker(true)
 
     elseif cmd == "edit" then
         if not needOfficer() then return end

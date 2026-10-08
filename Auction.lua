@@ -95,6 +95,22 @@ end
 ------------------------------------------------------------------------
 -- Loot master side
 ------------------------------------------------------------------------
+-- In test mode nothing goes to the raid and no points change.
+local function say(a, msg)
+    if a and a.test then
+        ns.Print("|cffff8040[Test]|r " .. msg)
+    else
+        ns.Announce(msg)
+    end
+end
+
+local function groupChannel(a)
+    if a and a.test then return nil end
+    if IsInRaid() then return "RAID" end
+    if IsInGroup() then return "PARTY" end
+    return nil
+end
+
 local function newId()
     return tostring(math.random(100000, 999999))
 end
@@ -117,9 +133,9 @@ local function bidsText(list, limit)
     return table.concat(parts, ", ")
 end
 
-function ns.StartAuction(link, tier)
-    if not ns.CanEditNotes() then
-        ns.Print("only officers who can edit officer notes can start bidding")
+function ns.StartAuction(link, tier, test)
+    if not test and not ns.CanEdit() then
+        ns.Print("only the guild leader and officers can start bidding, use the test mode to try it")
         return false
     end
     if ns.auction and ns.auction.open then
@@ -138,15 +154,16 @@ function ns.StartAuction(link, tier)
         id = newId(), link = link, itemID = itemID, icon = icon,
         tier = tier, price = price, fixed = fixed,
         bids = {}, open = true, endsAt = (GetTime and GetTime() or 0) + seconds,
-        owner = ns.PlayerName(), expected = ns.RaidMembers(),
+        owner = ns.PlayerName(), expected = ns.RaidMembers(), test = test,
     }
     ns.auction = auction
-    if IsInGroup() then
+    local a = auction
+    if IsInGroup() and not test then
         ns.SendComm(table.concat({ "A", auction.id, seconds, price, link }, SEP), IsInRaid() and "RAID" or "PARTY")
     end
     -- the loot master gets the same bid popup as everyone else
     ns.ReceiveAuction(auction.id, ns.PlayerName(), UnitName("player"), link, price, seconds)
-    ns.Announce(string.format("Bids open for %s (%s, %d GP). Use the popup or whisper me ms or os. %d seconds.",
+    say(a, string.format("Bids open for %s (%s, %d GP). Use the popup or whisper me ms or os. %d seconds.",
         link, fixed and "fixed price" or ns.defaults.tierNames[tier], price, seconds))
     ns.After(seconds, function()
         if ns.auction == auction and auction.open then ns.CloseBidding() end
@@ -160,14 +177,14 @@ function ns.SetAuctionTier(tier)
     if not a or a.fixed or not ns.Setting("tiers")[tier] then return end
     a.tier = tier
     a.price = ns.ItemPrice(a.link, tier)
-    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+    local channel = groupChannel(a)
     if channel then ns.SendComm(table.concat({ "P", a.id, a.price }, SEP), channel) end
     if ns.incoming[a.id] then
         ns.incoming[a.id].price = a.price
         ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[a.id])
     end
     if a.open then
-        ns.Announce(string.format("%s now costs %d GP (%s).", a.link, a.price, ns.defaults.tierNames[tier]))
+        say(a, string.format("%s now costs %d GP (%s).", a.link, a.price, ns.defaults.tierNames[tier]))
     end
     ns.Fire("RGF_AUCTION_CHANGED")
 end
@@ -180,13 +197,13 @@ function ns.SetAuctionPrice(gp)
     if not a or not gp or gp < 0 then return false end
     a.price = math.floor(gp)
     a.tier = "custom"
-    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+    local channel = groupChannel(a)
     if channel then ns.SendComm(table.concat({ "P", a.id, a.price }, SEP), channel) end
     if ns.incoming[a.id] then
         ns.incoming[a.id].price = a.price
         ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[a.id])
     end
-    if a.open then ns.Announce(string.format("%s now costs %d GP.", a.link, a.price)) end
+    if a.open then say(a, string.format("%s now costs %d GP.", a.link, a.price)) end
     ns.Fire("RGF_AUCTION_CHANGED")
     return true
 end
@@ -210,12 +227,12 @@ function ns.CloseBidding()
     a.open = false
     local all, ms, os = ns.SortedBids(a)
     if #all == 0 then
-        ns.Announce("Bids closed for " .. a.link .. ". Nobody wants it, it goes to the guild bank or gets disenchanted.")
+        say(a, "Bids closed for " .. a.link .. ". Nobody wants it, it goes to the guild bank or gets disenchanted.")
     else
         local text = "Bids closed for " .. a.link .. "."
         if #ms > 0 then text = text .. " Main spec " .. bidsText(ms, 5) .. "." end
         if #os > 0 then text = text .. " Off spec " .. bidsText(os, 5) .. "." end
-        ns.Announce(text)
+        say(a, text)
         local tied = ns.TiedForFirst(a)
         if #tied > 0 then ns.RequestRolls() end
     end
@@ -234,7 +251,8 @@ function ns.RequestRolls()
         table.insert(names, ns.ShortName(b.name))
     end
     a.rollsOpen = true
-    ns.Announce("Tie for " .. a.link .. " between " .. table.concat(names, ", ") .. ". Please /roll now.")
+    if a.test then ns.After(2, function() ns.Fire("RGF_TEST_ROLLS") end) end
+    say(a, "Tie for " .. a.link .. " between " .. table.concat(names, ", ") .. ". Please /roll now.")
     ns.Fire("RGF_AUCTION_CHANGED")
 end
 
@@ -251,9 +269,9 @@ function ns.Award(name)
     local a = ns.auction
     if not a then return false end
     if a.open then ns.CloseBidding() end
-    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+    local channel = groupChannel(a)
     if not name then
-        ns.Announce(a.link .. " goes to the guild bank or gets disenchanted. It costs 0 GP.")
+        say(a, a.link .. " goes to the guild bank or gets disenchanted. It costs 0 GP.")
         if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
         closeOwnPopup(a)
         ns.auction = nil
@@ -265,19 +283,27 @@ function ns.Award(name)
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
     local cost = spec == "MS" and a.price or 0
-    ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
-    local main = ns.Adjust(full, 0, cost)
-    ns.EndAction()
-    if not main then return false end
+    local main
+    if a.test then
+        main = ns.MainOf(full) or full
+    else
+        ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
+        main = ns.Adjust(full, 0, cost)
+        ns.EndAction()
+        if not main then return false end
+    end
     local who = ns.ShortName(full)
     if main ~= full then who = who .. " (alt of " .. ns.ShortName(main) .. ")" end
     if spec == "MS" then
-        ns.Announce(string.format("%s wins %s for %d GP.", who, a.link, cost))
+        say(a, string.format("%s wins %s for %d GP.", who, a.link, cost))
     else
-        ns.Announce(string.format("%s gets %s for off spec. It is free.", who, a.link))
+        say(a, string.format("%s gets %s for off spec. It is free.", who, a.link))
     end
     if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
     closeOwnPopup(a, full)
+    if a.test then
+        ns.Print("|cffff8040[Test]|r no points were changed. For real loot use /rgf bid and shift click the item")
+    end
     ns.lastAward = { link = a.link, name = full, cost = cost }
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
@@ -287,9 +313,9 @@ end
 function ns.CancelAuction()
     local a = ns.auction
     if not a then return end
-    local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+    local channel = groupChannel(a)
     if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
-    ns.Announce("Bidding for " .. a.link .. " was cancelled.")
+    say(a, "Bidding for " .. a.link .. " was cancelled.")
     closeOwnPopup(a)
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
@@ -327,7 +353,7 @@ ns.On("CHAT_MSG_SYSTEM", function(text)
         if #ns.TiedForFirst(a) == 0 then
             a.rollsOpen = false
             local all = ns.SortedBids(a)
-            ns.Announce(ns.ShortName(all[1].name) .. " has the highest roll for " .. a.link .. ".")
+            say(a, ns.ShortName(all[1].name) .. " has the highest roll for " .. a.link .. ".")
             ns.Fire("RGF_AUCTION_CHANGED")
         end
     end
@@ -417,3 +443,68 @@ function ns.SendBid(inc, spec)
     inc.myBid = spec
     ns.Fire("RGF_INCOMING_AUCTION", inc)
 end
+
+------------------------------------------------------------------------
+-- Test mode: the loot master window with fake bids, works without a group
+------------------------------------------------------------------------
+local function testItem()
+    if GetInventoryItemLink then
+        for _, slot in ipairs({ 16, 5, 1, 7, 3, 10, 15, 6, 8, 9, 2, 11, 13, 17, 18 }) do
+            local link = GetInventoryItemLink("player", slot)
+            if link then return link end
+        end
+    end
+    return "|cffa335ee|Hitem:19019::::::::60:::::|h[Test Sword]|h|r"
+end
+
+function ns.StartTestAuction(link, tier)
+    if ns.auction and ns.auction.open then
+        ns.Print("bidding for " .. ns.auction.link .. " is still open, finish it first")
+        return false
+    end
+    link = link or testItem()
+    if not ns.StartAuction(link, tier or "normal", true) then return false end
+    local a = ns.auction
+
+    -- up to 8 guild members answer one after another, a few never answer
+    local me = ns.PlayerName()
+    local pool = {}
+    for full in pairs(ns.members) do
+        if full ~= me then table.insert(pool, full) end
+    end
+    table.sort(pool)
+    for i = #pool, 2, -1 do
+        local j = math.random(i)
+        pool[i], pool[j] = pool[j], pool[i]
+    end
+    local answers = { "MS", "OS", "MS", false, "PASS", "MS", "OS", false }
+    a.expected = { me }
+    for i = 1, math.min(8, #pool) do
+        table.insert(a.expected, pool[i])
+        local answer = answers[i]
+        if answer then
+            ns.After(1 + i * 1.5, function()
+                if ns.auction == a and a.open then ns.RecordBid(pool[i], answer) end
+            end)
+        end
+    end
+    if #pool == 0 then
+        ns.Print("|cffff8040[Test]|r nobody else is in the guild roster yet, so only your own bid shows up")
+    end
+    ns.Fire("RGF_AUCTION_CHANGED")
+    return true
+end
+
+-- In test mode the fake bidders roll by themselves
+ns.On("RGF_TEST_ROLLS", function()
+    local a = ns.auction
+    if not a or not a.test or not a.rollsOpen then return end
+    local me = ns.PlayerName()
+    for _, b in ipairs(ns.TiedForFirst(a)) do
+        if b.name ~= me and b.wantsRoll and not b.roll then
+            b.roll = math.random(1, 100)
+        end
+    end
+    if #ns.TiedForFirst(a) == 0 then a.rollsOpen = false end
+    ns.Fire("RGF_AUCTION_CHANGED")
+end)

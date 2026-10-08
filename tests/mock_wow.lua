@@ -14,6 +14,9 @@ M.raid = {}
 M.inRaid = false
 M.canEdit = true
 M.canView = true
+M.server = 1760000000   -- server time, tests move it forward
+M.guildName = "Redemption"
+M.guildInfo = ""
 
 -- guild roster rows: { name, rankIndex, officerNote, classFile }
 M.roster = {}
@@ -22,20 +25,29 @@ function M.reset()
     M.chat, M.comms, M.printed, M.timers = {}, {}, {}, {}
 end
 
--- run every queued timer (repeatedly, timers can add timers)
+-- run every queued timer in the order of their delay, timers can add timers.
+-- GetTime moves forward to each timer, like the game clock would.
 function M.flush()
-    for _ = 1, 200 do
+    for _ = 1, 1000 do
         if #M.timers == 0 then return end
-        local list = M.timers
-        M.timers = {}
-        for _, fn in ipairs(list) do fn() end
+        local best = 1
+        for i, t in ipairs(M.timers) do
+            if t.due < M.timers[best].due or (t.due == M.timers[best].due and t.seq < M.timers[best].seq) then
+                best = i
+            end
+        end
+        local t = table.remove(M.timers, best)
+        if t.due > M.now then M.now = t.due end
+        t.fn()
     end
 end
+M.seq = 0
 
 -- the real client throws on events it does not know, so we do too
 M.knownEvents = {
     ADDON_LOADED = true, GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
     CHAT_MSG_ADDON = true, CHAT_MSG_SYSTEM = true, CHAT_MSG_WHISPER = true,
+    LOOT_OPENED = true, LOOT_SLOT_CLEARED = true, LOOT_CLOSED = true,
 }
 M.registered = {}
 
@@ -129,10 +141,29 @@ function M.install()
         -- name, rankName, rankIndex, level, class, zone, publicNote, officerNote, online, status, classFile
         return r[1] .. "-" .. M.realm, "Rank", r[2], 60, r[4], "Zone", "", M.canView and r[3] or "", true, 0, r[4]
     end
-    _G.GuildRosterSetOfficerNote = function(i, note)
-        assert(#note <= 31, "officer note too long " .. note)
-        M.roster[i][3] = note
+    _G.GuildRosterSetOfficerNote = function()
+        error("the addon must not write officer notes anymore")
     end
+    _G.GetGuildInfo = function(unit)
+        if unit ~= "player" then return nil end
+        local rank = M.rank or (M.canEdit and 0 or 5)
+        return M.guildName, "Rank " .. rank, rank, M.realm
+    end
+    _G.GetGuildInfoText = function() return M.guildInfo end
+    _G.GetServerTime = function() return M.server end
+    M.loot, M.cursor = {}, nil
+    _G.GetNumLootItems = function() return #M.loot end
+    _G.GetLootSlotLink = function(i) return M.loot[i] and M.loot[i].link end
+    _G.GetLootSlotInfo = function(i)
+        local l = M.loot[i]
+        if not l then return nil end
+        return 12345, "Item", 1, nil, l.quality
+    end
+    _G.GetCursorInfo = function()
+        if M.cursor then return "item", 1, M.cursor end
+        return nil
+    end
+    _G.ClearCursor = function() M.cursor = nil end
     _G.C_GuildInfo = {
         GuildRoster = function() end,
         CanEditOfficerNote = function() return M.canEdit end,
@@ -158,7 +189,10 @@ function M.install()
         end,
     }
     _G.C_Timer = {
-        After = function(_, fn) table.insert(M.timers, fn) end,
+        After = function(delay, fn)
+            M.seq = M.seq + 1
+            table.insert(M.timers, { due = M.now + (delay or 0), seq = M.seq, fn = fn })
+        end,
         NewTicker = function() return {} end,
     }
     _G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"

@@ -2,6 +2,27 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.4.0 (8 October 2026)
+
+### Added
+* **Start Bidding** window, no typing needed. Drag an item from your bags onto the slot, or click an item that is still on the corpse. Items seen on corpses this session stay in the list
+* The Start Bidding window opens by itself when an officer loots a corpse with rare or better items in a group
+* **Test mode** for the loot master window. Works alone, guild members send fake bids, ties are rolled for them, nothing is sent and no points change. Members can use it too
+* **Sync** button in the `/rgf` window, the new **Sync** tab and the minimap menu. Officers share their data, the newest change of each player wins
+* **Sync** tab with the state of the data, **Show backup** and **Import backup** to keep a text copy outside the game, **Import officer notes** for data from older versions, and **Start fresh** for a new guild
+* The guild leader can let more ranks change data by writing `EPGP officers 2` into the guild information
+* Commands `/rgf test`, `/rgf export`, `/rgf fresh`, and `/rgf bid` without an item opens the Start Bidding window
+
+### Changed
+* Points are no longer saved in the officer notes. They are saved in the addon's own save file, every player keeps a copy per guild
+* Every change records the server time and who made it, so sync knows which change is newer
+* Who may change data now depends on the guild rank, guild leader and rank 1 by default
+* The Refresh button is now **Sync**
+* Minimap menu has **Start bidding**, **Test the loot master window**, **Sync with everyone online** and **Backup and sync**
+
+### Fixed
+* Officers cannot change points while no data is loaded, so an empty save file can never overwrite the real points
+
 ## 1.3.0 (8 October 2026)
 
 ### Added

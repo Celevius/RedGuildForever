@@ -1,8 +1,8 @@
 -- Communication between addon users.
 --
 -- Messages use "^" as separator, because item links contain "|".
---   SR                      ask officers for standings (GUILD)
---   SB^n / SD^n^data / SE^n standings begin, data, end (GUILD)
+--   SQ                      ask everyone to sync (GUILD)
+--   DB^n / DD^n^data / DE^n an officer sends all data, begin, data, end (GUILD)
 --   A^id^seconds^gp^link    an auction starts (RAID)
 --   B^id^MS|OS|PASS         a bid (WHISPER to the loot master)
 --   C^id^winner             an auction ends (RAID)
@@ -50,12 +50,8 @@ ns.On("RGF_READY", function()
     if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
         C_ChatInfo.RegisterAddonMessagePrefix(ns.prefix)
     end
-    -- players who cannot read officer notes ask for standings
-    ns.After(8, function()
-        if IsInGuild and IsInGuild() and not ns.CanViewNotes() then
-            ns.SendComm("SR", "GUILD")
-        end
-    end)
+    -- ask the guild for the newest data a few seconds after login
+    ns.After(8, function() ns.Sync(true) end)
 end)
 
 ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
@@ -67,100 +63,189 @@ ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
 end)
 
 ------------------------------------------------------------------------
--- Standings sync
+-- Sync
+--
+-- Everyone keeps a copy of the data. Officers send their whole data set,
+-- everyone merges it and the newest change per player wins. An officer who
+-- notices he has newer entries than the sender answers with his own data,
+-- so after one sync everyone online has the same data.
 ------------------------------------------------------------------------
 local incoming = {}
-local lastBroadcastSeen = 0
 local broadcastQueued = false
+ns.syncInfo = { at = nil, from = {}, changes = 0 }
 
-local function encodeStandings()
+-- Entries are "Name,ep,gp,time" and "Alt>Main,time", separated by ";".
+local function encode()
     local entries = {}
-    for full, m in pairs(ns.members) do
-        if m.main then
-            table.insert(entries, ns.ShortName(full) .. ">" .. ns.ShortName(m.main))
-        elseif m.hasPoints then
-            table.insert(entries, string.format("%s,%d,%d", ns.ShortName(full), m.ep, m.gp))
+    for full, e in pairs(ns.Players()) do
+        local t = e.t or 0
+        if e.main then
+            table.insert(entries, string.format("%s>%s,%d", ns.ShortName(full), ns.ShortName(e.main), t))
+        elseif e.ep then
+            table.insert(entries, string.format("%s,%d,%d,%d", ns.ShortName(full), e.ep, e.gp or ns.Setting("baseGP"), t))
         end
     end
     table.sort(entries)
     return entries
 end
 
-function ns.BroadcastStandings()
-    if not (IsInGuild and IsInGuild()) or not ns.CanViewNotes() then return false end
+local function decode(entryText)
+    local alt, main, t = entryText:match("^(.-)>(.-),(%d+)$")
+    if alt then
+        return ns.FullName(alt), { main = ns.FullName(main), t = tonumber(t) }
+    end
+    local name, ep, gp, t2 = entryText:match("^(.-),(%-?%d+),(%d+),(%d+)$")
+    if name then
+        return ns.FullName(name), { ep = tonumber(ep), gp = tonumber(gp), t = tonumber(t2) }
+    end
+end
+
+function ns.SendData()
+    if not (IsInGuild and IsInGuild()) or not ns.CanEdit() or not ns.HasData() then return false end
     local nonce = tostring(math.random(100000, 999999))
-    local entries = encodeStandings()
-    ns.SendComm("SB" .. SEP .. nonce, "GUILD")
-    local chunk = {}
-    local size = 0
+    ns.SendComm("DB" .. SEP .. nonce, "GUILD")
+    local chunk, size = {}, 0
     local function flush()
         if #chunk > 0 then
-            ns.SendComm("SD" .. SEP .. nonce .. SEP .. table.concat(chunk, ";"), "GUILD")
+            ns.SendComm("DD" .. SEP .. nonce .. SEP .. table.concat(chunk, ";"), "GUILD")
             chunk, size = {}, 0
         end
     end
-    for _, e in ipairs(entries) do
+    for _, e in ipairs(encode()) do
         if size + #e + 1 > 230 then flush() end
         table.insert(chunk, e)
         size = size + #e + 1
     end
     flush()
-    ns.SendComm("SE" .. SEP .. nonce, "GUILD")
+    ns.SendComm("DE" .. SEP .. nonce, "GUILD")
     return true
 end
 
--- Send standings a few seconds after a change, so several changes go out once.
+-- Send our data a few seconds after a change, so several changes go out once.
 function ns.QueueBroadcast(delay)
     if broadcastQueued then return end
     broadcastQueued = true
     ns.After(delay or 5, function()
         broadcastQueued = false
-        ns.BroadcastStandings()
+        ns.SendData()
     end)
+end
+
+-- The Sync button. Officers send their data, everyone asks for the newest.
+function ns.Sync(quiet)
+    if not (IsInGuild and IsInGuild()) then
+        if not quiet then ns.Print("you are not in a guild") end
+        return false
+    end
+    ns.syncInfo = { at = ns.Now(), from = {}, changes = 0, running = true }
+    ns.SendComm("SQ", "GUILD")
+    if ns.CanEdit() and ns.HasData() then ns.QueueBroadcast(0) end
+    if not quiet then ns.Print("syncing with everyone online") end
+    ns.After(10, function()
+        ns.syncInfo.running = false
+        if not quiet then
+            local who = {}
+            for name in pairs(ns.syncInfo.from) do table.insert(who, ns.ShortName(name)) end
+            table.sort(who)
+            if #who == 0 then
+                ns.Print("sync done, no other officer with data is online")
+            else
+                ns.Print("sync done with " .. table.concat(who, ", ") .. ", " .. ns.syncInfo.changes .. " changes")
+            end
+        end
+        ns.Fire("RGF_SYNC_DONE")
+    end)
+    ns.Fire("RGF_SYNC_DONE")
+    return true
 end
 
 ns.On("RGF_LOCAL_CHANGE", function() ns.QueueBroadcast(5) end)
 
-ns.OnComm("SR", function(_, sender)
-    if not ns.CanViewNotes() or sender == ns.PlayerName() then return end
-    -- several officers may be online, wait a random moment and skip if someone else answered
-    local asked = GetTime and GetTime() or 0
-    ns.After(1 + math.random() * 4, function()
-        if lastBroadcastSeen > asked then return end
-        ns.QueueBroadcast(0)
-    end)
+ns.OnComm("SQ", function(_, sender)
+    if sender == ns.PlayerName() or not ns.CanEdit() or not ns.HasData() then return end
+    ns.After(1 + math.random() * 3, function() ns.QueueBroadcast(0) end)
 end)
 
-ns.OnComm("SB", function(text, sender)
-    local p = ns.Split(text)
-    if not ns.IsOfficer(sender) then return end
-    lastBroadcastSeen = GetTime and GetTime() or 0
-    incoming[sender] = { nonce = p[2], points = {}, alts = {} }
+ns.OnComm("DB", function(text, sender)
+    if sender == ns.PlayerName() or not ns.IsOfficer(sender) then return end
+    incoming[sender] = { nonce = ns.Split(text)[2], players = {} }
 end)
 
-ns.OnComm("SD", function(text, sender)
+ns.OnComm("DD", function(text, sender)
     local p = ns.SplitWithTail(text, 3)
     local inc = incoming[sender]
     if not inc or inc.nonce ~= p[2] or not p[3] then return end
-    for entry in p[3]:gmatch("[^;]+") do
-        local alt, main = entry:match("^(.-)>(.+)$")
-        if alt then
-            inc.alts[ns.FullName(alt)] = ns.FullName(main)
-        else
-            local name, ep, gp = entry:match("^(.-),(%-?%d+),(%d+)$")
-            if name then
-                inc.points[ns.FullName(name)] = { ep = tonumber(ep), gp = tonumber(gp) }
-            end
-        end
+    for entryText in p[3]:gmatch("[^;]+") do
+        local name, e = decode(entryText)
+        if name then inc.players[name] = e end
     end
 end)
 
-ns.OnComm("SE", function(text, sender)
-    local p = ns.Split(text)
+-- Merge the data of another officer. Returns how many entries changed and
+-- whether we have entries the sender does not know or knows older.
+function ns.MergeData(theirs, sender)
+    local mine = ns.Players()
+    local changes = 0
+    for name, e in pairs(theirs) do
+        local local_ = mine[name]
+        if not local_ or (e.t or 0) > (local_.t or 0) then
+            e.by = sender
+            mine[name] = e
+            changes = changes + 1
+        end
+    end
+    local weAreNewer = false
+    for name, e in pairs(mine) do
+        local t = theirs[name]
+        if not t or (e.t or 0) > (t.t or 0) then weAreNewer = true break end
+    end
+    if changes > 0 or next(theirs) then ns.Data().started = true end
+    return changes, weAreNewer
+end
+
+ns.OnComm("DE", function(text, sender)
     local inc = incoming[sender]
-    if not inc or inc.nonce ~= p[2] then return end
+    if not inc or inc.nonce ~= ns.Split(text)[2] then return end
     incoming[sender] = nil
-    if ns.CanViewNotes() then return end -- we read notes ourselves
-    ns.synced = { points = inc.points, alts = inc.alts, from = sender, at = time and time() or 0 }
+    local changes, weAreNewer = ns.MergeData(inc.players, sender)
+    ns.syncInfo.from[sender] = true
+    ns.syncInfo.changes = (ns.syncInfo.changes or 0) + changes
+    ns.syncInfo.last = ns.Now()
+    if changes > 0 then ns.RebuildFromRoster() end
+    if weAreNewer and ns.CanEdit() then ns.QueueBroadcast(2 + math.random() * 3) end
     ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_SYNC_DONE")
 end)
+
+------------------------------------------------------------------------
+-- Backup as text, to keep outside the game (Discord, a text file)
+------------------------------------------------------------------------
+local BACKUP_TAG = "RGFEPGP1"
+
+function ns.ExportText()
+    local key = ns.GuildKey() or "?"
+    return BACKUP_TAG .. ";" .. key .. ";" .. ns.Now() .. ";" .. table.concat(encode(), ";")
+end
+
+-- Returns the number of changed entries, or nil and a reason.
+function ns.ImportText(textValue)
+    if not ns.CanEdit() then return nil, "only the guild leader and officers can import" end
+    if type(textValue) ~= "string" then return nil, "nothing to import" end
+    textValue = textValue:gsub("%s*\n%s*", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local tag, guild, rest = textValue:match("^([^;]+);([^;]*);%d+;?(.*)$")
+    if tag ~= BACKUP_TAG then return nil, "this is not a Red Guild EPGP backup" end
+    local key = ns.GuildKey()
+    if key and guild ~= key then return nil, "this backup belongs to " .. guild end
+    local theirs, count = {}, 0
+    for entryText in rest:gmatch("[^;]+") do
+        local name, e = decode(entryText)
+        if name then theirs[name] = e count = count + 1 end
+    end
+    if count == 0 then return nil, "the backup is empty" end
+    local changes = ns.MergeData(theirs, ns.PlayerName())
+    ns.Data().started = true
+    ns.RebuildFromRoster()
+    ns.Fire("RGF_POINTS_CHANGED")
+    if changes > 0 then ns.QueueBroadcast(2) end
+    return changes
+end

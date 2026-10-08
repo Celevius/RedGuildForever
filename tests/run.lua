@@ -43,11 +43,37 @@ local function setup(roster)
     W.roster = roster
     W.raid, W.inRaid = {}, false
     W.canEdit, W.canView = true, true
+    W.guildInfo = ""
+    W.rank = nil
+    W.server = 1760000000
     W.itemSlots = {}
     ns = {}
     W.load(ns)
+    -- the third column is the saved data of that player, as if it came from the save file
+    local players = ns.Players()
+    for _, r in ipairs(roster) do
+        if r[3] and r[3] ~= "" then
+            local info = ns.ParseNote(r[3])
+            local full = ns.FullName(r[1])
+            if info.main then
+                players[full] = { main = info.main, t = W.server - 100 }
+            else
+                players[full] = { ep = info.ep, gp = info.gp, t = W.server - 100 }
+            end
+        end
+        r[3] = "" -- officer notes stay empty, the addon does not use them
+    end
+    ns.Data().started = true
     ns.RebuildFromRoster()
     W.flush()
+end
+
+-- change the saved data of a player directly, like another officer did
+local function set(name, value)
+    local info = ns.ParseNote(value)
+    W.server = W.server + 1
+    ns.Players()[ns.FullName(name)] = info.main and { main = info.main, t = W.server }
+        or { ep = info.ep, gp = info.gp, t = W.server }
 end
 
 local function guild()
@@ -62,8 +88,12 @@ local function guild()
     }
 end
 
+-- the saved data of a player in the old note style, "ep,gp" or "@Main"
 local function note(name)
-    for _, r in ipairs(W.roster) do if r[1] == name then return r[3] end end
+    local e = ns.Players()[ns.FullName(name)]
+    if not e then return nil end
+    if e.main then return "@" .. ns.ShortName(e.main) end
+    return string.format("%d,%d", e.ep, e.gp)
 end
 
 print("Red Guild EPGP tests")
@@ -84,14 +114,12 @@ test("loads cleanly and registers only real game events", function()
     noErrors()
 end)
 
-test("officer notes parse and format", function()
+test("old officer notes still parse for the import", function()
     setup(guild())
     local p = ns.ParseNote("1250,300 tank")
-    eq(p.ep, 1250) eq(p.gp, 300) eq(p.rest, " tank")
-    eq(ns.ParseNote("@Thrall").main, "Thrall-Forever")
+    eq(p.ep, 1250) eq(p.gp, 300)
+    eq(ns.ParseNote("@Cel Dru").main, "Cel Dru-Forever")
     eq(ns.ParseNote("just text").ep, nil)
-    eq(ns.FormatNote(1250, 300, " tank"), "1250,300 tank")
-    eq(#ns.FormatNote(123456, 123456, string.rep("x", 40)), 31, "note length")
 end)
 
 test("item prices from the rule book", function()
@@ -158,8 +186,7 @@ test("tie between Tom and Lisa is decided by /roll", function()
     eq(ns.SortedBids(ns.auction)[1].name, "Lisa Brightwater-Forever", "Lisa before new member Tom")
     eq(#ns.TiedForFirst(ns.auction), 0)
     -- make Tom a regular with the same priority as Lisa
-    W.roster[2][3] = "400,200"
-    ns.RebuildFromRoster() W.flush()
+    set("Tom Hammer", "400,200")
     eq(#ns.TiedForFirst(ns.auction), 2, "tie")
     ns.CloseBidding() -- asks for rolls
     assert(ns.auction.rollsOpen, "rolls open")
@@ -174,9 +201,8 @@ end)
 
 test("new member Ben loses to Lisa even with higher priority", function()
     setup(guild())
-    W.roster[3][3] = "1000,900"  -- Lisa priority 1.11
-    W.roster[5][3] = "125,100"   -- Ben priority 1.25 but new
-    ns.RebuildFromRoster() W.flush()
+    set("Lisa Brightwater", "1000,900")  -- Lisa priority 1.11
+    set("Ben Swift", "125,100")          -- Ben priority 1.25 but new
     W.inRaid = true
     ns.StartAuction(W.link(12, "Ring"))
     ns.RecordBid("Ben Swift", "MS")
@@ -229,8 +255,7 @@ end)
 
 test("weekly decay keeps GP at the base", function()
     setup(guild())
-    W.roster[4][3] = "1000,105"
-    ns.RebuildFromRoster() W.flush()
+    set("Max Ironhide", "1000,105")
     ns.Decay()
     W.flush()
     eq(note("Lisa Brightwater"), "900,450")
@@ -307,39 +332,6 @@ test("raider popup receives auction with item link", function()
     noErrors()
 end)
 
-test("standings sync for players without officer note access", function()
-    setup(guild())
-    ns.BroadcastStandings()
-    local sent = W.comms
-    -- now become a normal member who cannot read notes
-    W.canView, W.canEdit = false, false
-    ns.RebuildFromRoster() W.flush()
-    W.comms = sent
-    W.deliver(ns, "Cel Dru")
-    eq(ns.synced.from, "Cel Dru-Forever")
-    local ep, gp, pr = ns.GetPoints("Max Ironhide")
-    eq(ep, 1000) eq(gp, 100) near(pr, 10)
-    eq(select(4, ns.GetPoints("Tom Spark")), "Tom Hammer-Forever", "alt link synced")
-    eq(#ns.Standings(), 4)
-end)
-
-test("sync from a non officer is ignored", function()
-    setup(guild())
-    W.canView = false
-    ns.RebuildFromRoster() W.flush()
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "SB^1", "GUILD", "Ben Swift-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "SD^1^Ben,99999,100", "GUILD", "Ben Swift-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "SE^1", "GUILD", "Ben Swift-Forever")
-    eq(ns.synced.from, nil)
-end)
-
-test("big guild standings fit in addon messages", function()
-    local roster = {}
-    for i = 1, 400 do table.insert(roster, { "Player" .. i, 3, (i * 7) .. "," .. (100 + i), "WARRIOR" }) end
-    setup(roster)
-    assert(ns.BroadcastStandings()) -- the mock asserts 255 bytes per message
-end)
-
 test("roll pattern works with other client languages", function()
     setup(guild())
     _G.RANDOM_ROLL_RESULT = "%s würfelt. Ergebnis %d (%d-%d)"
@@ -383,8 +375,7 @@ test("windows and tabs build and refresh without errors", function()
     W.canEdit, W.canView = true, true
     ns.RebuildFromRoster() W.flush()
     -- loot master window and bid popup through a whole auction with a tie
-    W.roster[2][3] = "1000,500" -- Tom ties with Lisa
-    ns.RebuildFromRoster() W.flush()
+    set("Tom Hammer", "1000,500") -- Tom ties with Lisa
     ns.Command("bid " .. W.link(30, "Helm of Testing") .. " boss")
     W.deliver(ns, "Cel Dru")
     ns.RecordBid("Tom Hammer", "MS")
@@ -479,9 +470,7 @@ test("bids, whispers, rolls and raid EP with two part names", function()
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, "B^" .. ns.auction.id .. "^MS", "WHISPER", "Tom Spark-Forever")
     eq(ns.auction.bids["Lisa Brightwater-Forever"].spec, "MS")
     eq(ns.auction.bids["Tom Spark-Forever"].spec, "MS")
-    W.now = W.now + 20 -- our own note writes have reached the roster
-    W.roster[2][3] = "1100,500" -- Tom Hammer ties with Lisa
-    ns.RebuildFromRoster() W.flush()
+    set("Tom Hammer", "1100,500") -- Tom Hammer ties with Lisa
     ns.CloseBidding()
     ns.Fire("CHAT_MSG_SYSTEM", "Tom Spark rolls 90 (1-100)")
     ns.Fire("CHAT_MSG_SYSTEM", "Lisa Brightwater rolls 30 (1-100)")
@@ -504,18 +493,6 @@ test("loot master whispers keep the name the game used", function()
     W.comms = {}
     ns.SendBid(inc, "MS")
     eq(W.comms[1].target, "Lisa Brightwater")
-end)
-
-test("standings sync with two part names", function()
-    setup(guild())
-    ns.BroadcastStandings()
-    local sent = W.comms
-    W.canView, W.canEdit = false, false
-    ns.RebuildFromRoster() W.flush()
-    W.comms = sent
-    W.deliver(ns, "Cel Dru")
-    eq(select(1, ns.GetPoints("Lisa Brightwater")), 1000)
-    eq(select(4, ns.GetPoints("Tom Spark")), "Tom Hammer-Forever")
 end)
 
 -- a fake of the game's menu system that remembers what the menu contains
@@ -739,6 +716,312 @@ test("loot master overview shows answers, passes and missing players", function(
     ns.Award("Max Ironhide")
     W.flush()
     eq(note("Max Ironhide"), "1000,142", "custom price charged")
+    noErrors()
+end)
+
+test("points live in the save file per guild, never in officer notes", function()
+    setup(guild())
+    ns.AwardEP({ "Lisa Brightwater" }, 100, "Raid night")
+    W.flush()
+    local data = RedGuildForeverDB.guilds["Redemption-Forever"]
+    assert(data, "data for the guild")
+    local e = data.players["Lisa Brightwater-Forever"]
+    eq(e.ep, 1100) eq(e.gp, 500)
+    eq(e.t, W.server, "server time of the change")
+    eq(e.by, "Cel Dru-Forever", "who changed it")
+    for _, r in ipairs(W.roster) do eq(r[3], "", "officer note untouched") end
+    -- another guild has its own data
+    W.guildName = "Other Guild"
+    eq(ns.HasData(), false)
+    W.guildName = "Redemption"
+    eq(ns.HasData(), true)
+end)
+
+test("without loaded data officers cannot change anything until sync or start fresh", function()
+    setup({ { "Cel Dru", 0, "", "DRUID" }, { "Lisa Brightwater", 2, "", "PRIEST" } })
+    ns.Data().started = nil
+    eq(ns.HasData(), false)
+    eq(ns.Adjust("Lisa Brightwater", 100, 0), nil, "blocked")
+    assert(W.printed[#W.printed]:find("no EPGP data loaded yet"), W.printed[#W.printed])
+    ns.Command("fresh")
+    eq(W.popup, "REDGUILDFOREVER_FRESH", "asks before starting fresh")
+    StaticPopupDialogs["REDGUILDFOREVER_FRESH"].OnAccept()
+    eq(ns.HasData(), true)
+    assert(ns.Adjust("Lisa Brightwater", 100, 0))
+    eq(note("Lisa Brightwater"), "100,100")
+end)
+
+test("who may edit, guild leader, officer ranks and the guild info setting", function()
+    setup(guild())
+    W.rank = 0 eq(ns.CanEdit(), true, "guild leader")
+    W.rank = 1 eq(ns.CanEdit(), true, "officer rank 1")
+    W.rank = 2 eq(ns.CanEdit(), false, "rank 2 by default")
+    W.guildInfo = "Welcome!\nEPGP officers 2"
+    eq(ns.CanEdit(), true, "rank 2 after the guild leader allowed it")
+    eq(ns.IsOfficer("Lisa Brightwater"), true, "Lisa is rank 2")
+    W.rank = 3 eq(ns.CanEdit(), false)
+end)
+
+-- collect the data messages one officer would send
+local function dataMessages()
+    W.comms = {}
+    assert(ns.SendData(), "data sent")
+    local list = W.comms
+    W.comms = {}
+    return list
+end
+
+local function deliverFrom(list, sender)
+    for _, c in ipairs(list) do
+        ns.Fire("CHAT_MSG_ADDON", c.prefix, c.msg, c.channel, sender .. "-Forever")
+    end
+end
+
+test("sync merges the newest change of each player", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2" -- Anna Frost is rank 2 and counts as officer
+    -- this is what Anna has, Lisa got loot on her computer
+    set("Lisa Brightwater", "1000,700")
+    local fromAnna = dataMessages()
+    -- our computer has an older Lisa but a newer Max
+    ns.Players()["Lisa Brightwater-Forever"].t = W.server - 50
+    ns.Players()["Lisa Brightwater-Forever"].gp = 500
+    set("Max Ironhide", "1200,100")
+    deliverFrom(fromAnna, "Anna Frost")
+    eq(note("Lisa Brightwater"), "1000,700", "newer Lisa from Anna wins")
+    eq(note("Max Ironhide"), "1200,100", "our newer Max stays")
+    eq(note("Tom Spark"), "@Tom Hammer", "alt links come along")
+    eq(ns.syncInfo.from["Anna Frost-Forever"], true)
+    -- we have something newer, so we answer with our data
+    W.flush()
+    local answered
+    for _, c in ipairs(W.comms) do if c.msg:match("^DB") then answered = true end end
+    assert(answered, "sends own data back")
+    noErrors()
+end)
+
+test("sync from a member who is not an officer is ignored", function()
+    setup(guild())
+    set("Lisa Brightwater", "99999,100")
+    local fake = dataMessages()
+    set("Lisa Brightwater", "1000,500")
+    deliverFrom(fake, "Ben Swift") -- rank 3
+    eq(note("Lisa Brightwater"), "1000,500")
+end)
+
+test("members keep a copy and never send data", function()
+    setup(guild())
+    set("Lisa Brightwater", "1500,500")
+    local fromOfficer = dataMessages()
+    -- now we are a normal member with old data
+    W.canEdit = false
+    W.guildInfo = "EPGP officers 2"
+    ns.Players()["Lisa Brightwater-Forever"] = { ep = 1000, gp = 500, t = 1 }
+    deliverFrom(fromOfficer, "Anna Frost")
+    eq(note("Lisa Brightwater"), "1500,500", "member copy updated")
+    W.comms = {}
+    ns.Sync(true)
+    W.flush()
+    for _, c in ipairs(W.comms) do
+        assert(not c.msg:match("^D[BDE]"), "a member sent data")
+    end
+    eq(W.comms[1].msg, "SQ", "a member only asks")
+end)
+
+test("the sync button asks everyone and officers answer", function()
+    setup(guild())
+    W.comms = {}
+    ns.Command("sync")
+    W.flush()
+    local asked, sent
+    for _, c in ipairs(W.comms) do
+        if c.msg == "SQ" then asked = true end
+        if c.msg:match("^DB") then sent = true end
+    end
+    assert(asked and sent, "asks and sends own data")
+    -- someone else asks, we answer
+    W.comms = {}
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "SQ", "GUILD", "Ben Swift-Forever")
+    W.flush()
+    sent = false
+    for _, c in ipairs(W.comms) do if c.msg:match("^DB") then sent = true end end
+    assert(sent, "answers a sync request")
+    noErrors()
+end)
+
+test("a big guild fits in addon messages", function()
+    local roster = {}
+    for i = 1, 400 do table.insert(roster, { "Player Number" .. i, 3, (i * 7) .. "," .. (100 + i), "WARRIOR" }) end
+    table.insert(roster, 1, { "Cel Dru", 0, "", "DRUID" })
+    setup(roster)
+    assert(ns.SendData()) -- the mock asserts 255 bytes per message
+end)
+
+test("backup export and import", function()
+    setup(guild())
+    local backup = ns.ExportText()
+    assert(backup:match("^RGFEPGP1;Redemption%-Forever;"), backup:sub(1, 40))
+    wipe(ns.Players())
+    eq(note("Lisa Brightwater"), nil)
+    local changes = ns.ImportText(backup)
+    eq(changes, 5, "all players back")
+    eq(note("Lisa Brightwater"), "1000,500")
+    eq(note("Tom Spark"), "@Tom Hammer")
+    -- pasted with line breaks still works
+    wipe(ns.Players())
+    eq(ns.ImportText(backup:sub(1, 60) .. "\n" .. backup:sub(61)), 5)
+    eq(select(2, ns.ImportText("hello")), "this is not a Red Guild EPGP backup")
+    eq(select(2, ns.ImportText(backup:gsub("Redemption", "Other"))), "this backup belongs to Other-Forever")
+    W.canEdit = false
+    eq(select(2, ns.ImportText(backup)), "only the guild leader and officers can import")
+end)
+
+test("one time import of the old officer notes", function()
+    setup({ { "Cel Dru", 0, "", "DRUID" }, { "Lisa Brightwater", 2, "", "PRIEST" }, { "Tom Spark", 2, "", "MAGE" } })
+    wipe(ns.Players())
+    ns.Data().started = nil
+    W.roster[2][3] = "800,300 tank"
+    W.roster[3][3] = "@Lisa Brightwater"
+    eq(ns.ImportOfficerNotes(), 2)
+    eq(note("Lisa Brightwater"), "800,300")
+    eq(note("Tom Spark"), "@Lisa Brightwater")
+    eq(ns.HasData(), true)
+    eq(ns.ImportOfficerNotes(), 0, "does not overwrite data a second time")
+end)
+
+test("sync tab builds and shows the backup", function()
+    setup(guild())
+    ns.ToggleStandings(4)
+    ns.ToggleStandings(1)
+    ns.ToggleStandings(4)
+    noErrors()
+end)
+
+test("corpse loot shows up and opens the window in a group", function()
+    setup(guild())
+    W.inRaid = true
+    local epic, junk = W.link(60, "Epic Helm"), W.link(61, "Gray Rag")
+    W.loot = { { link = epic, quality = 4 }, { link = junk, quality = 0 } }
+    ns.Fire("LOOT_OPENED")
+    eq(#ns.lootSeen, 1, "only good items")
+    eq(ns.lootSeen[1].onCorpse, true)
+    assert(ns.picker and ns.picker:IsShown(), "window opened by itself")
+    eq(ns.pickerState.link, epic, "first corpse item is chosen")
+    ns.Fire("LOOT_CLOSED")
+    eq(ns.lootSeen[1].onCorpse, false, "still listed after closing the loot")
+    -- opening the same corpse again does not add it twice
+    ns.Fire("LOOT_OPENED")
+    eq(#ns.lootSeen, 1)
+    noErrors()
+end)
+
+test("loot window does not pop up when alone", function()
+    setup(guild())
+    W.loot = { { link = W.link(62, "Epic Boots"), quality = 4 } }
+    ns.Fire("LOOT_OPENED")
+    eq(ns.picker, nil, "no window when solo")
+    eq(#ns.lootSeen, 1, "but the item is remembered")
+end)
+
+test("drag an item from the bags and start real bidding", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.OpenPicker(false)
+    local p = ns.picker
+    W.cursor = W.link(63, "Dragged Ring")
+    p.slot:GetScript("OnReceiveDrag")(p.slot)
+    eq(ns.pickerState.link, W.link(63, "Dragged Ring"))
+    eq(W.cursor, nil, "cursor cleared")
+    p.tierButtons.boss:Click()
+    eq(ns.pickerState.tier, "boss")
+    p.start:Click()
+    assert(ns.auction and not ns.auction.test, "real auction")
+    eq(ns.auction.tier, "boss")
+    eq(p:IsShown(), false, "window closes")
+    local sent
+    for _, c in ipairs(W.comms) do if c.msg:match("^A%^") then sent = true end end
+    assert(sent, "raid got the auction")
+    noErrors()
+end)
+
+test("test mode works alone, fake bids, no points change, nothing sent", function()
+    setup(guild())
+    local before = ns.ExportText():gsub("^[^;]+;[^;]+;%d+;", "")
+    ns.Command("test")
+    local p = ns.picker
+    eq(ns.pickerState.test, true)
+    W.cursor = W.link(64, "Test Axe")
+    p.slot:GetScript("OnClick")(p.slot)
+    p.start:Click()
+    local a = ns.auction
+    assert(a and a.test, "test auction")
+    ns.SendBid(ns.incoming[a.id], "MS")
+    eq(a.bids["Cel Dru-Forever"].spec, "MS", "you can bid yourself in test mode")
+    W.flush() -- the fake bids come in over a few seconds, then bidding closes by itself
+    eq(a.open, false, "closed after the bid time")
+    local o = ns.AuctionOverview(a)
+    assert(#o.ms + #o.os + #o.passed > 1, "fake bids arrived")
+    assert(#o.waiting >= 1, "someone never answers")
+    local winner = ns.SortedBids(a)[1]
+    ns.Award(winner.name)
+    W.flush()
+    eq(ns.ExportText():gsub("^[^;]+;[^;]+;%d+;", ""), before, "no points changed")
+    for _, c in ipairs(W.comms) do
+        assert(not c.msg:match("^[APC]%^"), "test mode sent " .. c.msg)
+    end
+    for _, c in ipairs(W.chat) do
+        assert(c.channel ~= "RAID" and c.channel ~= "PARTY", "test mode wrote in " .. c.channel)
+    end
+    local said
+    for _, m in ipairs(W.printed) do if m:find("[Test]", 1, true) then said = true end end
+    assert(said, "test messages go to your own chat window")
+    noErrors()
+end)
+
+test("fake bidders roll by themselves on a tie in test mode", function()
+    setup(guild())
+    set("Tom Hammer", "1000,500")
+    ns.StartTestAuction(W.link(65, "Tie Ring"), "normal")
+    local a = ns.auction
+    wipe(a.bids)
+    ns.RecordBid("Tom Hammer", "MS")
+    ns.RecordBid("Lisa Brightwater", "MS")
+    local seq, i = { 30, 70 }, 0
+    local realRandom = math.random
+    math.random = function(x, y) if x == 1 and y == 100 then i = i + 1 return seq[i] end return realRandom(x, y) end
+    ns.CloseBidding()
+    W.flush()
+    math.random = realRandom
+    eq(#ns.TiedForFirst(a), 0, "tie solved by fake rolls")
+    eq(ns.SortedBids(a)[1].roll, 70)
+    noErrors()
+end)
+
+test("members can open the test mode but not real bidding", function()
+    setup(guild())
+    W.canEdit = false
+    ns.OpenPicker(false)
+    eq(ns.pickerState.test, true, "test mode forced for members")
+    W.cursor = W.link(66, "Member Test Item")
+    ns.picker.slot:GetScript("OnReceiveDrag")(ns.picker.slot)
+    ns.picker.start:Click()
+    assert(ns.auction and ns.auction.test, "test auction for a member")
+    noErrors()
+end)
+
+test("menu entries for bidding and test mode", function()
+    setup(guild())
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    local texts = {}
+    for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
+    assert(texts["Start bidding"], "start bidding for officers")
+    assert(texts["Test the loot master window"], "test mode")
+    texts["Test the loot master window"]()
+    eq(ns.pickerState.test, true)
+    texts["Start bidding"]()
+    eq(ns.pickerState.test, false)
     noErrors()
 end)
 

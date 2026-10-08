@@ -24,9 +24,10 @@ function ns.MenuEntries()
         { text = "Bench", func = function() ns.ToggleStandings(2) end },
         { text = "History", func = function() ns.ToggleStandings(3) end },
         { text = "My points", func = function() ns.Command("me") end },
-        { text = "Refresh standings", func = function() ns.Command("sync") end },
+        { text = "Sync with everyone online", func = function() ns.Command("sync") end },
+        { text = "Backup and sync", func = function() ns.ToggleStandings(4) end },
     }
-    if ns.CanEditNotes() then
+    if ns.CanEdit() then
         local more = {
             { divider = true },
             { title = "Officer" },
@@ -47,9 +48,7 @@ function ns.MenuEntries()
             { text = "Undo last change", func = function() ns.Command("undo") end },
             { divider = true },
             { title = "Loot" },
-            { text = "How to start bidding", func = function()
-                ns.Print("type /rgf bid and then shift click the item into the chat line")
-            end },
+            { text = "Start bidding", func = function() ns.OpenPicker(false) end },
         }
         if ns.auction then
             table.insert(more, { text = "Open loot window", func = function() ns.RefreshLootMaster() end })
@@ -57,6 +56,7 @@ function ns.MenuEntries()
         for _, e in ipairs(more) do table.insert(entries, e) end
     end
     table.insert(entries, { divider = true })
+    table.insert(entries, { text = "Test the loot master window", func = function() ns.OpenPicker(true) end })
     table.insert(entries, { text = "Hide minimap button", func = function() ns.SetMinimapShown(false) end })
     return entries
 end

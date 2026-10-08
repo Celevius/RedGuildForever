@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.3.0"
+ns.version = "1.4.0"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -69,15 +69,7 @@ function ns.RequestRoster()
     if f then f() end
 end
 
-function ns.CanEditNotes()
-    local f = pick(C_GuildInfo, "CanEditOfficerNote", "CanEditOfficerNote")
-    return f and f() and true or false
-end
-
-function ns.CanViewNotes()
-    local f = pick(C_GuildInfo, "CanViewOfficerNote", "CanViewOfficerNote")
-    return f and f() and true or false
-end
+-- Who may edit is decided in Points.lua (ns.CanEdit)
 
 -- The addon never writes in guild or officer chat, only raid, party and whispers.
 local blockedChannels = { GUILD = true, OFFICER = true }
