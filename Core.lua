@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.1.0"
+ns.version = "1.1.1"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -124,23 +124,37 @@ function ns.MyRealm()
     return realm
 end
 
+-- Forever characters have a first and a last name, for example "Cel Dru".
+-- Names keep their space. Each word starts with a capital letter, letters
+-- with accents stay as they are.
 local function capitalize(name)
-    -- only touch plain letters so names with accents stay intact
-    local first, rest = name:sub(1, 1), name:sub(2)
-    if first:match("%a") then
-        return first:upper() .. rest
-    end
+    return (name:gsub("(%S)(%S*)", function(first, rest)
+        if first:match("%a") then return first:upper() .. rest end
+        return first .. rest
+    end))
+end
+
+-- Clean up spacing: no space at the start or end, one space between words.
+function ns.CleanName(name)
+    if type(name) ~= "string" then return nil end
+    name = name:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    if name == "" then return nil end
     return name
 end
 
+-- Split "Cel Dru-Forever" into "Cel Dru" and "Forever".
+-- Realm names never contain spaces, so only a last part without spaces counts.
+function ns.SplitRealm(name)
+    local short, realm = name:match("^(.-)%s*%-%s*([^%s%-]+)$")
+    if short and short ~= "" then return short, realm end
+    return name, nil
+end
+
 function ns.FullName(name)
-    if type(name) ~= "string" then return nil end
-    name = name:gsub("%s", "")
-    if name == "" then return nil end
-    local short, realm = name:match("^([^%-]+)%-(.+)$")
-    if not short then
-        short, realm = name, ns.MyRealm()
-    end
+    name = ns.CleanName(name)
+    if not name then return nil end
+    local short, realm = ns.SplitRealm(name)
+    realm = realm or ns.MyRealm()
     short = capitalize(short)
     if realm and realm ~= "" then
         return short .. "-" .. realm
@@ -150,13 +164,17 @@ end
 
 function ns.ShortName(full)
     if not full then return "?" end
-    local short, realm = full:match("^([^%-]+)%-(.+)$")
-    if short and realm == ns.MyRealm() then return short end
+    local short, realm = ns.SplitRealm(full)
+    if realm == nil or realm == ns.MyRealm() then return short end
     return full
 end
 
 function ns.PlayerName()
-    return ns.FullName(UnitName("player"))
+    local name, realm = UnitName("player")
+    if realm and realm ~= "" then name = name .. "-" .. realm end
+    -- the guild roster knows the full name, use it when the game gives us less
+    if ns.Resolve then return ns.Resolve(name) end
+    return ns.FullName(name)
 end
 
 ------------------------------------------------------------------------

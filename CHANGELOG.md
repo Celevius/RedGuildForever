@@ -2,6 +2,19 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.1.1 (8 October 2026)
+
+### Fixed
+* Names with a first and last name like "Cel Dru" now work everywhere. Before, the space was removed and the addon could not find these players in the guild, the raid, whispers or rolls
+* Alts of mains with two part names, the officer note now reads for example `@Cel Dru`
+
+### Changed
+* Slash commands accept names with several words, for example `/rgf ep Cel Dru 50`
+* The first name alone is enough when only one guild member has it, and typing the start of a name works in commands
+* When a typed name fits more than one player, the addon lists them and changes nothing
+* `/rgf alt` takes two names, a comma between them is always safe, for example `/rgf alt Cel Rog, Cel Dru`
+* Bid whispers go to the loot master with the name exactly as the game reported it
+
 ## 1.1.0 (8 October 2026)
 
 ### Changed

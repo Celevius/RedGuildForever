@@ -62,7 +62,8 @@ ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
     if prefix ~= ns.prefix or type(text) ~= "string" then return end
     local kind = text:match("^(%a+)")
     local fn = kind and ns.commHandlers[kind]
-    if fn then fn(text, ns.FullName(sender), channel) end
+    -- handlers get the guild name, plus the name exactly as the game sent it for whispers
+    if fn then fn(text, ns.Resolve(sender), channel, sender) end
 end)
 
 ------------------------------------------------------------------------

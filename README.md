@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.1.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.1.1, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -31,7 +31,7 @@ Points are stored in the **officer note** of every guild member, the same way th
 |---|---|
 | `1250,300` | 1250 EP and 300 GP |
 | `1250,300 tank` | same, text after the numbers is kept |
-| `@Thrall` | this character is an alt of Thrall and uses his points |
+| `@Cel Dru` | this character is an alt of Cel Dru and uses his points |
 
 GP always includes the starting 100, so a new player has `0,100`.
 
@@ -98,17 +98,19 @@ Everything is announced in raid chat, so everyone can follow.
 |---|---|
 | `/rgf raid` | 100 EP to the raid and the bench |
 | `/rgf ontime` | 25 EP to the raid and the bench |
-| `/rgf bench` | open the bench, or `bench add Name`, `bench remove Name`, `bench clear` |
-| `/rgf ep Name 50 reason` | give EP, use a minus to take |
-| `/rgf gp Name 100` | give or take GP |
-| `/rgf alt Alt Main` | link an alt, they share points from now on |
-| `/rgf unalt Alt` | the alt becomes a main again |
+| `/rgf bench` | open the bench, or `bench add Cel Dru`, `bench remove Cel Dru`, `bench clear` |
+| `/rgf ep Cel Dru 50 reason` | give EP, use a minus to take |
+| `/rgf gp Cel Dru 100` | give or take GP |
+| `/rgf alt Cel Rog, Cel Dru` | link the alt Cel Rog to the main Cel Dru, they share points from now on |
+| `/rgf unalt Cel Rog` | the alt becomes a main again |
 | `/rgf decay` | weekly decay, asks before it runs |
 | `/rgf undo` | undo the last change of this session |
 | `/rgf price [item] 250` | fixed price for one item, `clear` removes it |
 | `/rgf sync` | send the standings to everyone |
 | `/rgf log` | last changes |
 | `/rgf help` | all commands |
+
+Names work with first and last name, in any letter case. The first name alone is enough when only one guild member has it, and the start of a name works too, so `/rgf ep Ang 50` finds Anglicus Boniface. If a name fits more than one player, the addon lists them and changes nothing. Between two names a comma is always safe, for example `/rgf alt Cel Rog, Cel Dru`.
 
 The `/rgf` window has three tabs at the bottom, **Standings**, **Bench** and **History**. Officers get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
 

@@ -20,8 +20,9 @@ ns.history = {}   -- actions this session, used by undo
 ------------------------------------------------------------------------
 function ns.ParseNote(note)
     note = note or ""
-    local main = note:match("^@(%S+)")
-    if main then
+    -- the main's name may contain a space, for example "@Cel Dru"
+    local main = note:match("^@(.+)$")
+    if main and ns.CleanName(main) then
         return { main = ns.FullName(main) }
     end
     local ep, gp, rest = note:match("^(%-?%d+),(%d+)(.*)$")
@@ -43,11 +44,47 @@ end
 ------------------------------------------------------------------------
 -- Roster
 ------------------------------------------------------------------------
+-- Find a guild member from whatever we got: "Cel Dru", "cel dru",
+-- "Cel Dru-Forever", or only "Cel" when exactly one member is called Cel.
+-- loose also allows the start of a name ("Ang" for "Anglicus Boniface"),
+-- which is only used for names typed into commands.
+-- Returns the full name, or nil and a list of names when it is not clear.
+function ns.FindMember(name, loose)
+    local clean = ns.CleanName(name)
+    if not clean then return nil end
+    local full = ns.FullName(clean)
+    local hit = ns.lookup[full:lower()]
+    if hit then return hit end
+
+    local wanted = ns.SplitRealm(clean):lower()
+    local hasSpace = wanted:find(" ", 1, true) ~= nil
+    local exact, first, prefix = {}, {}, {}
+    for _, member in pairs(ns.lookup) do
+        local short = ns.SplitRealm(member):lower()
+        if short == wanted then
+            table.insert(exact, member)
+        elseif not hasSpace and short:match("^(%S+)") == wanted then
+            table.insert(first, member)
+        elseif loose and short:sub(1, #wanted) == wanted then
+            table.insert(prefix, member)
+        end
+    end
+    for _, list in ipairs({ exact, first, prefix }) do
+        if #list == 1 then return list[1] end
+        if #list > 1 then
+            table.sort(list)
+            return nil, list
+        end
+    end
+    return nil
+end
+
+-- Like FindMember, but always returns a name, also for players outside the guild.
 function ns.Resolve(name)
     if not name then return nil end
-    local full = ns.FullName(name)
-    if not full then return nil end
-    return ns.lookup[full:lower()] or full
+    local found = ns.FindMember(name)
+    if found then return found end
+    return ns.FullName(name)
 end
 
 function ns.RebuildFromRoster()
@@ -408,14 +445,14 @@ function ns.RaidMembers()
     if IsInRaid and IsInRaid() then
         for i = 1, count do
             local name = GetRaidRosterInfo(i)
-            if name then table.insert(list, ns.FullName(name)) end
+            if name then table.insert(list, ns.Resolve(name)) end
         end
     else
         table.insert(list, ns.PlayerName())
         for i = 1, count - 1 do
             local name, realm = UnitName("party" .. i)
             if name then
-                table.insert(list, ns.FullName(realm and realm ~= "" and (name .. "-" .. realm) or name))
+                table.insert(list, ns.Resolve(realm and realm ~= "" and (name .. "-" .. realm) or name))
             end
         end
     end

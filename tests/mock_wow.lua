@@ -4,7 +4,7 @@
 local M = {}
 
 M.realm = "Forever"
-M.player = "Celery"
+M.player = "Cel Dru"
 M.chat = {}       -- messages sent with SendChatMessage
 M.comms = {}      -- addon messages sent
 M.printed = {}

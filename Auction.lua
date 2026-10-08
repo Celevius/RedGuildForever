@@ -148,7 +148,7 @@ end
 function ns.RecordBid(name, spec)
     local a = ns.auction
     if not a or not a.open then return false end
-    local full = ns.FullName(name)
+    local full = ns.Resolve(name)
     if spec == "PASS" then
         a.bids[full] = nil
     elseif spec == "MS" or spec == "OS" then
@@ -209,7 +209,7 @@ function ns.Award(name)
         ns.Fire("RGF_AUCTION_CHANGED")
         return true
     end
-    local full = ns.FullName(name)
+    local full = ns.Resolve(name)
     local bid = a.bids[full]
     local spec = bid and bid.spec or "MS"
     local cost = spec == "MS" and a.price or 0
@@ -266,7 +266,7 @@ ns.On("CHAT_MSG_SYSTEM", function(text)
     if not a or not a.rollsOpen or type(text) ~= "string" then return end
     local ok, name, roll, low, high = pcall(ns.ParseRoll, text)
     if not ok or not name or low ~= 1 or high ~= 100 then return end
-    local bid = a.bids[ns.FullName(name)]
+    local bid = a.bids[ns.Resolve(name)]
     if bid and bid.wantsRoll and not bid.roll then
         bid.roll = roll
         ns.Fire("RGF_AUCTION_CHANGED")
@@ -305,12 +305,12 @@ end)
 ------------------------------------------------------------------------
 -- Raider side
 ------------------------------------------------------------------------
-ns.OnComm("A", function(text, sender)
+ns.OnComm("A", function(text, sender, _, rawSender)
     local p = ns.SplitWithTail(text, 5)
     local id, seconds, price, link = p[2], tonumber(p[3]), tonumber(p[4]), p[5]
     if not id or not link then return end
     ns.incoming[id] = {
-        id = id, owner = sender, link = link, price = price or 0,
+        id = id, owner = sender, ownerRaw = rawSender or sender, link = link, price = price or 0,
         duration = seconds or 30,
         endsAt = (GetTime and GetTime() or 0) + (seconds or 30),
     }
@@ -346,9 +346,9 @@ function ns.SendBid(inc, spec)
     local msg = table.concat({ "B", inc.id, spec }, SEP)
     if inc.owner == ns.PlayerName() then
         ns.RecordBid(ns.PlayerName(), spec)
-    elseif not ns.SendComm(msg, "WHISPER", inc.owner) then
+    elseif not ns.SendComm(msg, "WHISPER", inc.ownerRaw or inc.owner) then
         -- addon messages can be blocked, a normal whisper always works
-        ns.SendChat(spec == "MS" and "ms" or (spec == "OS" and "os" or "pass"), "WHISPER", inc.owner)
+        ns.SendChat(spec == "MS" and "ms" or (spec == "OS" and "os" or "pass"), "WHISPER", inc.ownerRaw or inc.owner)
     end
     inc.myBid = spec
     ns.Fire("RGF_INCOMING_AUCTION", inc)

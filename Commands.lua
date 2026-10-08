@@ -13,6 +13,52 @@ local function itemLink(line)
     return line:match("(|c.-|h|r)") or line:match("(|H.-|h.-|h)")
 end
 
+-- Find the guild member someone typed, and explain when it does not work.
+local function typedMember(name)
+    local full, matches = ns.FindMember(name, true)
+    if full then return full end
+    if matches then
+        local short = {}
+        for i, m in ipairs(matches) do
+            if i > 6 then table.insert(short, "...") break end
+            table.insert(short, ns.ShortName(m))
+        end
+        ns.Print("more than one player matches " .. name .. ", " .. table.concat(short, ", ") .. ". Type more of the name")
+    else
+        ns.Print("nobody in the guild is called " .. (name or "?"))
+    end
+    return nil
+end
+
+local function joinWords(w, from, to)
+    local parts = {}
+    for i = from, to or #w do table.insert(parts, w[i]) end
+    return table.concat(parts, " ")
+end
+
+-- "/rgf alt Cel Rog Cel Dru" has no clear split, so we try every split and
+-- keep the one where both sides are guild members. A comma always works.
+local function twoMembers(w, from)
+    local line = joinWords(w, from)
+    local left, right = line:match("^(.-)%s*,%s*(.+)$")
+    if left then return typedMember(left), typedMember(right) end
+    local found
+    for i = from, #w - 1 do
+        local a = ns.FindMember(joinWords(w, from, i), true)
+        local b = ns.FindMember(joinWords(w, i + 1), true)
+        if a and b then
+            if found then
+                ns.Print("not sure where the first name ends, put a comma between the two names")
+                return nil
+            end
+            found = { a, b }
+        end
+    end
+    if found then return found[1], found[2] end
+    ns.Print("could not find both players, put a comma between the two names, for example /rgf alt Cel Rog, Cel Dru")
+    return nil
+end
+
 local function needOfficer()
     if ns.CanEditNotes() then return true end
     ns.Print("only officers who can edit officer notes can do that")
@@ -22,18 +68,18 @@ end
 local help = {
     "/rgf  open the standings",
     "/rgf me  show your own points",
-    "/rgf check Name  show the points of a player",
+    "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
     "|cffffd100Loot master|r",
     "/rgf bid [item]  open bidding, shift click the item into the command",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Officers|r",
     "/rgf raid  give raid EP to the raid and the bench",
     "/rgf ontime  give the on time bonus to the raid and the bench",
-    "/rgf bench  open the bench, or /rgf bench add Name, remove Name, clear",
-    "/rgf ep Name 50  give or take EP (use a minus to take)",
-    "/rgf gp Name 100  give or take GP",
-    "/rgf alt Alt Main  link an alt to a main, they share points",
-    "/rgf unalt Alt  make an alt a main again",
+    "/rgf bench  open the bench, or /rgf bench add Cel Dru, remove Cel Dru, clear",
+    "/rgf ep Cel Dru 50  give or take EP (use a minus to take)",
+    "/rgf gp Cel Dru 100  give or take GP",
+    "/rgf alt Cel Rog, Cel Dru  link the alt Cel Rog to the main Cel Dru",
+    "/rgf unalt Cel Rog  make an alt a main again",
     "/rgf decay  weekly decay",
     "/rgf undo  undo the last change from this session",
     "/rgf price [item] 250  fixed price for an item, or clear",
@@ -79,7 +125,8 @@ function ns.Command(line)
         ns.Print(pointsLine(ns.PlayerName()))
 
     elseif cmd == "check" and w[2] then
-        ns.Print(pointsLine(w[2]))
+        local full = typedMember(joinWords(w, 2))
+        if full then ns.Print(pointsLine(full)) end
 
     elseif cmd == "bid" or cmd == "auction" then
         local link = itemLink(line)
@@ -100,11 +147,17 @@ function ns.Command(line)
     elseif cmd == "bench" then
         local sub = (w[2] or ""):lower()
         if sub == "add" and w[3] then
-            local ok, full = ns.BenchAdd(w[3])
-            ns.Print(ok and (ns.ShortName(full) .. " is on the bench") or "already on the bench")
+            local member = typedMember(joinWords(w, 3))
+            if member then
+                local ok, full = ns.BenchAdd(member)
+                ns.Print(ok and (ns.ShortName(full) .. " is on the bench") or (ns.ShortName(member) .. " is already on the bench"))
+            end
         elseif sub == "remove" and w[3] then
-            local ok, full = ns.BenchRemove(w[3])
-            ns.Print(ok and (ns.ShortName(full) .. " is off the bench") or "not on the bench")
+            local member = typedMember(joinWords(w, 3))
+            if member then
+                local ok, full = ns.BenchRemove(member)
+                ns.Print(ok and (ns.ShortName(full) .. " is off the bench") or (ns.ShortName(member) .. " is not on the bench"))
+            end
         elseif sub == "clear" then
             ns.BenchClear()
             ns.Print("bench cleared")
@@ -116,23 +169,36 @@ function ns.Command(line)
             ns.ToggleBench()
         end
 
-    elseif (cmd == "ep" or cmd == "gp") and w[2] and tonumber(w[3]) then
+    elseif (cmd == "ep" or cmd == "gp") and w[2] then
         if not needOfficer() then return end
-        local amount = tonumber(w[3])
-        local reason = table.concat(w, " ", 4)
-        ns.BeginAction(string.format("%s %+d %s %s", ns.ShortName(ns.Resolve(w[2])), amount, cmd:upper(), reason))
-        local main = cmd == "ep" and ns.Adjust(w[2], amount, 0) or ns.Adjust(w[2], 0, amount)
+        -- the name can have several words, the first number ends it
+        local at
+        for i = 3, #w do
+            if w[i]:match("^[%+%-]?%d+$") then at = i break end
+        end
+        if not at then
+            ns.Print("type /rgf " .. cmd .. " Name 50, use a minus to take away")
+            return
+        end
+        local full = typedMember(joinWords(w, 2, at - 1))
+        if not full then return end
+        local amount = tonumber(w[at])
+        local reason = joinWords(w, at + 1)
+        ns.BeginAction(string.format("%s %+d %s %s", ns.ShortName(full), amount, cmd:upper(), reason))
+        local main = cmd == "ep" and ns.Adjust(full, amount, 0) or ns.Adjust(full, 0, amount)
         ns.EndAction()
         if main then ns.Print(pointsLine(main)) end
 
-    elseif cmd == "alt" and w[2] and w[3] then
-        if ns.SetAlt(w[2], w[3]) then
-            ns.Print(ns.ShortName(ns.Resolve(w[2])) .. " now shares points with " .. ns.ShortName(ns.Resolve(w[3])))
+    elseif cmd == "alt" and w[3] then
+        local alt, mainName = twoMembers(w, 2)
+        if alt and mainName and ns.SetAlt(alt, mainName) then
+            ns.Print(ns.ShortName(alt) .. " now shares points with " .. ns.ShortName(mainName))
         end
 
     elseif cmd == "unalt" and w[2] then
-        if ns.UnsetAlt(w[2]) then
-            ns.Print(ns.ShortName(ns.Resolve(w[2])) .. " is a main again and starts at 0 EP")
+        local alt = typedMember(joinWords(w, 2))
+        if alt and ns.UnsetAlt(alt) then
+            ns.Print(ns.ShortName(alt) .. " is a main again and starts at 0 EP")
         end
 
     elseif cmd == "decay" then
