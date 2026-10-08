@@ -121,6 +121,10 @@ Two officers should never award or decay at the same time. Pick one loot master 
 * Forever uses the Midnight addon rules, which can block addon messages inside instances during combat. Open bidding after the boss is dead. If the popup does not show up, whispering `ms` or `os` always works
 * Officer notes are limited to 31 characters, extra text after the numbers gets cut
 
+## Changelog
+
+Every version and its changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## Development
 
 Run the tests from the repository root with Lua 5.1.
