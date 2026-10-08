@@ -160,6 +160,9 @@ function M.install()
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) table.insert(M.printed, msg) end }
     _G.CreateFrame = function() return frameStub() end
     _G.UIParent = frameStub()
+    _G.Minimap = frameStub()
+    _G.GetCursorPosition = function() return 0, 0 end
+    _G.MenuUtil = M.menuUtil
     _G.UISpecialFrames = {}
     _G.GameTooltip = frameStub()
     _G.StaticPopupDialogs = {}
@@ -168,8 +171,17 @@ function M.install()
     _G.RedGuildForeverDB = nil
 end
 
+-- load the files in the order the toc file lists them, like the game does
+function M.tocFiles()
+    local files = {}
+    for line in io.lines("RedGuildForever.toc") do
+        if line:match("%.lua%s*$") then table.insert(files, (line:gsub("%s+$", ""))) end
+    end
+    return files
+end
+
 function M.load(ns)
-    for _, file in ipairs({ "Core.lua", "Pricing.lua", "Points.lua", "Comm.lua", "Auction.lua", "UI.lua", "Commands.lua" }) do
+    for _, file in ipairs(M.tocFiles()) do
         local chunk = assert(loadfile(file))
         chunk("RedGuildForever", ns)
     end

@@ -2,6 +2,15 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.2.0 (8 October 2026)
+
+### Added
+* Minimap button. Left click opens the standings, right click opens a menu with every action, drag it to move it around the minimap
+* The menu has Standings, Bench, History, My points and Refresh for everyone, and for officers Give raid EP, Give on time EP, Add target to bench, Clear bench, Weekly decay and Undo last change
+* The tooltip of the button shows your priority, your EP and GP and how many players are on the bench
+* Red Guild EPGP is listed in the game's addon list next to the minimap, with the same left and right click, even when the minimap button is hidden
+* `/rgf minimap` shows or hides the minimap button
+
 ## 1.1.1 (8 October 2026)
 
 ### Fixed

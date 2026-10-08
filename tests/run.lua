@@ -513,6 +513,104 @@ test("standings sync with two part names", function()
     eq(select(4, ns.GetPoints("Tom Spark")), "Tom Hammer-Forever")
 end)
 
+-- a fake of the game's menu system that remembers what the menu contains
+local function fakeMenu()
+    local menu = { items = {} }
+    local root = {
+        CreateTitle = function(_, t) table.insert(menu.items, { title = t }) end,
+        CreateDivider = function() table.insert(menu.items, { divider = true }) end,
+        CreateButton = function(_, t, fn) table.insert(menu.items, { text = t, fn = fn }) end,
+    }
+    _G.MenuUtil = {
+        CreateContextMenu = function(owner, gen)
+            menu.items = {}
+            menu.owner = owner
+            gen(owner, root)
+        end,
+    }
+    return menu
+end
+
+test("minimap button opens the standings and the menu", function()
+    setup(guild())
+    local b = ns.minimapButton
+    assert(b, "button created on load")
+    local click = b:GetScript("OnClick")
+    click(b, "LeftButton")
+    -- the standings window is open now, a second click closes it
+    click(b, "LeftButton")
+    local menu = fakeMenu()
+    click(b, "RightButton")
+    local texts = {}
+    for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
+    assert(texts["Standings"] and texts["Bench"] and texts["History"], "window entries")
+    assert(texts["Give raid EP (100)"], "officer entries for officers")
+    assert(texts["Hide minimap button"], "hide entry")
+    -- every entry runs without errors
+    W.inRaid = true W.raid = { "Cel Dru", "Lisa Brightwater" }
+    for _, item in ipairs(menu.items) do
+        if item.fn and item.text ~= "Hide minimap button" and item.text ~= "Undo last change" then
+            item.fn() W.flush()
+        end
+    end
+    eq(note("Lisa Brightwater"), "1125,500", "raid EP and on time EP from the menu")
+    eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
+    texts["Undo last change"]() W.flush()
+    eq(note("Lisa Brightwater"), "1100,500", "undo from the menu takes back the on time EP")
+    noErrors()
+end)
+
+test("members see no officer entries in the menu", function()
+    setup(guild())
+    W.canEdit = false
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    for _, item in ipairs(menu.items) do
+        assert(not (item.text or ""):find("raid EP"), "officer entry shown to a member")
+    end
+end)
+
+test("menu falls back to the window without a menu system", function()
+    setup(guild())
+    _G.MenuUtil = nil
+    ns.OpenMenu(ns.minimapButton)
+    noErrors()
+end)
+
+test("minimap button can be hidden, shown and dragged", function()
+    setup(guild())
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    for _, item in ipairs(menu.items) do if item.text == "Hide minimap button" then item.fn() end end
+    eq(ns.minimapButton:IsShown(), false, "hidden")
+    eq(RedGuildForeverDB.minimap.hide, true)
+    ns.Command("minimap")
+    eq(ns.minimapButton:IsShown(), true, "shown again")
+    -- drag to the right side of the minimap
+    _G.Minimap.GetCenter = function() return 100, 100 end
+    _G.Minimap.GetEffectiveScale = function() return 1 end
+    _G.GetCursorPosition = function() return 200, 100 end
+    local b = ns.minimapButton
+    b:GetScript("OnDragStart")(b)
+    b:GetScript("OnUpdate")(b)
+    b:GetScript("OnDragStop")(b)
+    near(RedGuildForeverDB.minimap.angle, 0, "angle")
+    noErrors()
+end)
+
+test("addon list next to the minimap", function()
+    setup(guild())
+    RedGuildForever_OnAddonCompartmentClick("RedGuildForever", "LeftButton")
+    local menu = fakeMenu()
+    RedGuildForever_OnAddonCompartmentClick("RedGuildForever", "RightButton", ns.minimapButton)
+    assert(#menu.items > 0, "menu opened")
+    RedGuildForever_OnAddonCompartmentEnter("RedGuildForever", ns.minimapButton)
+    RedGuildForever_OnAddonCompartmentLeave()
+    local toc = io.open("RedGuildForever.toc"):read("*a")
+    assert(toc:find("AddonCompartmentFunc: RedGuildForever_OnAddonCompartmentClick", 1, true), "toc entry")
+    noErrors()
+end)
+
 test("members cannot change points", function()
     setup(guild())
     W.canEdit = false

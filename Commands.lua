@@ -68,6 +68,7 @@ end
 local help = {
     "/rgf  open the standings",
     "/rgf me  show your own points",
+    "/rgf minimap  show or hide the minimap button",
     "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
     "|cffffd100Loot master|r",
     "/rgf bid [item]  open bidding, shift click the item into the command",
@@ -241,6 +242,11 @@ function ns.Command(line)
             ns.SendComm("SR", "GUILD")
             ns.Print("asking officers for the standings")
         end
+
+    elseif cmd == "minimap" then
+        local hidden = RedGuildForeverDB.minimap and RedGuildForeverDB.minimap.hide
+        ns.SetMinimapShown(hidden and true or false)
+        if hidden then ns.Print("minimap button shown") end
 
     elseif cmd == "log" then
         local log = RedGuildForeverDB.log

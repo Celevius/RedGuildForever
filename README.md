@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.1.1, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.2.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -76,6 +76,15 @@ Who wins
 5. Off spec is free, if several people want it they roll
 
 The values live at the top of `Core.lua` and `Pricing.lua`. Every officer must use the same version, so change them in this repository and not locally.
+
+## Minimap button
+
+You never need to type a command. Click the coin button at the minimap.
+
+* **Left click** opens the standings
+* **Right click** opens a menu with every action, officers also get raid EP, on time EP, bench, decay and undo
+* **Drag** moves the button around the minimap
+* The button can be hidden from the menu, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
 
 ## For raiders
 
