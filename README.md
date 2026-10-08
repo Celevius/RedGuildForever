@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.4.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.5.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -14,7 +14,8 @@ Show up and you go up the list, take loot and you go down the list.
 * Alts share points with their main
 * Weekly decay, undo, price overrides and a standings window
 * Points are saved in the addon's own save file and shared with **Sync**
-* A **Start Bidding** window to drag items in or pick them from the corpse, with a test mode to try everything alone
+* A **Start Bidding** window to drag items in or pick them from the corpse
+* A **test mode** in the settings that simulates the whole addon, so you can try everything alone
 * The windows are built from Blizzard's own frame templates, so they look like the guild and character windows of the game
 
 ## Install
@@ -86,7 +87,7 @@ The values live at the top of `Core.lua` and `Pricing.lua`. Every officer must u
 You never need to type a command. Click the coin button at the minimap.
 
 * **Left click** opens the standings
-* **Right click** opens a menu with every action, officers also get raid EP, on time EP, bench, decay and undo
+* **Right click** opens a menu with every action, officers also get raid EP, on time EP, bench, decay, undo and the **Loot Master**. **Settings** is in the menu too, and while test mode is on there is a quick **Turn test mode off**
 * **Drag** moves the button around the minimap
 * The button can be hidden from the menu, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
 
@@ -109,7 +110,30 @@ You never need to type a command. Click the coin button at the minimap.
 
 Loot is announced in raid chat, so everyone can follow. The addon never writes in guild or officer chat.
 
-**Test mode.** Tick **Test mode** in the Start Bidding window, or choose **Test the loot master window** in the minimap menu. It works alone without a group. Guild members send fake bids over a few seconds, one or two never answer, ties are rolled for them, and you can bid yourself. Nothing is sent to the raid and no points change. Messages show up only in your own chat window, marked [Test]. Members can use the test mode too.
+The **Loot Master** button in the `/rgf` window and in the minimap menu opens the running bidding, or the Start Bidding window when nothing runs.
+
+## Test mode
+
+Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options under AddOns, or with `/rgf test`. It simulates the whole addon, so you can try everything alone without a group.
+
+* The addon works on a **copy of your data**. Your real points, bench and history stay exactly as they are
+* You are in a **simulated raid** with up to 9 guild members. Raid EP, on time EP and the bench work with it
+* Every bidding is answered by the simulated raid over a few seconds, one or two never answer, ties are rolled for them, and you can bid yourself
+* Awards, decay, the editor, alts, undo, backup and import all work on the copy
+* **Sync** is simulated, a made up officer sends one newer change so you see how merging works
+* Nothing is sent to other players and no chat message goes out. Messages show up only in your own chat window, marked [Test]
+* Every window says **Test mode** in its title, and the minimap button turns orange
+* Members can use the officer tools in test mode too
+
+**Reset test data** copies the real data again, **New simulated raid** picks other guild members. The test data stays until you reset it. Test mode cannot be switched while a real bidding runs, and the addon reminds you at login if it is still on.
+
+## Settings
+
+The **Settings** tab and the game's Options under AddOns have the same settings.
+
+* **Test mode**, see above
+* **Show the minimap button**
+* **Open Start Bidding when I loot good items in a group**
 
 ## For officers
 
@@ -142,13 +166,14 @@ Every change can be undone with **Undo last change**.
 | `/rgf export` | open the Sync tab with the backup |
 | `/rgf fresh` | start with empty data for a new guild |
 | `/rgf bid` | open the Start Bidding window |
-| `/rgf test` | try the loot master window alone |
+| `/rgf test` | turn test mode on or off |
+| `/rgf settings` | open the settings |
 | `/rgf log` | last changes |
 | `/rgf help` | all commands |
 
 Names work with first and last name, in any letter case. The first name alone is enough when only one guild member has it, and the start of a name works too, so `/rgf ep Ang 50` finds Anglicus Boniface. If a name fits more than one player, the addon lists them and changes nothing. Between two names a comma is always safe, for example `/rgf alt Cel Rog, Cel Dru`.
 
-The `/rgf` window has four tabs at the bottom, **Standings**, **Bench**, **History** and **Sync**. Officers get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
+The `/rgf` window has five tabs at the bottom, **Standings**, **Bench**, **History**, **Sync** and **Settings**. Officers get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
 
 Two officers should never award or decay at the same time. Pick one loot master per raid.
 

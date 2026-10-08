@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.4.0"
+ns.version = "1.5.0"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -26,6 +26,7 @@ ns.defaults = {
         rare = 200,
     },
     tierOrder = { "normal", "boss", "rare" },
+    autoOpenLoot = true, -- open Start Bidding when an officer loots good items in a group
     tierNames = { normal = "Normal boss", boss = "End boss", rare = "Very rare" },
 }
 
@@ -71,11 +72,26 @@ end
 
 -- Who may edit is decided in Points.lua (ns.CanEdit)
 
+------------------------------------------------------------------------
+-- Test mode. When it is on, the addon works on a separate copy of the data
+-- with a simulated raid. Nothing is sent to other players.
+------------------------------------------------------------------------
+function ns.IsTest()
+    local db = RedGuildForeverDB
+    return db and db.settings and db.settings.testMode and true or false
+end
+
+ns.TEST_TAG = "|cffff8040[Test]|r "
+
 -- The addon never writes in guild or officer chat, only raid, party and whispers.
 local blockedChannels = { GUILD = true, OFFICER = true }
 
 function ns.SendChat(msg, channel, target)
     if blockedChannels[channel] then return false end
+    if ns.IsTest() then
+        ns.Print(ns.TEST_TAG .. (target and ("whisper to " .. tostring(target) .. ", ") or "") .. msg)
+        return true
+    end
     local f = pick(C_ChatInfo, "SendChatMessage", "SendChatMessage")
     if not f then return false end
     return pcall(f, msg, channel, nil, target)
@@ -99,6 +115,10 @@ end
 
 -- Announce to the raid (or party). Falls back to local chat when solo.
 function ns.Announce(msg)
+    if ns.IsTest() then
+        ns.Print(ns.TEST_TAG .. msg)
+        return
+    end
     local channel
     if IsInRaid and IsInRaid() then
         channel = "RAID"

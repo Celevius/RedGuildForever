@@ -133,9 +133,10 @@ local function bidsText(list, limit)
     return table.concat(parts, ", ")
 end
 
-function ns.StartAuction(link, tier, test)
-    if not test and not ns.CanEdit() then
-        ns.Print("only the guild leader and officers can start bidding, use the test mode to try it")
+function ns.StartAuction(link, tier)
+    local test = ns.IsTest()
+    if not ns.CanEdit() then
+        ns.Print("only the guild leader and officers can start bidding, turn on test mode in the settings to try it")
         return false
     end
     if ns.auction and ns.auction.open then
@@ -168,6 +169,7 @@ function ns.StartAuction(link, tier, test)
     ns.After(seconds, function()
         if ns.auction == auction and auction.open then ns.CloseBidding() end
     end)
+    if test then ns.SimulateBids(auction) end
     ns.Fire("RGF_AUCTION_CHANGED")
     return true
 end
@@ -283,15 +285,10 @@ function ns.Award(name)
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
     local cost = spec == "MS" and a.price or 0
-    local main
-    if a.test then
-        main = ns.MainOf(full) or full
-    else
-        ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
-        main = ns.Adjust(full, 0, cost)
-        ns.EndAction()
-        if not main then return false end
-    end
+    ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
+    local main = ns.Adjust(full, 0, cost)
+    ns.EndAction()
+    if not main then return false end
     local who = ns.ShortName(full)
     if main ~= full then who = who .. " (alt of " .. ns.ShortName(main) .. ")" end
     if spec == "MS" then
@@ -301,9 +298,6 @@ function ns.Award(name)
     end
     if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
     closeOwnPopup(a, full)
-    if a.test then
-        ns.Print("|cffff8040[Test]|r no points were changed. For real loot use /rgf bid and shift click the item")
-    end
     ns.lastAward = { link = a.link, name = full, cost = cost }
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
@@ -370,7 +364,7 @@ local whisperWords = {
 
 ns.On("CHAT_MSG_WHISPER", function(text, sender)
     local a = ns.auction
-    if not a or not a.open or type(text) ~= "string" then return end
+    if not a or not a.open or a.test or type(text) ~= "string" then return end
     local ok, word = pcall(function() return text:lower():gsub("%s", "") end)
     if not ok then return end
     local spec = whisperWords[word]
@@ -457,42 +451,30 @@ local function testItem()
     return "|cffa335ee|Hitem:19019::::::::60:::::|h[Test Sword]|h|r"
 end
 
-function ns.StartTestAuction(link, tier)
-    if ns.auction and ns.auction.open then
-        ns.Print("bidding for " .. ns.auction.link .. " is still open, finish it first")
-        return false
-    end
-    link = link or testItem()
-    if not ns.StartAuction(link, tier or "normal", true) then return false end
-    local a = ns.auction
-
-    -- up to 8 guild members answer one after another, a few never answer
+-- The simulated raid answers by itself, one after another, and a few never answer.
+function ns.SimulateBids(a)
     local me = ns.PlayerName()
-    local pool = {}
-    for full in pairs(ns.members) do
-        if full ~= me then table.insert(pool, full) end
+    local others = {}
+    for _, name in ipairs(a.expected or {}) do
+        if name ~= me then table.insert(others, name) end
     end
-    table.sort(pool)
-    for i = #pool, 2, -1 do
-        local j = math.random(i)
-        pool[i], pool[j] = pool[j], pool[i]
-    end
-    local answers = { "MS", "OS", "MS", false, "PASS", "MS", "OS", false }
-    a.expected = { me }
-    for i = 1, math.min(8, #pool) do
-        table.insert(a.expected, pool[i])
-        local answer = answers[i]
+    local answers = { "MS", "OS", "MS", false, "PASS", "MS", "OS", false, "MS" }
+    for i, name in ipairs(others) do
+        local answer = answers[(i - 1) % #answers + 1]
         if answer then
             ns.After(1 + i * 1.5, function()
-                if ns.auction == a and a.open then ns.RecordBid(pool[i], answer) end
+                if ns.auction == a and a.open then ns.RecordBid(name, answer) end
             end)
         end
     end
-    if #pool == 0 then
-        ns.Print("|cffff8040[Test]|r nobody else is in the guild roster yet, so only your own bid shows up")
+    if #others == 0 then
+        ns.Print(ns.TEST_TAG .. "the guild roster is still empty, so only your own bid shows up")
     end
-    ns.Fire("RGF_AUCTION_CHANGED")
-    return true
+end
+
+-- older name, opens bidding with whatever mode is set
+function ns.StartTestAuction(link, tier)
+    return ns.StartAuction(link or testItem(), tier or "normal")
 end
 
 -- In test mode the fake bidders roll by themselves

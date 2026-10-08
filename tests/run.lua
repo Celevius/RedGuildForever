@@ -945,44 +945,106 @@ test("drag an item from the bags and start real bidding", function()
     noErrors()
 end)
 
-test("test mode works alone, fake bids, no points change, nothing sent", function()
+-- the real data as text, to prove test mode never touches it
+local function realSnapshot()
+    local parts = {}
+    for name, e in pairs(ns.RealData().players) do
+        table.insert(parts, name .. "=" .. tostring(e.ep) .. "/" .. tostring(e.gp) .. "/" .. tostring(e.main) .. "/" .. tostring(e.t))
+    end
+    table.sort(parts)
+    return table.concat(parts, ";") .. "|bench=" .. table.concat(RedGuildForeverDB.bench, ",") .. "|log=" .. #RedGuildForeverDB.log
+end
+
+test("test mode is a sandbox for the whole addon", function()
     setup(guild())
-    local before = ns.ExportText():gsub("^[^;]+;[^;]+;%d+;", "")
-    ns.Command("test")
-    local p = ns.picker
-    eq(ns.pickerState.test, true)
-    W.cursor = W.link(64, "Test Axe")
-    p.slot:GetScript("OnClick")(p.slot)
-    p.start:Click()
+    local before = realSnapshot()
+    -- turn it on with the checkbox in the Settings tab
+    ns.ToggleStandings(5)
+    local view = ns.settingsViews[1]
+    view.test:SetChecked(true)
+    view.test:Click()
+    eq(ns.IsTest(), true)
+    W.comms, W.chat = {}, {} -- only what happens from now on counts
+    local raid = ns.RaidMembers()
+    assert(#raid > 1, "simulated raid with guild members")
+    eq(raid[1], "Cel Dru-Forever", "you are in it")
+    eq(note("Lisa Brightwater"), "1000,500", "test data starts as a copy")
+
+    -- every officer function works on the copy
+    ns.Command("raid") W.flush()
+    ns.Command("ontime") W.flush()
+    ns.Command("bench add Anna") W.flush()
+    ns.SetExactPoints("Max Ironhide", 2000, 300, "test edit")
+    ns.SetAlt("Ben Swift", "Anna Frost")
+    StaticPopupDialogs["REDGUILDFOREVER_DECAY"].OnAccept()
+    ns.Command("undo")
+    eq(note("Max Ironhide"), "2000,300", "edit in test data")
+
+    -- bidding with the simulated raid, from the Loot Master button
+    ns.OpenLootMaster()
+    W.cursor = W.link(70, "Sandbox Sword")
+    ns.picker.slot:GetScript("OnReceiveDrag")(ns.picker.slot)
+    ns.picker.start:Click()
     local a = ns.auction
-    assert(a and a.test, "test auction")
+    assert(a and a.test, "auction in test mode")
     ns.SendBid(ns.incoming[a.id], "MS")
-    eq(a.bids["Cel Dru-Forever"].spec, "MS", "you can bid yourself in test mode")
-    W.flush() -- the fake bids come in over a few seconds, then bidding closes by itself
-    eq(a.open, false, "closed after the bid time")
-    local o = ns.AuctionOverview(a)
-    assert(#o.ms + #o.os + #o.passed > 1, "fake bids arrived")
-    assert(#o.waiting >= 1, "someone never answers")
-    local winner = ns.SortedBids(a)[1]
-    ns.Award(winner.name)
     W.flush()
-    eq(ns.ExportText():gsub("^[^;]+;[^;]+;%d+;", ""), before, "no points changed")
-    for _, c in ipairs(W.comms) do
-        assert(not c.msg:match("^[APC]%^"), "test mode sent " .. c.msg)
-    end
-    for _, c in ipairs(W.chat) do
-        assert(c.channel ~= "RAID" and c.channel ~= "PARTY", "test mode wrote in " .. c.channel)
-    end
-    local said
-    for _, m in ipairs(W.printed) do if m:find("[Test]", 1, true) then said = true end end
-    assert(said, "test messages go to your own chat window")
+    local o = ns.AuctionOverview(a)
+    assert(#o.ms + #o.os + #o.passed > 1, "the simulated raid answered")
+    local winner = ns.SortedBids(a)[1]
+    local main = ns.MainOf(winner.name)
+    local _, gpBefore = ns.GetPoints(main)
+    ns.Award(winner.name) W.flush()
+    local _, gpAfter = ns.GetPoints(main)
+    if winner.spec == "MS" then assert(gpAfter > gpBefore, "GP charged in the test data") end
+
+    -- sync is simulated
+    ns.Command("sync") W.flush()
+    assert(ns.syncInfo.from["Simulated Officer-Forever"], "simulated officer")
+
+    -- nothing left this computer
+    for _, c in ipairs(W.comms) do error("test mode sent an addon message " .. c.msg) end
+    for _, c in ipairs(W.chat) do error("test mode wrote in " .. c.channel .. " " .. c.msg) end
+    eq(realSnapshot(), before, "real data untouched while testing")
+
+    -- turn it off again, the real data is back
+    ns.SetTestMode(false)
+    eq(ns.IsTest(), false)
+    eq(note("Max Ironhide"), "1000,100", "real data again")
+    eq(#ns.Bench(), 0, "real bench")
+    eq(realSnapshot(), before, "real data untouched after testing")
+    eq(ns.Undo(), nil, "test changes cannot be undone into the real data")
     noErrors()
 end)
 
-test("fake bidders roll by themselves on a tie in test mode", function()
+test("test mode keeps its data until reset", function()
+    setup(guild())
+    ns.SetTestMode(true)
+    ns.SetExactPoints("Lisa Brightwater", 5, 100)
+    ns.SetTestMode(false)
+    ns.SetTestMode(true)
+    eq(note("Lisa Brightwater"), "5,100", "test data kept")
+    ns.ResetTestData()
+    eq(note("Lisa Brightwater"), "1000,500", "reset copies the real data again")
+end)
+
+test("members can use every officer tool in test mode only", function()
+    setup(guild())
+    W.canEdit = false
+    eq(ns.CanEdit(), false)
+    ns.SetTestMode(true)
+    eq(ns.CanEdit(), true, "officer tools in test mode")
+    assert(ns.Adjust("Lisa Brightwater", 50, 0))
+    ns.SetTestMode(false)
+    eq(ns.CanEdit(), false)
+    eq(note("Lisa Brightwater"), "1000,500")
+end)
+
+test("simulated players roll by themselves on a tie", function()
     setup(guild())
     set("Tom Hammer", "1000,500")
-    ns.StartTestAuction(W.link(65, "Tie Ring"), "normal")
+    ns.SetTestMode(true)
+    ns.StartAuction(W.link(71, "Tie Ring"), "normal")
     local a = ns.auction
     wipe(a.bids)
     ns.RecordBid("Tom Hammer", "MS")
@@ -993,35 +1055,60 @@ test("fake bidders roll by themselves on a tie in test mode", function()
     ns.CloseBidding()
     W.flush()
     math.random = realRandom
-    eq(#ns.TiedForFirst(a), 0, "tie solved by fake rolls")
+    eq(#ns.TiedForFirst(a), 0, "tie solved by simulated rolls")
     eq(ns.SortedBids(a)[1].roll, 70)
     noErrors()
 end)
 
-test("members can open the test mode but not real bidding", function()
+test("test mode cannot be switched during real bidding", function()
     setup(guild())
-    W.canEdit = false
-    ns.OpenPicker(false)
-    eq(ns.pickerState.test, true, "test mode forced for members")
-    W.cursor = W.link(66, "Member Test Item")
-    ns.picker.slot:GetScript("OnReceiveDrag")(ns.picker.slot)
-    ns.picker.start:Click()
-    assert(ns.auction and ns.auction.test, "test auction for a member")
-    noErrors()
+    W.inRaid = true
+    ns.StartAuction(W.link(72, "Real Helm"))
+    eq(ns.SetTestMode(true), false)
+    eq(ns.IsTest(), false)
+    ns.Award(nil)
+    ns.SetTestMode(true)
+    eq(ns.IsTest(), true)
 end)
 
-test("menu entries for bidding and test mode", function()
+test("real messages from other players are ignored in test mode", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    set("Lisa Brightwater", "7777,100")
+    local fromAnna = dataMessages()
+    set("Lisa Brightwater", "1000,500")
+    ns.SetTestMode(true)
+    deliverFrom(fromAnna, "Anna Frost")
+    eq(note("Lisa Brightwater"), "1000,500", "test data not changed by real sync")
+    ns.SetTestMode(false)
+    eq(note("Lisa Brightwater"), "1000,500", "real data not changed while testing")
+end)
+
+test("Loot Master button, settings and test mode in the menu", function()
     setup(guild())
     local menu = fakeMenu()
     ns.OpenMenu(ns.minimapButton)
     local texts = {}
     for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
-    assert(texts["Start bidding"], "start bidding for officers")
-    assert(texts["Test the loot master window"], "test mode")
-    texts["Test the loot master window"]()
-    eq(ns.pickerState.test, true)
-    texts["Start bidding"]()
-    eq(ns.pickerState.test, false)
+    assert(texts["Loot Master"], "Loot Master for officers")
+    assert(texts["Settings"], "Settings for everyone")
+    assert(not texts["|cffff8040Turn test mode off|r"], "no test entry while it is off")
+    texts["Loot Master"]()
+    assert(ns.picker:IsShown(), "opens Start Bidding when nothing runs")
+    ns.StartAuction(W.link(73, "Running Item"))
+    ns.picker:Hide()
+    texts["Loot Master"]()
+    eq(ns.picker:IsShown(), false, "opens the running bidding instead")
+    ns.Award(nil)
+    ns.SetTestMode(true)
+    ns.OpenMenu(ns.minimapButton)
+    texts = {}
+    for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
+    assert(texts["|cffff8040Turn test mode off|r"], "quick way out of test mode")
+    texts["|cffff8040Turn test mode off|r"]()
+    eq(ns.IsTest(), false)
+    ns.Command("test")
+    eq(ns.IsTest(), true, "/rgf test toggles")
     noErrors()
 end)
 

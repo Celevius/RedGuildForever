@@ -2,6 +2,26 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.5.0 (8 October 2026)
+
+### Added
+* **Settings** tab in the `/rgf` window, and the same settings in the game's Options under AddOns
+* Settings for test mode, the minimap button and opening Start Bidding automatically when looting
+* **Loot Master** button in the `/rgf` window and the minimap menu. It opens the running bidding, or the Start Bidding window when nothing runs
+* `/rgf settings` opens the settings
+
+### Changed
+* **Test mode** is now a setting and simulates the whole addon instead of only the loot window. It works on a copy of the data with a simulated raid, so raid EP, bench, decay, the editor, alts, undo, bidding, rolls, awards, backup and sync can all be tried alone
+* In test mode nothing is sent to other players, no chat message goes out and real data from other players is ignored. Your real points, bench and history are never touched
+* Sync in test mode is simulated, a made up officer sends one newer change
+* Every window shows **Test mode** in its title, the minimap button turns orange, and the menu has a quick **Turn test mode off**
+* Members can try the officer tools in test mode
+* Test mode cannot be switched while a real bidding runs, and the addon reminds you at login when it is still on
+* `/rgf test` now turns test mode on or off
+
+### Removed
+* The test checkbox in the Start Bidding window and the menu entry **Test the loot master window**, both replaced by the setting
+
 ## 1.4.0 (8 October 2026)
 
 ### Added

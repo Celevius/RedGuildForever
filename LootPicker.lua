@@ -66,7 +66,8 @@ end
 
 ns.On("LOOT_OPENED", function()
     local good = ns.ScanLoot()
-    if good and ns.CanEdit() and IsInGroup and IsInGroup() and not (ns.auction and ns.auction.open) then
+    local inGroup = (IsInGroup and IsInGroup()) or ns.IsTest()
+    if good and ns.Setting("autoOpenLoot") and ns.CanEdit() and inGroup and not (ns.auction and ns.auction.open) then
         ns.OpenPicker()
     end
 end)
@@ -83,7 +84,7 @@ if not CreateFrame then return end
 local UI = ns.UI
 
 local picker
-local state = { link = nil, tier = "normal", test = false }
+local state = { link = nil, tier = "normal" }
 
 local function selectItem(link)
     state.link = link
@@ -166,11 +167,9 @@ local function buildPicker()
         prev = b
     end
 
-    f.test = UI.checkbox(inset, "Test mode, fake bids from guild members, no points change", function(checked)
-        state.test = checked and true or false
-        ns.Fire("RGF_LOOT_CHANGED")
-    end)
-    f.test:SetPoint("TOPLEFT", 10, -106)
+    f.testNote = UI.text(inset, "GameFontNormalSmall")
+    f.testNote:SetPoint("TOPLEFT", 14, -114)
+    f.testNote:SetWidth(400)
 
     -- loot list
     local listTitle = UI.text(inset, "GameFontNormal")
@@ -234,9 +233,12 @@ end
 function ns.RefreshPicker()
     if not picker or not picker:IsShown() then return end
     local officer = ns.CanEdit()
-    if not officer then state.test = true end
-    picker.test:SetChecked(state.test)
-    picker.test:SetEnabled(officer)
+    UI.setTitle(picker, ns.IsTest() and "Start Bidding  |cffff8040Test mode|r" or "Start Bidding")
+    if ns.IsTest() then
+        picker.testNote:SetText(ns.TEST_TAG .. "test mode is on, the simulated raid answers by itself")
+    else
+        picker.testNote:SetText("")
+    end
 
     local link = state.link
     if link then
@@ -257,12 +259,12 @@ function ns.RefreshPicker()
     for tier, b in pairs(picker.tierButtons) do b:SetEnabled(tier ~= state.tier) end
 
     local busy = ns.auction and ns.auction.open
-    picker.start:SetEnabled(link ~= nil and not busy)
-    picker.start:SetText(state.test and "Start test" or "Start bidding")
+    picker.start:SetEnabled(link ~= nil and not busy and officer)
+    picker.start:SetText("Start bidding")
     if busy then
         picker.sub:SetText("|cffff8040bidding for another item is still open|r")
     elseif not officer then
-        picker.sub:SetText("only officers start real bidding, you can try the test mode")
+        picker.sub:SetText("only officers start bidding, turn on test mode in the settings to try it")
     else
         picker.sub:SetText("or pick one from the loot below")
     end
@@ -291,15 +293,10 @@ end
 function ns.StartFromPicker()
     local link = state.link
     if not link then return false end
-    local ok
-    if state.test or not ns.CanEdit() then
-        ok = ns.StartTestAuction(link, state.tier)
-    else
-        ok = ns.StartAuction(link, state.tier)
-        if ok then
-            local _, i = findSeen(link)
-            if i then table.remove(ns.lootSeen, i) end
-        end
+    local ok = ns.StartAuction(link, state.tier)
+    if ok and not ns.IsTest() then
+        local _, i = findSeen(link)
+        if i then table.remove(ns.lootSeen, i) end
     end
     if ok then
         state.link = nil
@@ -308,10 +305,9 @@ function ns.StartFromPicker()
     return ok
 end
 
-function ns.OpenPicker(test)
+function ns.OpenPicker()
     picker = picker or buildPicker()
     ns.picker, ns.pickerState = picker, state
-    if test ~= nil then state.test = test end
     if not state.link and ns.lootSeen[1] and ns.lootSeen[1].onCorpse then
         state.link = ns.lootSeen[1].link
     end
@@ -319,13 +315,23 @@ function ns.OpenPicker(test)
     ns.RefreshPicker()
 end
 
-function ns.TogglePicker(test)
-    if picker and picker:IsShown() and test == nil then
+function ns.TogglePicker()
+    if picker and picker:IsShown() then
         picker:Hide()
     else
-        ns.OpenPicker(test)
+        ns.OpenPicker()
+    end
+end
+
+-- The Loot Master button: the running bidding if there is one, otherwise Start Bidding.
+function ns.OpenLootMaster()
+    if ns.auction then
+        ns.RefreshLootMaster()
+    else
+        ns.OpenPicker()
     end
 end
 
 ns.On("RGF_LOOT_CHANGED", function() ns.RefreshPicker() end)
 ns.On("RGF_AUCTION_CHANGED", function() ns.RefreshPicker() end)
+ns.On("RGF_TEST_MODE", function() ns.RefreshPicker() end)

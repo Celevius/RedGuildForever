@@ -74,7 +74,8 @@ local help = {
     "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
     "|cffffd100Loot master|r",
     "/rgf bid  open the Start Bidding window, or /rgf bid [item] to start right away",
-    "/rgf test  try the loot master window alone with fake bids",
+    "/rgf test  turn test mode on or off, try everything alone",
+    "/rgf settings  open the settings",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Officers|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
@@ -250,7 +251,10 @@ function ns.Command(line)
         if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
 
     elseif cmd == "test" then
-        ns.OpenPicker(true)
+        ns.SetTestMode(not ns.IsTest())
+
+    elseif cmd == "settings" or cmd == "options" then
+        ns.ToggleStandings(5)
 
     elseif cmd == "edit" then
         if not needOfficer() then return end
@@ -273,7 +277,7 @@ function ns.Command(line)
         if hidden then ns.Print("minimap button shown") end
 
     elseif cmd == "log" then
-        local log = RedGuildForeverDB.log
+        local log = ns.Log()
         if #log == 0 then ns.Print("no changes recorded yet") return end
         for i = math.max(1, #log - 9), #log do
             local e = log[i]

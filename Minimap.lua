@@ -19,7 +19,7 @@ end
 -- Every menu entry, used by the right click menu
 function ns.MenuEntries()
     local entries = {
-        { title = "Red Guild EPGP" },
+        { title = ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP" },
         { text = "Standings", func = function() ns.ToggleStandings(1) end },
         { text = "Bench", func = function() ns.ToggleStandings(2) end },
         { text = "History", func = function() ns.ToggleStandings(3) end },
@@ -48,15 +48,15 @@ function ns.MenuEntries()
             { text = "Undo last change", func = function() ns.Command("undo") end },
             { divider = true },
             { title = "Loot" },
-            { text = "Start bidding", func = function() ns.OpenPicker(false) end },
+            { text = "Loot Master", func = function() ns.OpenLootMaster() end },
         }
-        if ns.auction then
-            table.insert(more, { text = "Open loot window", func = function() ns.RefreshLootMaster() end })
-        end
         for _, e in ipairs(more) do table.insert(entries, e) end
     end
     table.insert(entries, { divider = true })
-    table.insert(entries, { text = "Test the loot master window", func = function() ns.OpenPicker(true) end })
+    table.insert(entries, { text = "Settings", func = function() ns.ToggleStandings(5) end })
+    if ns.IsTest() then
+        table.insert(entries, { text = "|cffff8040Turn test mode off|r", func = function() ns.SetTestMode(false) end })
+    end
     table.insert(entries, { text = "Hide minimap button", func = function() ns.SetMinimapShown(false) end })
     return entries
 end
@@ -87,6 +87,7 @@ end
 function ns.ShowTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
     GameTooltip:SetText("Red Guild EPGP")
+    if ns.IsTest() then GameTooltip:AddLine("Test mode is on, nothing is sent", 1, 0.5, 0.25) end
     local ep, gp, pr = ns.GetPoints(ns.PlayerName())
     GameTooltip:AddDoubleLine("Your priority", ns.FormatPR(pr), nil, nil, nil, 1, 1, 1)
     GameTooltip:AddDoubleLine("EP and GP", ep .. " / " .. gp, nil, nil, nil, 1, 1, 1)
@@ -199,9 +200,27 @@ function ns.SetMinimapShown(show)
     end
 end
 
+-- the button turns orange while test mode is on
+local function tint()
+    local b = ns.minimapButton
+    if not (b and b.icon) then return end
+    if ns.IsTest() then
+        b.icon:SetVertexColor(1, 0.55, 0.25)
+    else
+        b.icon:SetVertexColor(1, 1, 1)
+    end
+end
+
 ns.On("RGF_READY", function()
     if not settings().hide then ns.SetMinimapShown(true) end
+    tint()
+    if ns.IsTest() then
+        ns.After(5, function()
+            ns.Print(ns.TEST_TAG .. "test mode is still on. Turn it off in the settings before a real raid")
+        end)
+    end
 end)
+ns.On("RGF_TEST_MODE", tint)
 
 ------------------------------------------------------------------------
 -- Addon list next to the minimap (the toc file points to these)

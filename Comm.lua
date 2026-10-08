@@ -18,6 +18,7 @@ function ns.OnComm(kind, fn)
 end
 
 function ns.SendComm(msg, channel, target)
+    if ns.IsTest() then return true end -- in test mode nothing leaves this computer
     if not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return false end
     local ok, result = pcall(C_ChatInfo.SendAddonMessage, ns.prefix, msg, channel, target)
     -- newer clients return a result code, 0 means success
@@ -56,6 +57,7 @@ end)
 
 ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
     if prefix ~= ns.prefix or type(text) ~= "string" then return end
+    if ns.IsTest() then return end -- real data from others never mixes with test data
     local kind = text:match("^(%a+)")
     local fn = kind and ns.commHandlers[kind]
     -- handlers get the guild name, plus the name exactly as the game sent it for whispers
@@ -133,6 +135,10 @@ end
 
 -- The Sync button. Officers send their data, everyone asks for the newest.
 function ns.Sync(quiet)
+    if ns.IsTest() then
+        ns.SimulateSync(quiet)
+        return true
+    end
     if not (IsInGuild and IsInGuild()) then
         if not quiet then ns.Print("you are not in a guild") end
         return false
@@ -248,4 +254,28 @@ function ns.ImportText(textValue)
     ns.Fire("RGF_POINTS_CHANGED")
     if changes > 0 then ns.QueueBroadcast(2) end
     return changes
+end
+
+------------------------------------------------------------------------
+-- Sync in test mode: nothing is sent, a simulated officer sends one newer change
+------------------------------------------------------------------------
+function ns.SimulateSync(quiet)
+    ns.syncInfo = { at = ns.Now(), from = {}, changes = 0, running = true }
+    ns.Fire("RGF_SYNC_DONE")
+    ns.After(2, function()
+        local officer = "Simulated Officer-" .. ns.MyRealm()
+        local raid = ns.RaidMembers()
+        local target = raid[math.random(#raid)]
+        local main = ns.MainOf(target)
+        local ep, gp = ns.GetPoints(main)
+        local theirs = { [main] = { ep = ep + 25, gp = gp, t = ns.Now() + 1 } }
+        local changes = ns.MergeData(theirs, officer)
+        ns.syncInfo = { at = ns.syncInfo.at, from = { [officer] = true }, changes = changes, last = ns.Now() }
+        ns.RebuildFromRoster()
+        ns.Fire("RGF_POINTS_CHANGED")
+        ns.Fire("RGF_SYNC_DONE")
+        if not quiet then
+            ns.Print(ns.TEST_TAG .. "sync simulated. A simulated officer sent a newer entry, " .. ns.ShortName(main) .. " now has " .. (ep + 25) .. " EP. Nothing was sent to anyone")
+        end
+    end)
 end

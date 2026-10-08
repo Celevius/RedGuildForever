@@ -526,6 +526,120 @@ local function refreshSyncPage(page)
     page.import:SetShown(officer)
 end
 
+------------------------------------------------------------------------
+-- Settings, shown in the Settings tab and in the game's Options under AddOns
+------------------------------------------------------------------------
+local settingsViews = {}
+ns.settingsViews = settingsViews
+
+local function buildSettingsContent(parent, top)
+    local view = {}
+    local y = top or -12
+    local function heading(label)
+        local fs = text(parent, "GameFontNormal")
+        fs:SetPoint("TOPLEFT", 12, y)
+        fs:SetText(label)
+        y = y - 22
+        return fs
+    end
+    local function paragraph(font)
+        local fs = text(parent, font or "GameFontHighlightSmall")
+        fs:SetPoint("TOPLEFT", 16, y)
+        fs:SetWidth(460)
+        fs:SetWordWrap(true)
+        return fs
+    end
+
+    heading("Test mode")
+    view.test = checkbox(parent, "Test mode", function(checked)
+        ns.SetTestMode(checked)
+        ns.RefreshSettings()
+    end)
+    view.test:SetPoint("TOPLEFT", 12, y)
+    y = y - 30
+    local info = paragraph()
+    info:SetText("Try every function alone. The addon works on a copy of your data with a simulated raid. Raid EP, bench, decay, the editor, alts, sync, bidding, rolls and awards all work, but nothing is sent to other players and your real points stay as they are.")
+    y = y - 52
+    view.raid = paragraph()
+    y = y - 36
+    view.reset = button(parent, "Reset test data", 130, function()
+        ns.ResetTestData()
+        ns.Print(ns.TEST_TAG .. "test data copied again from the real data, new simulated raid")
+        ns.RefreshSettings()
+    end)
+    view.reset:SetPoint("TOPLEFT", 14, y)
+    view.newRaid = button(parent, "New simulated raid", 140, function()
+        ns.PickTestRaid()
+        ns.RefreshSettings()
+    end)
+    view.newRaid:SetPoint("LEFT", view.reset, "RIGHT", 4, 0)
+    y = y - 40
+
+    heading("Interface")
+    view.minimap = checkbox(parent, "Show the minimap button", function(checked)
+        ns.SetMinimapShown(checked)
+    end)
+    view.minimap:SetPoint("TOPLEFT", 12, y)
+    y = y - 28
+    view.autoLoot = checkbox(parent, "Open Start Bidding when I loot good items in a group", function(checked)
+        ns.SetSetting("autoOpenLoot", checked and true or false)
+    end)
+    view.autoLoot:SetPoint("TOPLEFT", 12, y)
+    y = y - 40
+
+    view.version = paragraph("GameFontDisableSmall")
+    view.version:SetText("Red Guild EPGP " .. ns.version)
+
+    table.insert(settingsViews, view)
+    return view
+end
+
+function ns.RefreshSettings()
+    local test = ns.IsTest()
+    local raidText
+    if test then
+        local names = {}
+        for _, n in ipairs(ns.RaidMembers()) do table.insert(names, ns.ShortName(n)) end
+        raidText = ns.TEST_TAG .. "Simulated raid " .. table.concat(names, ", ")
+    else
+        raidText = "|cff999999Turn on test mode to get a simulated raid.|r"
+    end
+    for _, view in ipairs(settingsViews) do
+        view.test:SetChecked(test)
+        view.raid:SetText(raidText)
+        view.reset:SetEnabled(test)
+        view.newRaid:SetEnabled(test)
+        local mm = RedGuildForeverDB and RedGuildForeverDB.minimap
+        view.minimap:SetChecked(not (mm and mm.hide))
+        view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
+    end
+end
+
+local function buildSettingsPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    buildSettingsContent(page)
+    return page
+end
+
+-- the same settings in the game's Options window, under AddOns
+local function registerOptions()
+    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return end
+    local panel = CreateFrame("Frame")
+    local title = text(panel, "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetText("Red Guild EPGP")
+    buildSettingsContent(panel, -44)
+    panel:SetScript("OnShow", function() ns.RefreshSettings() end)
+    local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
+    if ok and category then
+        pcall(Settings.RegisterAddOnCategory, category)
+        ns.optionsCategory = category
+    end
+end
+ns.On("RGF_READY", registerOptions)
+ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
+
 local function buildHistoryPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
@@ -559,6 +673,7 @@ local function buildMain()
         buildBenchPage(f.Inset),
         buildHistoryPage(f.Inset),
         buildSyncPage(f.Inset),
+        buildSettingsPage(f.Inset),
     }
 
     -- bottom strip
@@ -567,6 +682,8 @@ local function buildMain()
         ns.Sync()
     end)
     f.refresh:SetPoint("BOTTOMLEFT", 6, 4)
+    f.lootMaster = button(f, "Loot Master", 110, function() ns.OpenLootMaster() end)
+    f.lootMaster:SetPoint("LEFT", f.refresh, "RIGHT", 2, 0)
 
     f.standingsButtons = CreateFrame("Frame", nil, f)
     f.standingsButtons:SetSize(1, 22)
@@ -595,7 +712,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Bench", "History", "Sync" }, showPage)
+    tabs(f, name, { "Standings", "Bench", "History", "Sync", "Settings" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -652,7 +769,7 @@ local function refreshBenchPage(page)
 end
 
 local function refreshHistoryPage(page)
-    local log = RedGuildForeverDB and RedGuildForeverDB.log or {}
+    local log = ns.Log() or {}
     local n = 0
     for i = #log, 1, -1 do
         local e = log[i]
@@ -676,13 +793,17 @@ function ns.RefreshStandings()
         refreshBenchPage(main.pages[2])
     elseif tab == 3 then
         refreshHistoryPage(main.pages[3])
-    else
+    elseif tab == 4 then
         refreshSyncPage(main.pages[4])
+    else
+        ns.RefreshSettings()
     end
+    setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
+    main.lootMaster:SetShown(ns.CanEdit())
 
     local me = ns.PlayerName()
     local ep, gp, pr = ns.GetPoints(me)
-    main.summary:SetText("Your priority |cffffffff" .. ns.FormatPR(pr) .. "|r  (" .. ep .. " EP, " .. gp .. " GP)")
+    main.summary:SetText((ns.IsTest() and ns.TEST_TAG or "") .. "Your priority |cffffffff" .. ns.FormatPR(pr) .. "|r  (" .. ep .. " EP, " .. gp .. " GP)")
 
     local status
     if not (IsInGuild and IsInGuild()) then
@@ -693,6 +814,8 @@ function ns.RefreshStandings()
         status = "Changes made by officers on this computer"
     elseif tab == 4 then
         status = "Sync and backup"
+    elseif tab == 5 then
+        status = "Settings"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
     else
@@ -871,6 +994,7 @@ local function buildEditor()
 
     function f.Load(name)
         f.target = name
+        setTitle(f, ns.IsTest() and "Edit Player  |cffff8040Test mode|r" or "Edit Player")
         local m = ns.members[name]
         local ep, gp, pr, main = ns.GetPoints(name)
         f.current = { ep = ep, gp = gp, pr = pr }
@@ -940,6 +1064,7 @@ ns.On("RGF_POINTS_CHANGED", refreshEditor)
 ns.On("RGF_BENCH_CHANGED", refreshEditor)
 ns.On("RGF_BENCH_CHANGED", function() ns.RefreshStandings() end)
 ns.On("RGF_SYNC_DONE", function() ns.RefreshStandings() end)
+ns.On("RGF_TEST_MODE", function() ns.RefreshStandings() end)
 
 ------------------------------------------------------------------------
 -- Loot master window
@@ -1140,6 +1265,7 @@ function ns.RefreshLootMaster()
     end
     lm = lm or buildLootMaster()
     if not lm:IsShown() then lm:Show() end
+    setTitle(lm, a.test and "Loot Master  |cffff8040Test mode|r" or "Loot Master")
     local _, _, icon = ns.ItemInfo(a.link)
     setPortrait(lm, icon or ICON_UNKNOWN)
     lm.item:SetText(a.link)
@@ -1270,6 +1396,7 @@ end
 ns.On("RGF_INCOMING_AUCTION", function(inc)
     popup = popup or buildPopup()
     popup.inc = inc
+    setTitle(popup, ns.IsTest() and "Loot Bid  |cffff8040Test mode|r" or "Loot Bid")
     local _, _, icon = ns.ItemInfo(inc.link)
     setPortrait(popup, icon or ICON_UNKNOWN)
     popup.slot:SetItem(inc.link)

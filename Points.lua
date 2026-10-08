@@ -56,7 +56,16 @@ function ns.GuildKey()
     return name .. "-" .. ns.MyRealm()
 end
 
-function ns.Data()
+-- copy a data set, used to start the test data from the real data
+local function copyData(src)
+    local players = {}
+    for name, e in pairs(src.players or {}) do
+        players[name] = { ep = e.ep, gp = e.gp, main = e.main, t = e.t, by = e.by }
+    end
+    return { players = players, started = true }
+end
+
+function ns.RealData()
     local key = ns.GuildKey()
     if not key or not RedGuildForeverDB then return tempData end
     RedGuildForeverDB.guilds = RedGuildForeverDB.guilds or {}
@@ -67,6 +76,74 @@ function ns.Data()
     end
     data.players = data.players or {}
     return data
+end
+
+-- In test mode everything works on a copy, the real data is never touched.
+function ns.Data()
+    if ns.IsTest() then
+        local db = RedGuildForeverDB
+        if not db.test or not db.test.data then ns.ResetTestData() end
+        return db.test.data
+    end
+    return ns.RealData()
+end
+
+function ns.ResetTestData()
+    local db = RedGuildForeverDB
+    db.test = db.test or {}
+    db.test.data = copyData(ns.RealData())
+    db.test.bench = {}
+    db.test.log = {}
+    ns.history = {}
+    ns.PickTestRaid()
+    ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_BENCH_CHANGED")
+end
+
+-- The simulated raid: you and up to 9 guild members.
+function ns.PickTestRaid()
+    local db = RedGuildForeverDB
+    db.test = db.test or {}
+    local me = ns.PlayerName()
+    local pool = {}
+    for full in pairs(ns.members) do
+        if full ~= me then table.insert(pool, full) end
+    end
+    table.sort(pool)
+    for i = #pool, 2, -1 do
+        local j = math.random(i)
+        pool[i], pool[j] = pool[j], pool[i]
+    end
+    local raid = { me }
+    for i = 1, math.min(9, #pool) do table.insert(raid, pool[i]) end
+    db.test.raid = raid
+    return raid
+end
+
+function ns.SetTestMode(on)
+    local db = RedGuildForeverDB
+    db.settings = db.settings or {}
+    on = on and true or false
+    if ns.IsTest() == on then return end
+    if ns.auction and not ns.auction.test then
+        ns.Print("finish the bidding for " .. ns.auction.link .. " before switching test mode")
+        return false
+    end
+    if ns.auction then ns.CancelAuction() end
+    db.settings.testMode = on
+    ns.history = {}
+    if on then
+        if not db.test or not db.test.data then ns.ResetTestData() end
+        if not db.test.raid or #db.test.raid <= 1 then ns.PickTestRaid() end
+        ns.Print(ns.TEST_TAG .. "test mode is on. You work on a copy of the data with a simulated raid, nothing is sent and your real points stay as they are")
+    else
+        ns.Print("test mode is off, you see the real data again")
+    end
+    ns.RebuildFromRoster()
+    ns.Fire("RGF_TEST_MODE")
+    ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_BENCH_CHANGED")
+    ns.Fire("RGF_AUCTION_CHANGED")
 end
 
 function ns.Players()
@@ -109,6 +186,7 @@ function ns.MyRank()
 end
 
 function ns.CanEdit()
+    if ns.IsTest() then return true end -- in test mode everyone can try the officer tools
     if not (IsInGuild and IsInGuild()) then return false end
     local rank = ns.MyRank()
     return rank ~= nil and rank <= ns.OfficerRank()
@@ -304,7 +382,7 @@ function ns.EndAction()
     ns.currentAction = nil
     if action and #action.changes > 0 then
         table.insert(ns.history, action)
-        local log = RedGuildForeverDB and RedGuildForeverDB.log
+        local log = ns.Log()
         if log then
             table.insert(log, { time = action.time, label = action.label, count = #action.changes, by = ns.PlayerName() })
             while #log > 500 do table.remove(log, 1) end
@@ -494,7 +572,21 @@ end
 -- Bench
 ------------------------------------------------------------------------
 function ns.Bench()
+    if ns.IsTest() then
+        RedGuildForeverDB.test.bench = RedGuildForeverDB.test.bench or {}
+        return RedGuildForeverDB.test.bench
+    end
     return RedGuildForeverDB.bench
+end
+
+function ns.Log()
+    if not RedGuildForeverDB then return nil end
+    if ns.IsTest() then
+        RedGuildForeverDB.test = RedGuildForeverDB.test or {}
+        RedGuildForeverDB.test.log = RedGuildForeverDB.test.log or {}
+        return RedGuildForeverDB.test.log
+    end
+    return RedGuildForeverDB.log
 end
 
 function ns.BenchAdd(name)
@@ -519,11 +611,18 @@ function ns.BenchRemove(name)
 end
 
 function ns.BenchClear()
-    wipe(RedGuildForeverDB.bench)
+    wipe(ns.Bench())
     ns.Fire("RGF_BENCH_CHANGED")
 end
 
 function ns.RaidMembers()
+    if ns.IsTest() then
+        local raid = RedGuildForeverDB.test and RedGuildForeverDB.test.raid
+        if not raid or #raid == 0 then raid = ns.PickTestRaid() end
+        local copy = {}
+        for i, n in ipairs(raid) do copy[i] = n end
+        return copy
+    end
     local list = {}
     local count = GetNumGroupMembers and GetNumGroupMembers() or 0
     if IsInRaid and IsInRaid() then
