@@ -311,6 +311,7 @@ ns.OnComm("A", function(text, sender)
     if not id or not link then return end
     ns.incoming[id] = {
         id = id, owner = sender, link = link, price = price or 0,
+        duration = seconds or 30,
         endsAt = (GetTime and GetTime() or 0) + (seconds or 30),
     }
     ns.Fire("RGF_INCOMING_AUCTION", ns.incoming[id])

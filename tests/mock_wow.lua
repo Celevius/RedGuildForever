@@ -39,35 +39,69 @@ M.knownEvents = {
 }
 M.registered = {}
 
-local function frameStub()
-    local f = {}
-    return setmetatable(f, {
+-- A fake frame. Unknown fields return another fake frame, so template
+-- children like frame.Inset or frame.TitleContainer exist, and calling a
+-- fake returns a fake. Show, Hide and scripts behave like the game.
+local frameStub
+local methods = {}
+
+local function scripts(t, name)
+    local all = rawget(t, "_scripts")
+    if not all then all = {} rawset(t, "_scripts", all) end
+    all[name] = all[name] or {}
+    return all[name]
+end
+
+local function run(t, name, ...)
+    for _, fn in ipairs(scripts(t, name)) do fn(t, ...) end
+end
+
+function methods.RegisterEvent(t, event)
+    if not M.knownEvents[event] then
+        error('Attempt to register unknown event "' .. tostring(event) .. '"')
+    end
+    M.registered[event] = true
+end
+function methods.IsShown(t) return rawget(t, "_shown") ~= false end
+function methods.IsVisible(t) return methods.IsShown(t) end
+function methods.Show(t)
+    local was = methods.IsShown(t)
+    rawset(t, "_shown", true)
+    if not was then run(t, "OnShow") end
+end
+function methods.Hide(t)
+    local was = methods.IsShown(t)
+    rawset(t, "_shown", false)
+    if was then run(t, "OnHide") end
+end
+function methods.SetShown(t, show) if show then methods.Show(t) else methods.Hide(t) end end
+function methods.SetScript(t, name, fn)
+    local list = scripts(t, name)
+    for i = #list, 1, -1 do list[i] = nil end
+    if fn then list[1] = fn end
+end
+function methods.HookScript(t, name, fn) table.insert(scripts(t, name), fn) end
+function methods.GetScript(t, name) return scripts(t, name)[1] end
+function methods.SetID(t, id) rawset(t, "_id", id) end
+function methods.GetID(t) return rawget(t, "_id") or 0 end
+function methods.SetChecked(t, v) rawset(t, "_checked", v and true or false) end
+function methods.GetChecked(t) return rawget(t, "_checked") or false end
+function methods.SetText(t, v) rawset(t, "_text", v) end
+function methods.GetText(t) return rawget(t, "_text") end
+function methods.Click(t) run(t, "OnClick") end
+
+frameStub = function()
+    return setmetatable({}, {
         __index = function(t, k)
-            local fn = function(self, ...)
-                if k == "RegisterEvent" then
-                    local event = ...
-                    if not M.knownEvents[event] then
-                        error('Attempt to register unknown event "' .. tostring(event) .. '"')
-                    end
-                    M.registered[event] = true
-                end
-                if k == "IsShown" then return rawget(t, "_shown") end
-                if k == "Show" then rawset(t, "_shown", true) end
-                if k == "Hide" then rawset(t, "_shown", false) end
-                if k == "SetShown" then rawset(t, "_shown", (...) and true or false) end
-                if k == "SetScript" then
-                    local name, handler = ...
-                    rawset(t, "_scripts", rawget(t, "_scripts") or {})
-                    rawget(t, "_scripts")[name] = handler
-                end
-                if k:match("^Create") then return frameStub() end
-                return nil
-            end
-            rawset(t, k, fn)
-            return fn
+            if methods[k] then return methods[k] end
+            local child = frameStub()
+            rawset(t, k, child)
+            return child
         end,
+        __call = function() return frameStub() end,
     })
 end
+M.frameStub = frameStub
 
 function M.install()
     _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end

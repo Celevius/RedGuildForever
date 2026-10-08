@@ -360,6 +360,45 @@ test("slash commands run without errors", function()
     noErrors()
 end)
 
+test("windows and tabs build and refresh without errors", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Celery", "Lisa", "Max" }
+    ns.BenchAdd("Anna")
+    ns.Command("raid") W.flush()
+    -- standings window, every tab, as officer and as normal member
+    ns.ToggleStandings()
+    ns.ToggleStandings(2)
+    ns.ToggleStandings(3)
+    ns.ToggleStandings(1)
+    W.canEdit, W.canView = false, false
+    ns.RebuildFromRoster() W.flush()
+    ns.ToggleStandings(2)
+    ns.ToggleStandings(1)
+    W.canEdit, W.canView = true, true
+    ns.RebuildFromRoster() W.flush()
+    -- loot master window and bid popup through a whole auction with a tie
+    W.roster[2][3] = "1000,500" -- Tom ties with Lisa
+    ns.RebuildFromRoster() W.flush()
+    ns.Command("bid " .. W.link(30, "Helm of Testing") .. " boss")
+    W.deliver(ns, "Celery")
+    ns.RecordBid("Tom", "MS")
+    ns.RecordBid("Lisa", "MS")
+    ns.RecordBid("Max", "OS")
+    local inc
+    for _, i in pairs(ns.incoming) do inc = i end
+    ns.SendBid(inc, "MS")
+    ns.SetAuctionTier("rare")
+    ns.CloseBidding()
+    ns.Fire("CHAT_MSG_SYSTEM", "Tom rolls 12 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Lisa rolls 88 (1-100)")
+    ns.Award("Lisa")
+    W.deliver(ns, "Celery")
+    W.flush()
+    ns.ToggleStandings(3)
+    noErrors()
+end)
+
 test("members cannot change points", function()
     setup(guild())
     W.canEdit = false

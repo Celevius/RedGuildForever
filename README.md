@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.0.1, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.1.0, updated on 8 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -13,6 +13,7 @@ Show up and you go up the list, take loot and you go down the list.
 * EP for the raid night and the on time bonus go to everyone in the raid and on the bench
 * Alts share points with their main
 * Weekly decay, undo, price overrides and a standings window
+* The windows are built from Blizzard's own frame templates, so they look like the guild and character windows of the game
 
 ## Install
 
@@ -109,7 +110,7 @@ Everything is announced in raid chat, so everyone can follow.
 | `/rgf log` | last changes |
 | `/rgf help` | all commands |
 
-The standings window has buttons for raid EP, on time, bench, decay and undo.
+The `/rgf` window has three tabs at the bottom, **Standings**, **Bench** and **History**. Officers get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
 
 Two officers should never award or decay at the same time. Pick one loot master per raid.
 
