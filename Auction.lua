@@ -352,8 +352,3 @@ function ns.SendBid(inc, spec)
     inc.myBid = spec
     ns.Fire("RGF_INCOMING_AUCTION", inc)
 end
-
-if ns.eventFrame then
-    ns.eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-    ns.eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
-end

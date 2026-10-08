@@ -191,5 +191,4 @@ end
 
 SLASH_REDGUILDFOREVER1 = "/rgf"
 SLASH_REDGUILDFOREVER2 = "/epgp"
-SlashCmdList = SlashCmdList or {}
 SlashCmdList["REDGUILDFOREVER"] = function(msg) ns.Command(msg) end

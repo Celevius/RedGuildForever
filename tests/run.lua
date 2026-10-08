@@ -63,6 +63,22 @@ end
 
 print("Red Guild EPGP tests")
 
+test("loads cleanly and registers only real game events", function()
+    W.registered = {}
+    setup(guild())
+    for _, event in ipairs({ "ADDON_LOADED", "GUILD_ROSTER_UPDATE", "PLAYER_GUILD_UPDATE",
+        "CHAT_MSG_ADDON", "CHAT_MSG_SYSTEM", "CHAT_MSG_WHISPER" }) do
+        assert(W.registered[event], event .. " not registered")
+    end
+    for event in pairs(W.registered) do
+        assert(not event:match("^RGF_"), "internal signal registered with the game " .. event)
+    end
+    for _, p in ipairs(W.printed) do
+        assert(not p:find("does not know", 1, true), p)
+    end
+    noErrors()
+end)
+
 test("officer notes parse and format", function()
     setup(guild())
     local p = ns.ParseNote("1250,300 tank")

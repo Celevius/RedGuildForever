@@ -456,8 +456,3 @@ ns.On("RGF_READY", function()
         C_Timer.NewTicker(60, function() ns.RequestRoster() end)
     end
 end)
-
-if ns.eventFrame then
-    ns.eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
-    ns.eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
-end

@@ -163,5 +163,3 @@ ns.OnComm("SE", function(text, sender)
     ns.synced = { points = inc.points, alts = inc.alts, from = sender, at = time and time() or 0 }
     ns.Fire("RGF_POINTS_CHANGED")
 end)
-
-if ns.eventFrame then ns.eventFrame:RegisterEvent("CHAT_MSG_ADDON") end

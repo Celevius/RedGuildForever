@@ -4,7 +4,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.0.0"
+ns.version = "1.0.1"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
@@ -178,7 +178,11 @@ ns.handlers = {}
 function ns.On(event, fn)
     ns.handlers[event] = ns.handlers[event] or {}
     table.insert(ns.handlers[event], fn)
-    if ns.eventFrame then ns.eventFrame:RegisterEvent(event) end
+    -- RGF_ events are our own signals, only real game events get registered
+    if ns.eventFrame and not event:match("^RGF_") then
+        local ok = pcall(ns.eventFrame.RegisterEvent, ns.eventFrame, event)
+        if not ok then ns.Print("this client does not know the event " .. event) end
+    end
 end
 
 function ns.Fire(event, ...)

@@ -32,11 +32,25 @@ function M.flush()
     end
 end
 
+-- the real client throws on events it does not know, so we do too
+M.knownEvents = {
+    ADDON_LOADED = true, GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
+    CHAT_MSG_ADDON = true, CHAT_MSG_SYSTEM = true, CHAT_MSG_WHISPER = true,
+}
+M.registered = {}
+
 local function frameStub()
     local f = {}
     return setmetatable(f, {
         __index = function(t, k)
             local fn = function(self, ...)
+                if k == "RegisterEvent" then
+                    local event = ...
+                    if not M.knownEvents[event] then
+                        error('Attempt to register unknown event "' .. tostring(event) .. '"')
+                    end
+                    M.registered[event] = true
+                end
                 if k == "IsShown" then return rawget(t, "_shown") end
                 if k == "Show" then rawset(t, "_shown", true) end
                 if k == "Hide" then rawset(t, "_shown", false) end
