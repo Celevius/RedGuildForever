@@ -246,7 +246,7 @@ function ns.RefreshPicker()
         picker.slotEmpty:Hide()
         picker.itemName:SetText(link)
         local price, _, fixed = ns.ItemPrice(link, state.tier)
-        picker.price:SetText("Main spec costs |cffffffff" .. price .. " GP|r" .. (fixed and ", fixed price for this item" or ", off spec is free"))
+        picker.price:SetText("Main spec costs |cffffffff" .. price .. " GP|r, " .. ns.OffSpecText(price) .. (fixed and ", fixed price for this item" or ""))
     else
         picker.slot.link = nil
         if SetItemButtonTexture then pcall(SetItemButtonTexture, picker.slot, nil) end

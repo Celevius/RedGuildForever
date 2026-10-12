@@ -1181,6 +1181,212 @@ test("names written with a dash find the guild member", function()
     assert(ns.auction.bids["Lisa Brightwater-Forever"], "whisper bid matched")
 end)
 
+-- type into a settings box like a player would
+local function typeInto(box, value)
+    box:SetText(value)
+    box:GetScript("OnTextChanged")(box, true)
+end
+
+local function settingsView()
+    ns.ToggleStandings(5)
+    return ns.settingsViews[#ns.settingsViews]
+end
+
+test("rules start with the rule book values", function()
+    setup(guild())
+    eq(ns.Setting("baseGP"), 100) eq(ns.Setting("raidEP"), 100) eq(ns.Setting("onTimeEP"), 25)
+    eq(ns.Setting("decayPercent"), 10) eq(ns.Setting("minEP"), 300) eq(ns.Setting("bidSeconds"), 30)
+    local t = ns.Setting("tiers")
+    eq(t.normal, 100) eq(t.boss, 150) eq(t.rare, 200)
+    eq(ns.SlotMultiplier("INVTYPE_2HWEAPON"), 2)
+    eq(ns.SlotMultiplier("INVTYPE_FINGER"), 0.75)
+    eq(ns.SlotMultiplier(""), 1, "no slot")
+    eq(ns.SlotMultiplier("INVTYPE_TABARD"), 0, "tabards stay free")
+    eq(ns.OffSpecCost(300), 0, "off spec free by default")
+end)
+
+test("officers change prices in the settings and every price follows", function()
+    setup(guild())
+    W.itemSlots = { [90] = "INVTYPE_2HWEAPON", [91] = "INVTYPE_FINGER" }
+    local view = settingsView()
+    eq(view.ruleBoxes.tier_boss:GetText(), "150", "box shows the current value")
+    eq(view.save:IsEnabled(), false, "nothing to save yet")
+    typeInto(view.ruleBoxes.tier_boss, "175")
+    typeInto(view.ruleBoxes.mult_twohand, "2,5") -- a comma works like a dot
+    eq(view.save:IsEnabled(), true)
+    assert(view.preview:GetText():find("438 GP"), view.preview:GetText())
+    view.save:Click()
+    assert(view.status:GetText():find("Saved 2 changes"), view.status:GetText())
+    eq(ns.ItemPrice(W.link(90, "Axe"), "boss"), 438, "175 x 2.5")
+    eq(ns.ItemPrice(W.link(91, "Ring"), "normal"), 75, "unchanged rules stay")
+    local r = ns.Data().rules.tier_boss
+    eq(r.v, 175) eq(r.t, W.server) eq(r.by, "Cel Dru-Forever")
+    local log = ns.Log()
+    assert(log[#log].label:find("Item from the end boss 150 to 175"), log[#log].label)
+    eq(view.ruleBoxes.mult_twohand:GetText(), "2.5", "box shows the saved value")
+    noErrors()
+end)
+
+test("wrong values are refused and nothing is saved", function()
+    setup(guild())
+    local view = settingsView()
+    typeInto(view.ruleBoxes.baseGP, "0")
+    typeInto(view.ruleBoxes.raidEP, "120")
+    view.save:Click()
+    assert(view.status:GetText():find("between 1 and 100000"), view.status:GetText())
+    eq(ns.Setting("baseGP"), 100, "base GP unchanged, never 0")
+    eq(ns.Setting("raidEP"), 100, "nothing saved when one value is wrong")
+    eq(select(2, ns.SetRules({ decayPercent = "abc" })), "Weekly decay in percent must be a number")
+    eq(select(2, ns.SetRules({ decayPercent = 150 })), "Weekly decay in percent must be between 0 and 100")
+    view.discard:Click()
+    eq(view.ruleBoxes.baseGP:GetText(), "100", "discard shows the saved values again")
+end)
+
+test("EP, decay, new member limit and bidding time follow the rules", function()
+    setup(guild())
+    assert(ns.SetRules({ raidEP = 150, onTimeEP = 10, decayPercent = 50, minEP = 100, bidSeconds = 45 }))
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.Command("raid") ns.Command("ontime") W.flush()
+    eq(note("Lisa Brightwater"), "1160,500")
+    eq(ns.IsNewMember("Tom Hammer"), false, "200 EP is no longer new with a limit of 100")
+    ns.Decay() W.flush()
+    eq(note("Lisa Brightwater"), "580,250", "50 percent decay")
+    ns.StartAuction(W.link(92, "Timer Helm"))
+    eq(ns.auction.endsAt - W.now, 45, "45 seconds to bid")
+    noErrors()
+end)
+
+test("off spec can cost a part of the price", function()
+    setup(guild())
+    W.itemSlots = { [93] = "INVTYPE_CHEST" }
+    assert(ns.SetRules({ offSpecPercent = 50 }))
+    eq(ns.OffSpecCost(150), 75)
+    W.inRaid = true
+    ns.StartAuction(W.link(93, "Robe"), "normal")
+    ns.RecordBid("Lisa Brightwater", "OS")
+    ns.Award("Lisa Brightwater") W.flush()
+    eq(note("Lisa Brightwater"), "1000,575", "half of 150")
+    local said
+    for _, c in ipairs(W.chat) do if c.msg:find("for off spec for 75 GP") then said = true end end
+    assert(said, "announcement names the off spec price")
+    noErrors()
+end)
+
+test("members can look at the rules but not change them", function()
+    setup(guild())
+    W.canEdit = false
+    local view = settingsView()
+    eq(view.ruleBoxes.tier_boss:IsEnabled(), false, "boxes locked")
+    eq(view.defaults:IsEnabled(), false)
+    assert(view.status:GetText():find("Only the guild leader and officers"), view.status:GetText())
+    eq(ns.SetRules({ raidEP = 500 }), nil)
+    eq(ns.Setting("raidEP"), 100)
+end)
+
+test("rules travel with sync, the newest change wins", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2" -- Anna Frost counts as officer
+    -- Anna changed the end boss price, we changed raid EP later
+    assert(ns.SetRules({ tier_boss = 180 }))
+    local fromAnna = dataMessages()
+    ns.Data().rules = {}
+    W.server = W.server + 10
+    assert(ns.SetRules({ raidEP = 120 }))
+    local changed
+    ns.On("RGF_RULES_CHANGED", function() changed = true end)
+    deliverFrom(fromAnna, "Anna Frost")
+    eq(ns.Setting("tiers").boss, 180, "Anna's price arrived")
+    eq(ns.Data().rules.tier_boss.by, "Anna Frost-Forever")
+    eq(ns.Setting("raidEP"), 120, "our newer change stays")
+    assert(changed, "settings page is told")
+    noErrors()
+end)
+
+test("rules from sync outside the limits or from members are ignored", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^5", "GUILD", "Anna Frost-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^5^#baseGP,0," .. (W.server + 5) .. ";#unknown,5," .. (W.server + 5) .. ";#raidEP,140," .. (W.server + 5), "GUILD", "Anna Frost-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^5", "GUILD", "Anna Frost-Forever")
+    eq(ns.Setting("baseGP"), 100, "a base GP of 0 is refused")
+    eq(ns.Data().rules.unknown, nil)
+    eq(ns.Setting("raidEP"), 140, "the valid rule arrives")
+    -- Ben is rank 3, not an officer
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^6", "GUILD", "Ben Swift-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^6^#raidEP,999," .. (W.server + 50), "GUILD", "Ben Swift-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^6", "GUILD", "Ben Swift-Forever")
+    eq(ns.Setting("raidEP"), 140)
+end)
+
+test("fixed item prices are shared and clearing them too", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    W.itemSlots = { [94] = "INVTYPE_HAND" }
+    local gloves = W.link(94, "Gloves")
+    ns.Command("price " .. gloves .. " 250")
+    eq(ns.ItemPrice(gloves), 250)
+    local withPrice = dataMessages()
+    W.server = W.server + 5
+    ns.Command("price " .. gloves .. " clear")
+    eq(ns.ItemPrice(gloves), 100, "normal price again")
+    local cleared = dataMessages()
+    -- another computer gets the price, then the clearing
+    ns.Data().rules = {}
+    deliverFrom(withPrice, "Anna Frost")
+    eq(ns.ItemPrice(gloves), 250)
+    deliverFrom(cleared, "Anna Frost")
+    eq(ns.ItemPrice(gloves), 100, "clearing arrived")
+    noErrors()
+end)
+
+test("fixed prices from older versions move into the guild rules", function()
+    setup(guild())
+    W.itemSlots = { [95] = "INVTYPE_HAND" }
+    RedGuildForeverDB.priceOverrides[95] = 333
+    ns.RebuildFromRoster()
+    eq(ns.ItemPrice(W.link(95, "Old Gloves")), 333)
+    eq(next(RedGuildForeverDB.priceOverrides), nil, "old list emptied")
+    assert(ns.RealData().rules["item:95"].t, "time stamp for sync")
+end)
+
+test("rule changes in test mode stay in the test data", function()
+    setup(guild())
+    ns.SetTestMode(true)
+    local view = settingsView()
+    typeInto(view.ruleBoxes.raidEP, "999")
+    view.save:Click()
+    assert(view.status:GetText():find("test data"), view.status:GetText())
+    eq(ns.Setting("raidEP"), 999)
+    ns.SetTestMode(false)
+    eq(ns.Setting("raidEP"), 100, "real rules untouched")
+    eq(view.ruleBoxes.raidEP:GetText(), "100", "page shows the real rules again")
+end)
+
+test("reset to defaults asks first and is shared", function()
+    setup(guild())
+    assert(ns.SetRules({ tier_rare = 400, mult_small = 1 }))
+    local view = settingsView()
+    view.defaults:Click()
+    eq(W.popup, "REDGUILDFOREVER_RESET_RULES")
+    W.server = W.server + 1
+    StaticPopupDialogs["REDGUILDFOREVER_RESET_RULES"].OnAccept()
+    eq(ns.Setting("tiers").rare, 200) eq(ns.Setting("mult_small"), 0.75)
+    eq(ns.Data().rules.tier_rare.t, W.server, "new time stamp, so sync passes the reset on")
+    eq(view.ruleBoxes.tier_rare:GetText(), "200")
+end)
+
+test("rules are part of the backup", function()
+    setup(guild())
+    assert(ns.SetRules({ tier_boss = 160, mult_large = 1.25 }))
+    local backup = ns.ExportText()
+    ns.Data().rules = {}
+    eq(ns.Setting("tiers").boss, 150)
+    assert(ns.ImportText(backup))
+    eq(ns.Setting("tiers").boss, 160)
+    eq(ns.Setting("mult_large"), 1.25)
+end)
+
 test("members cannot change points", function()
     setup(guild())
     W.canEdit = false

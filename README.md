@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.5.1, updated on 8 October 2026 for the Forever beta client (interface 16001).
+Version 1.6.0, updated on 12 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -44,7 +44,9 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 ## The rules in the addon
 
-| Setting | Value |
+All values below are the defaults from the guild rule book. The guild leader and officers can change every one of them in the **Settings** tab under **Guild rules**. The rules are saved with the guild data and shared with **Sync**, so every officer uses the same values, and the newest change wins.
+
+| Setting | Default |
 |---|---|
 | Starting GP and lowest possible GP | 100 |
 | EP per raid night (raid and bench) | 100 |
@@ -52,17 +54,18 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 | Weekly decay of EP and GP | 10 percent |
 | New members until | 300 EP |
 | Bidding time | 30 seconds |
+| Off spec costs | 0 percent of the price, so free |
 | Who may change data | guild leader and rank 1, see below |
 
 Item prices are the base price times the slot.
 
-| Where it drops | Base GP |
+| Where it drops | Default base GP |
 |---|---|
 | Normal boss | 100 |
 | End boss | 150 |
 | Very rare | 200 |
 
-| Slot | Multiplier |
+| Slot | Default multiplier |
 |---|---|
 | Two handed weapon | 2 |
 | One handed weapon, chest, legs, head | 1.5 |
@@ -70,15 +73,15 @@ Item prices are the base price times the slot.
 | Wrist, neck, ring, cloak, off hand, shield, relic | 0.75 |
 | Items without a slot, like tokens | 1 |
 
+Shirts and tabards are always free. A single item can also get a fixed price with `/rgf price [item] 250`, and fixed prices are shared with Sync too.
+
 Who wins
 
 1. Main spec always goes before off spec
 2. In main spec, members with 300 EP or more go before new members
 3. Then the highest priority wins, priority is EP divided by GP
 4. A tie is decided by `/roll`, the addon reads the rolls and shows the winner
-5. Off spec is free, if several people want it they roll
-
-The values live at the top of `Core.lua` and `Pricing.lua`. Every officer must use the same version, so change them in this repository and not locally.
+5. Off spec costs the off spec percent of the price, free by default. If several people want it they roll
 
 **Who may change data.** The guild leader (rank 0) and rank 1 by default. The guild leader can allow more ranks by writing for example `EPGP officers 2` into the **Guild Information** text, then ranks 0, 1 and 2 may change data. Ranks count from the top of the rank list in Guild Settings, starting at 0. Sync only accepts data from these ranks.
 
@@ -134,6 +137,9 @@ The **Settings** tab and the game's Options under AddOns have the same settings.
 * **Test mode**, see above
 * **Show the minimap button**
 * **Open Start Bidding when I loot good items in a group**
+* **Guild rules**, every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
+
+The first three settings are only for you. The guild rules are the same for the whole guild.
 
 ## For officers
 

@@ -225,13 +225,13 @@ function ns.Command(line)
         local rest = line:sub((line:find(link, 1, true) or 0) + #link)
         local value = rest:match("(%d+)")
         if rest:lower():match("clear") then
-            local id = ns.ItemInfo(link)
-            if id then RedGuildForeverDB.priceOverrides[id] = nil end
-            ns.Print(link .. " uses the normal price again")
+            if not needOfficer() then return end
+            if ns.ClearPriceOverride(link) then ns.Print(link .. " uses the normal price again") end
         elseif value then
             if not needOfficer() then return end
-            ns.SetPriceOverride(link, tonumber(value))
-            ns.Print(link .. " now always costs " .. value .. " GP")
+            if ns.SetPriceOverride(link, tonumber(value)) then
+                ns.Print(link .. " now always costs " .. value .. " GP")
+            end
         else
             local normal = ns.ItemPrice(link, "normal")
             local boss = ns.ItemPrice(link, "boss")

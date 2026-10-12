@@ -4,38 +4,96 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "1.5.1"
+ns.version = "1.6.0"
 ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
 
 ------------------------------------------------------------------------
--- Settings. These match the guild loot rule book.
--- They are hardcoded on purpose: the Forever beta does not reliably load
--- SavedVariables on login, so every officer gets the same values.
+-- Guild rules. The defaults match the guild loot rule book. The guild
+-- leader and officers change them in the Settings tab, they are saved
+-- with the guild data and shared with Sync, so every officer uses the
+-- same values. Each rule has its own time stamp, the newest change wins.
 ------------------------------------------------------------------------
+ns.RULES = {
+    { section = "Item prices", key = "tier_normal", label = "Item from a normal boss", default = 100, min = 0, max = 100000 },
+    { key = "tier_boss", label = "Item from the end boss", default = 150, min = 0, max = 100000 },
+    { key = "tier_rare", label = "Very rare item", default = 200, min = 0, max = 100000 },
+    { key = "offSpecPercent", label = "Off spec costs, percent of the price", default = 0, min = 0, max = 100 },
+
+    { section = "Slot multipliers", key = "mult_twohand", label = "Two handed weapon", default = 2, min = 0, max = 10, decimal = true },
+    { key = "mult_large", label = "One handed weapon, chest, legs, head", default = 1.5, min = 0, max = 10, decimal = true },
+    { key = "mult_medium", label = "Shoulders, hands, feet, waist, trinket, ranged", default = 1, min = 0, max = 10, decimal = true },
+    { key = "mult_small", label = "Wrist, neck, ring, cloak, off hand, shield, relic", default = 0.75, min = 0, max = 10, decimal = true },
+    { key = "mult_noslot", label = "Items without a slot, like tokens", default = 1, min = 0, max = 10, decimal = true },
+
+    { section = "Effort points", key = "raidEP", label = "EP per raid night, raid and bench", default = 100, min = 0, max = 100000 },
+    { key = "onTimeEP", label = "EP for being on time, raid and bench", default = 25, min = 0, max = 100000 },
+    { key = "minEP", label = "New member until this much EP", default = 300, min = 0, max = 100000 },
+
+    { section = "Gear points and decay", key = "baseGP", label = "Starting GP and lowest possible GP", default = 100, min = 1, max = 100000 },
+    { key = "decayPercent", label = "Weekly decay in percent", default = 10, min = 0, max = 100 },
+
+    { section = "Bidding", key = "bidSeconds", label = "Bidding time in seconds", default = 30, min = 10, max = 300 },
+}
+ns.RULE = {}
+for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end
+
+-- Personal settings of this player, not shared.
 ns.defaults = {
-    baseGP = 100,        -- everyone starts with 100 GP, GP never decays below this
-    minEP = 300,         -- new members below this EP lose to members above it
-    decayPercent = 10,   -- weekly decay of EP and GP
-    raidEP = 100,        -- EP per raid night (raid and bench)
-    onTimeEP = 25,       -- bonus for being on time (raid and bench)
-    officerRank = 1,     -- rank index 0 (Guild Master) up to this index may run auctions and send standings
-    bidSeconds = 30,     -- how long bidding stays open
-    tiers = {            -- base GP depending on where the item drops
-        normal = 100,
-        boss = 150,
-        rare = 200,
-    },
-    tierOrder = { "normal", "boss", "rare" },
+    officerRank = 1,     -- rank index 0 (guild leader) up to this index may change data
     autoOpenLoot = true, -- open Start Bidding when an officer loots good items in a group
+    tierOrder = { "normal", "boss", "rare" },
     tierNames = { normal = "Normal boss", boss = "End boss", rare = "Very rare" },
 }
 
+-- The value of a guild rule, from the guild data or the default.
+function ns.Rule(key)
+    local def = ns.RULE[key]
+    local rules = ns.Data and ns.Data().rules
+    local e = rules and rules[key]
+    if e and e.v ~= nil then return e.v end
+    return def and def.default
+end
+
 function ns.Setting(key)
+    if ns.RULE[key] then return ns.Rule(key) end
+    if key == "tiers" then
+        return { normal = ns.Rule("tier_normal"), boss = ns.Rule("tier_boss"), rare = ns.Rule("tier_rare") }
+    end
     local db = RedGuildForeverDB
     if db and db.settings and db.settings[key] ~= nil then
         return db.settings[key]
     end
     return ns.defaults[key]
+end
+
+-- Check a typed value. Returns the number, or nil and a reason.
+function ns.CheckRule(key, value)
+    local def = ns.RULE[key]
+    if not def then return nil, "unknown setting " .. tostring(key) end
+    local n = tonumber(type(value) == "string" and value:gsub(",", ".") or value)
+    if not n then return nil, def.label .. " must be a number" end
+    if not def.decimal then n = math.floor(n + 0.5) end
+    if n < def.min or n > def.max then
+        return nil, string.format("%s must be between %s and %s", def.label, ns.FormatNumber(def.min), ns.FormatNumber(def.max))
+    end
+    return n
+end
+
+function ns.FormatNumber(n)
+    if type(n) ~= "number" then return tostring(n) end
+    if n == math.floor(n) then return string.format("%d", n) end
+    return (string.format("%.2f", n):gsub("0+$", ""):gsub("%.$", ""))
+end
+
+-- What off spec costs for an item with this main spec price.
+function ns.OffSpecCost(price)
+    return math.floor((price or 0) * ns.Rule("offSpecPercent") / 100 + 0.5)
+end
+
+function ns.OffSpecText(price)
+    local cost = ns.OffSpecCost(price)
+    if cost <= 0 then return "off spec is free" end
+    return "off spec costs |cffffffff" .. cost .. " GP|r"
 end
 
 function ns.SetSetting(key, value)

@@ -58,11 +58,14 @@ end
 
 -- copy a data set, used to start the test data from the real data
 local function copyData(src)
-    local players = {}
+    local players, rules = {}, {}
     for name, e in pairs(src.players or {}) do
         players[name] = { ep = e.ep, gp = e.gp, main = e.main, t = e.t, by = e.by }
     end
-    return { players = players, started = true }
+    for key, e in pairs(src.rules or {}) do
+        rules[key] = { v = e.v, t = e.t, by = e.by }
+    end
+    return { players = players, rules = rules, started = true }
 end
 
 function ns.RealData()
@@ -75,6 +78,7 @@ function ns.RealData()
         RedGuildForeverDB.guilds[key] = data
     end
     data.players = data.players or {}
+    data.rules = data.rules or {}
     return data
 end
 
@@ -288,7 +292,54 @@ function ns.RebuildFromRoster()
         if not lookup[full:lower()] then lookup[full:lower()] = full end
     end
     ns.members, ns.lookup = members, lookup
+    if ns.MigrateOldOverrides then ns.MigrateOldOverrides() end
     ns.Fire("RGF_POINTS_CHANGED")
+end
+
+------------------------------------------------------------------------
+-- Changing guild rules
+------------------------------------------------------------------------
+-- Change several rules at once. values maps rule keys to typed values.
+-- Returns the number of changed rules, or nil and a reason.
+function ns.SetRules(values)
+    if not ns.CanChange() then return nil, "only the guild leader and officers can change the rules" end
+    local checked = {}
+    for _, def in ipairs(ns.RULES) do
+        local value = values[def.key]
+        if value ~= nil then
+            local n, err = ns.CheckRule(def.key, value)
+            if not n then return nil, err end
+            checked[def.key] = n
+        end
+    end
+    local data = ns.Data()
+    data.rules = data.rules or {}
+    local now, me = ns.Now(), ns.PlayerName()
+    local parts = {}
+    for _, def in ipairs(ns.RULES) do
+        local n = checked[def.key]
+        if n ~= nil and n ~= ns.Rule(def.key) then
+            table.insert(parts, string.format("%s %s to %s", def.label, ns.FormatNumber(ns.Rule(def.key)), ns.FormatNumber(n)))
+            data.rules[def.key] = { v = n, t = now, by = me }
+        end
+    end
+    if #parts == 0 then return 0 end
+    local log = ns.Log()
+    if log then
+        table.insert(log, { time = time and time() or 0, label = "Settings changed, " .. table.concat(parts, ", "), count = #parts, by = me })
+        while #log > 500 do table.remove(log, 1) end
+    end
+    ns.Fire("RGF_RULES_CHANGED")
+    ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_LOCAL_CHANGE")
+    return #parts
+end
+
+-- Set every rule back to the rule book. Fixed item prices stay.
+function ns.ResetRules()
+    local values = {}
+    for _, def in ipairs(ns.RULES) do values[def.key] = def.default end
+    return ns.SetRules(values)
 end
 
 ------------------------------------------------------------------------

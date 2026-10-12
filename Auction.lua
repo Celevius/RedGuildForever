@@ -5,7 +5,7 @@
 --   1. Main spec before off spec
 --   2. Main spec: members with at least minEP before new members,
 --      then the highest priority (EP / GP), ties are decided by /roll
---   3. Off spec is free, the highest /roll wins
+--   3. Off spec costs the off spec percent of the price (free by default), the highest /roll wins
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever
@@ -284,7 +284,7 @@ function ns.Award(name)
     local bid = a.bids[full]
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
-    local cost = spec == "MS" and a.price or 0
+    local cost = spec == "MS" and a.price or ns.OffSpecCost(a.price)
     ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
     local main = ns.Adjust(full, 0, cost)
     ns.EndAction()
@@ -294,7 +294,11 @@ function ns.Award(name)
     if spec == "MS" then
         say(a, string.format("%s wins %s for %d GP.", who, a.link, cost))
     else
-        say(a, string.format("%s gets %s for off spec. It is free.", who, a.link))
+        if cost > 0 then
+            say(a, string.format("%s gets %s for off spec for %d GP.", who, a.link, cost))
+        else
+            say(a, string.format("%s gets %s for off spec. It is free.", who, a.link))
+        end
     end
     if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
     closeOwnPopup(a, full)

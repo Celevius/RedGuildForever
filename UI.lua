@@ -532,24 +532,89 @@ end
 local settingsViews = {}
 ns.settingsViews = settingsViews
 
-local function buildSettingsContent(parent, top)
-    local view = {}
-    local y = top or -12
-    local function heading(label)
-        local fs = text(parent, "GameFontNormal")
+local GREEN, RED_TEXT = "|cff40ff40", "|cffff5555"
+
+-- read the typed rules, falling back to the saved value for empty boxes
+local function typedRule(view, key)
+    local box = view.ruleBoxes[key]
+    local n = box and ns.CheckRule(key, box:GetText())
+    if n == nil then return ns.Rule(key) end
+    return n
+end
+
+local function fillRules(view)
+    view.filling = true
+    for key, box in pairs(view.ruleBoxes) do
+        box:SetText(ns.FormatNumber(ns.Rule(key)))
+    end
+    view.filling = false
+    view.dirty = false
+end
+
+local function updateRulesPreview(view)
+    local twohand = ns.Round(typedRule(view, "tier_boss") * typedRule(view, "mult_twohand"))
+    local ring = ns.Round(typedRule(view, "tier_normal") * typedRule(view, "mult_small"))
+    local os = math.floor(twohand * typedRule(view, "offSpecPercent") / 100 + 0.5)
+    view.preview:SetText(string.format(
+        "Example, a two handed weapon from the end boss costs |cffffffff%d GP|r, for off spec |cffffffff%s|r. A ring from a normal boss costs |cffffffff%d GP|r.",
+        twohand, os > 0 and (os .. " GP") or "nothing", ring))
+    local canEdit = ns.CanEdit()
+    view.save:SetEnabled(canEdit and view.dirty and true or false)
+    view.discard:SetEnabled(view.dirty and true or false)
+end
+
+local function saveRules(view)
+    local values = {}
+    for key, box in pairs(view.ruleBoxes) do values[key] = box:GetText() end
+    local changed, err = ns.SetRules(values)
+    if not changed then
+        view.status:SetText(RED_TEXT .. err .. "|r")
+        return false
+    end
+    for _, box in pairs(view.ruleBoxes) do box:ClearFocus() end
+    fillRules(view)
+    if changed == 0 then
+        view.status:SetText("Nothing changed.")
+    elseif ns.IsTest() then
+        view.status:SetText(ns.TEST_TAG .. GREEN .. "Saved " .. changed .. (changed == 1 and " change" or " changes") .. " in the test data.|r")
+    else
+        view.status:SetText(GREEN .. "Saved " .. changed .. (changed == 1 and " change" or " changes") .. ". Sync shares them with the other officers.|r")
+    end
+    updateRulesPreview(view)
+    return true
+end
+ns.SaveRulesView = saveRules
+
+local function buildSettingsContent(holder, top)
+    local view = { ruleBoxes = {}, ruleOrder = {} }
+
+    -- everything sits on a scrolling child, the page is longer than the window
+    local scroll = create("ScrollFrame", nil, holder, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 0, top or -4)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 4)
+    local parent = CreateFrame("Frame", nil, scroll)
+    parent:SetWidth(480)
+    scroll:SetScrollChild(parent)
+    view.scroll = scroll
+
+    local y = -8
+    local function heading(label, font)
+        local fs = text(parent, font or "GameFontNormal")
         fs:SetPoint("TOPLEFT", 12, y)
         fs:SetText(label)
         y = y - 22
         return fs
     end
-    local function paragraph(font)
+    local function paragraph(font, lines)
         local fs = text(parent, font or "GameFontHighlightSmall")
         fs:SetPoint("TOPLEFT", 16, y)
-        fs:SetWidth(460)
+        fs:SetWidth(450)
         fs:SetWordWrap(true)
+        y = y - (lines or 1) * 13 - 6
         return fs
     end
 
+    -- Test mode
     heading("Test mode")
     view.test = checkbox(parent, "Test mode", function(checked)
         ns.SetTestMode(checked)
@@ -557,11 +622,9 @@ local function buildSettingsContent(parent, top)
     end)
     view.test:SetPoint("TOPLEFT", 12, y)
     y = y - 30
-    local info = paragraph()
-    info:SetText("Try every function alone. The addon works on a copy of your data with a simulated raid. Raid EP, bench, decay, the editor, alts, sync, bidding, rolls and awards all work, but nothing is sent to other players and your real points stay as they are.")
-    y = y - 52
-    view.raid = paragraph()
-    y = y - 36
+    local info = paragraph(nil, 4)
+    info:SetText("Try every function alone. The addon works on a copy of your data and rules with a simulated raid. Raid EP, bench, decay, the editor, alts, sync, bidding, rolls, awards and the rules below all work, but nothing is sent to other players and your real data stays as it is.")
+    view.raid = paragraph(nil, 3)
     view.reset = button(parent, "Reset test data", 130, function()
         ns.ResetTestData()
         ns.Print(ns.TEST_TAG .. "test data copied again from the real data, new simulated raid")
@@ -575,6 +638,7 @@ local function buildSettingsContent(parent, top)
     view.newRaid:SetPoint("LEFT", view.reset, "RIGHT", 4, 0)
     y = y - 40
 
+    -- Interface
     heading("Interface")
     view.minimap = checkbox(parent, "Show the minimap button", function(checked)
         ns.SetMinimapShown(checked)
@@ -587,9 +651,66 @@ local function buildSettingsContent(parent, top)
     view.autoLoot:SetPoint("TOPLEFT", 12, y)
     y = y - 40
 
+    -- Guild rules
+    heading("Guild rules", "GameFontNormalLarge")
+    view.rulesInfo = paragraph(nil, 3)
+    view.rulesInfo:SetText("These rules are the same for the whole guild. Sync shares them with every officer, the newest change wins. The guild leader and officers can change them, everyone else can look.")
+
+    for _, def in ipairs(ns.RULES) do
+        if def.section then
+            y = y - 4
+            heading(def.section, "GameFontNormalSmall")
+        end
+        local label = text(parent, "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", 22, y - 4)
+        label:SetWidth(320)
+        label:SetText(def.label)
+        local box = ns.UIInputBox(parent, 64, not def.decimal)
+        box:SetPoint("TOPLEFT", 350, y)
+        box:SetScript("OnTextChanged", function()
+            if view.filling then return end
+            view.dirty = true
+            view.status:SetText("")
+            updateRulesPreview(view)
+        end)
+        box:SetScript("OnEnterPressed", function() saveRules(view) end)
+        box:SetScript("OnTabPressed", function(self)
+            local i = self.ruleIndex % #view.ruleOrder + 1
+            view.ruleOrder[i]:SetFocus()
+        end)
+        local tip = text(parent, "GameFontDisableSmall")
+        tip:SetPoint("LEFT", box, "RIGHT", 8, 0)
+        tip:SetText("default " .. ns.FormatNumber(def.default))
+        view.ruleBoxes[def.key] = box
+        table.insert(view.ruleOrder, box)
+        box.ruleIndex = #view.ruleOrder
+        y = y - 24
+    end
+
+    y = y - 6
+    view.preview = paragraph(nil, 2)
+    view.status = paragraph(nil, 2)
+    view.changedBy = paragraph("GameFontDisableSmall", 1)
+
+    view.save = button(parent, "Save rules", 110, function() saveRules(view) end)
+    view.save:SetPoint("TOPLEFT", 14, y)
+    view.discard = button(parent, "Discard changes", 130, function()
+        fillRules(view)
+        view.status:SetText("")
+        updateRulesPreview(view)
+    end)
+    view.discard:SetPoint("LEFT", view.save, "RIGHT", 4, 0)
+    view.defaults = button(parent, "Reset to defaults", 130, function()
+        if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_RESET_RULES") end
+    end)
+    view.defaults:SetPoint("LEFT", view.discard, "RIGHT", 4, 0)
+    y = y - 40
+
     view.version = paragraph("GameFontDisableSmall")
     view.version:SetText("Red Guild EPGP " .. ns.version)
 
+    parent:SetHeight(-y + 20)
+    fillRules(view)
     table.insert(settingsViews, view)
     return view
 end
@@ -604,6 +725,17 @@ function ns.RefreshSettings()
     else
         raidText = "|cff999999Turn on test mode to get a simulated raid.|r"
     end
+    local canEdit = ns.CanEdit()
+
+    -- who changed the rules last
+    local last
+    for _, e in pairs(ns.Data().rules or {}) do
+        if e.t and (not last or e.t > last.t) then last = e end
+    end
+    local changedBy = last and last.by
+        and ("Rules last changed by " .. ns.ShortName(last.by) .. " on " .. date("%d.%m. %H:%M", last.t))
+        or "The rules are still the defaults of the rule book."
+
     for _, view in ipairs(settingsViews) do
         view.test:SetChecked(test)
         view.raid:SetText(raidText)
@@ -612,6 +744,15 @@ function ns.RefreshSettings()
         local mm = RedGuildForeverDB and RedGuildForeverDB.minimap
         view.minimap:SetChecked(not (mm and mm.hide))
         view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
+
+        if not view.dirty then fillRules(view) end
+        for _, box in pairs(view.ruleBoxes) do box:SetEnabled(canEdit) end
+        view.defaults:SetEnabled(canEdit)
+        view.changedBy:SetText(changedBy)
+        if not canEdit and (view.status:GetText() or "") == "" then
+            view.status:SetText("|cff999999Only the guild leader and officers can change the rules.|r")
+        end
+        updateRulesPreview(view)
     end
 end
 
@@ -629,7 +770,7 @@ local function registerOptions()
     local title = text(panel, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 12, -12)
     title:SetText("Red Guild EPGP")
-    buildSettingsContent(panel, -44)
+    buildSettingsContent(panel, -40)
     panel:SetScript("OnShow", function() ns.RefreshSettings() end)
     local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
     if ok and category then
@@ -639,6 +780,27 @@ local function registerOptions()
 end
 ns.On("RGF_READY", registerOptions)
 ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
+ns.On("RGF_RULES_CHANGED", function() ns.RefreshSettings() end)
+
+if StaticPopupDialogs then
+    StaticPopupDialogs["REDGUILDFOREVER_RESET_RULES"] = {
+        text = "Set all guild rules back to the defaults of the rule book?\nFixed prices for single items stay.",
+        button1 = YES or "Yes",
+        button2 = NO or "No",
+        OnAccept = function()
+            local changed, err = ns.ResetRules()
+            if changed then
+                ns.Print(changed > 0 and "guild rules set back to the defaults" or "the rules already are the defaults")
+            else
+                ns.Print(err)
+            end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+end
 
 local function buildHistoryPage(parent)
     local page = CreateFrame("Frame", nil, parent)
@@ -1227,7 +1389,8 @@ local function showBid(row, b, isWinner, canAward)
         row.cells.pr:SetText(ns.FormatPR(b.pr))
         if b.newcomer then row.cells.pr:SetTextColor(0.4, 0.78, 1) else row.cells.pr:SetTextColor(1, 0.82, 0) end
     elseif b.spec == "OS" then
-        row.cells.pr:SetText("free")
+        local osCost = ns.OffSpecCost(ns.auction and ns.auction.price or 0)
+        row.cells.pr:SetText(osCost > 0 and (osCost .. " GP") or "free")
         row.cells.pr:SetTextColor(0.7, 0.7, 0.7)
     else
         row.cells.pr:SetText("")
@@ -1269,7 +1432,7 @@ function ns.RefreshLootMaster()
     local _, _, icon = ns.ItemInfo(a.link)
     setPortrait(lm, icon or ICON_UNKNOWN)
     lm.item:SetText(a.link)
-    lm.price:SetText("Main spec costs |cffffffff" .. a.price .. " GP|r, off spec is free" .. (a.fixed and ", fixed price" or ""))
+    lm.price:SetText("Main spec costs |cffffffff" .. a.price .. " GP|r, " .. ns.OffSpecText(a.price) .. (a.fixed and ", fixed price" or ""))
     lm.slot:SetItem(a.link)
     for tier, b in pairs(lm.tierButtons) do
         b:SetEnabled(not a.fixed and tier ~= a.tier)
@@ -1401,7 +1564,7 @@ ns.On("RGF_INCOMING_AUCTION", function(inc)
     setPortrait(popup, icon or ICON_UNKNOWN)
     popup.slot:SetItem(inc.link)
     popup.item:SetText(inc.link)
-    popup.price:SetText("Main spec |cffffffff" .. inc.price .. " GP|r, off spec is free")
+    popup.price:SetText("Main spec |cffffffff" .. inc.price .. " GP|r, " .. ns.OffSpecText(inc.price))
 
     local me = ns.PlayerName()
     local ep, gp, pr, mainName = ns.GetPoints(me)

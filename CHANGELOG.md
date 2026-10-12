@@ -2,6 +2,24 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.6.0 (12 October 2026)
+
+### Added
+* **Guild rules** in the Settings tab and in the game's Options. The guild leader and officers can change every price, slot multiplier, EP amount, the starting GP, the weekly decay, the new member limit and the bidding time
+* Off spec can cost a part of the price. The default stays 0 percent, so off spec is still free
+* An example line in the settings shows right away what a two handed weapon from the end boss and a ring cost with the typed values
+* **Save rules**, **Discard changes** and **Reset to defaults**, the reset asks first. The settings show who changed the rules last
+* Every rule change is listed in the History tab
+
+### Changed
+* The rules are saved with the guild data and shared with Sync and the backup. Every officer uses the same values and the newest change of each rule wins
+* Fixed prices for single items are now shared with Sync too, also when a fixed price is cleared. Fixed prices from older versions move over by themselves
+* In test mode changed rules stay in the test data
+* The settings page scrolls, because it got longer
+
+### Fixed
+* Wrong values from Sync, like a starting GP of 0, are ignored, so a broken setting can never reach the whole guild
+
 ## 1.5.1 (8 October 2026)
 
 ### Fixed

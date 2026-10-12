@@ -76,9 +76,15 @@ local incoming = {}
 local broadcastQueued = false
 ns.syncInfo = { at = nil, from = {}, changes = 0 }
 
--- Entries are "Name,ep,gp,time" and "Alt>Main,time", separated by ";".
+-- Entries are "Name,ep,gp,time", "Alt>Main,time" and for guild rules
+-- "#rule,value,time", separated by ";". A cleared fixed item price is
+-- sent as the value "x". Versions 1.5 and older ignore rule entries.
 local function encode()
     local entries = {}
+    for key, e in pairs(ns.Data().rules or {}) do
+        local value = e.v == nil and "x" or ns.FormatNumber(e.v)
+        table.insert(entries, string.format("#%s,%s,%d", key, value, e.t or 0))
+    end
     for full, e in pairs(ns.Players()) do
         local t = e.t or 0
         if e.main then
@@ -91,7 +97,24 @@ local function encode()
     return entries
 end
 
+-- Returns the player name (or "#rule") and the entry.
 local function decode(entryText)
+    local key, value, rt = entryText:match("^#([^,;]+),([^,;]*),(%d+)$")
+    if key then
+        if not (ns.RULE[key] or key:match("^item:%d+$")) then return nil end
+        local v
+        if value ~= "x" then
+            v = tonumber(value)
+            if not v then return nil end
+            if ns.RULE[key] then
+                v = ns.CheckRule(key, v)
+                if not v then return nil end -- out of range, ignore it
+            elseif v < 0 then
+                return nil
+            end
+        end
+        return "#" .. key, { v = v, t = tonumber(rt) }
+    end
     local alt, main, t = entryText:match("^(.-)>(.-),(%d+)$")
     if alt then
         return ns.FullName(alt), { main = ns.FullName(main), t = tonumber(t) }
@@ -189,23 +212,39 @@ end)
 
 -- Merge the data of another officer. Returns how many entries changed and
 -- whether we have entries the sender does not know or knows older.
+-- Merge data of another officer. Players and "#rule" entries both keep
+-- the newest change. Returns how many entries changed and whether we have
+-- entries the sender does not know or knows older.
 function ns.MergeData(theirs, sender)
-    local mine = ns.Players()
-    local changes = 0
+    local data = ns.Data()
+    data.rules = data.rules or {}
+    local players, rules = data.players, data.rules
+    local changes, rulesChanged = 0, false
+    local function tableFor(name)
+        if name:sub(1, 1) == "#" then return rules, name:sub(2) end
+        return players, name
+    end
     for name, e in pairs(theirs) do
-        local local_ = mine[name]
+        local tbl, key = tableFor(name)
+        local local_ = tbl[key]
         if not local_ or (e.t or 0) > (local_.t or 0) then
             e.by = sender
-            mine[name] = e
+            tbl[key] = e
             changes = changes + 1
+            if tbl == rules then rulesChanged = true end
         end
     end
     local weAreNewer = false
-    for name, e in pairs(mine) do
-        local t = theirs[name]
-        if not t or (e.t or 0) > (t.t or 0) then weAreNewer = true break end
+    local function check(tbl, prefix)
+        for key, e in pairs(tbl) do
+            local t = theirs[prefix .. key]
+            if not t or (e.t or 0) > (t.t or 0) then weAreNewer = true return end
+        end
     end
-    if changes > 0 or next(theirs) then ns.Data().started = true end
+    check(players, "")
+    if not weAreNewer then check(rules, "#") end
+    if changes > 0 or next(theirs) then data.started = true end
+    if rulesChanged then ns.Fire("RGF_RULES_CHANGED") end
     return changes, weAreNewer
 end
 
