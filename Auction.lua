@@ -210,12 +210,14 @@ function ns.SetAuctionPrice(gp)
     return true
 end
 
-function ns.RecordBid(name, spec)
-    local a = ns.auction
+function ns.RecordBid(name, spec, auction)
+    local a = auction or ns.auction
     if not a or not a.open then return false end
     if spec ~= "MS" and spec ~= "OS" and spec ~= "PASS" then return false end
     local full = ns.Resolve(name)
     local bid = a.bids[full] or { name = full }
+    -- the name exactly as the game sent it, to whisper back
+    if type(name) == "string" and name ~= full then bid.raw = name end
     bid.spec = spec
     bid.at = GetTime and GetTime() or 0
     a.bids[full] = bid
@@ -227,6 +229,7 @@ function ns.CloseBidding()
     local a = ns.auction
     if not a or not a.open then return end
     a.open = false
+    ns.lastClosed = { link = a.link, at = GetTime and GetTime() or 0 }
     local all, ms, os = ns.SortedBids(a)
     if #all == 0 then
         say(a, "Bids closed for " .. a.link .. ". Nobody wants it, it goes to the guild bank or gets disenchanted.")
@@ -302,6 +305,12 @@ function ns.Award(name)
     end
     if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
     closeOwnPopup(a, full)
+    -- tell the winner, also players without the addon, and the new priority
+    if full ~= ns.PlayerName() and not a.test then
+        local ep, gp, pr = ns.GetPoints(full)
+        ns.SendChat(string.format("You got %s for %d GP. Your priority is now %s (%d EP, %d GP).",
+            a.link, cost, ns.FormatPR(pr), ep, gp), "WHISPER", bid and bid.raw or ns.ShortName(full))
+    end
     ns.lastAward = { link = a.link, name = full, cost = cost }
     ns.auction = nil
     ns.Fire("RGF_AUCTION_CHANGED")
@@ -365,18 +374,60 @@ local whisperWords = {
     os = "OS", off = "OS", offspec = "OS", greed = "OS",
     pass = "PASS",
 }
+-- words that clearly mean a bid, these get an answer also when nothing is open
+local clearBids = { ms = true, mainspec = true, os = true, offspec = true, pass = true }
+
+-- "ms", "MS 2", "os 1", "pass". Returns the spec, the item number (or nil)
+-- and the word.
+function ns.ParseWhisperBid(text)
+    local ok, word, number = pcall(function()
+        local t = text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+        local w, n = t:match("^(%S+)%s*(%d*)$")
+        return w, n
+    end)
+    if not ok or not word then return nil end
+    local spec = whisperWords[word]
+    if not spec then return nil end
+    return spec, tonumber(number), word
+end
+
+-- The open auctions of this loot master, numbered like in the raid announcement
+function ns.OpenAuctions()
+    local list = {}
+    if ns.auction and ns.auction.open then table.insert(list, ns.auction) end
+    return list
+end
+
+local function bidReply(a, spec)
+    if spec == "PASS" then return "You passed on " .. a.link .. "." end
+    return "Got your " .. (spec == "MS" and "main spec" or "off spec") .. " bid for " .. a.link .. "."
+end
 
 ns.On("CHAT_MSG_WHISPER", function(text, sender)
-    local a = ns.auction
-    if not a or not a.open or a.test or type(text) ~= "string" then return end
-    local ok, word = pcall(function() return text:lower():gsub("%s", "") end)
-    if not ok then return end
-    local spec = whisperWords[word]
+    if type(text) ~= "string" or ns.IsTest() then return end
+    local spec, number, word = ns.ParseWhisperBid(text)
     if not spec then return end
-    if ns.RecordBid(sender, spec) then
-        local reply = spec == "PASS" and ("You passed on " .. a.link .. ".")
-            or ("Got your " .. (spec == "MS" and "main spec" or "off spec") .. " bid for " .. a.link .. ".")
-        ns.SendChat(reply, "WHISPER", sender)
+    local open = ns.OpenAuctions()
+    local a
+    if number then
+        for _, x in ipairs(open) do if (x.n or 1) == number then a = x end end
+    elseif #open == 1 then
+        a = open[1]
+    end
+    if a then
+        if ns.RecordBid(sender, spec, a) then ns.SendChat(bidReply(a, spec), "WHISPER", sender) end
+        return
+    end
+    -- nothing to bid on: answer real bids, but not a "+" for a raid invite
+    if not clearBids[word] or not ns.CanEdit() or not (IsInGroup and IsInGroup()) then return end
+    if #open > 1 then
+        local items = {}
+        for _, x in ipairs(open) do table.insert(items, (x.n or 1) .. " " .. x.link) end
+        ns.SendChat("Several items are open: " .. table.concat(items, ", ") .. ". Whisper for example ms " .. (open[1].n or 1) .. " or os " .. (open[#open].n or 1) .. ".", "WHISPER", sender)
+    elseif ns.lastClosed and ns.lastClosed.at and (GetTime() - ns.lastClosed.at) < 120 then
+        ns.SendChat("Bidding for " .. ns.lastClosed.link .. " is closed already.", "WHISPER", sender)
+    else
+        ns.SendChat("No bidding is open right now. Wait for the announcement in raid chat.", "WHISPER", sender)
     end
 end)
 
@@ -416,8 +467,9 @@ end)
 
 ns.OnComm("B", function(text, sender)
     local p = ns.Split(text)
-    local a = ns.auction
-    if a and a.id == p[2] then ns.RecordBid(sender, p[3]) end
+    for _, a in ipairs(ns.OpenAuctions()) do
+        if a.id == p[2] then ns.RecordBid(sender, p[3], a) end
+    end
 end)
 
 ns.OnComm("C", function(text)

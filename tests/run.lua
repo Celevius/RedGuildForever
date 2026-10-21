@@ -816,13 +816,15 @@ end
 ------------------------------------------------------------------------
 local function useComputer(c)
     _G.RedGuildForeverDB = c.db
+    _G.RedGuildForeverBackup = c.backup
     _G.RedGuildForever = c.ns
     W.player, W.rank = c.name, c.rank
     W.context = c
 end
 
 local function network()
-    local me = { name = W.player, rank = W.rank or 0, db = _G.RedGuildForeverDB, ns = ns }
+    _G.RedGuildForeverBackup = _G.RedGuildForeverBackup or {}
+    local me = { name = W.player, rank = W.rank or 0, db = _G.RedGuildForeverDB, backup = _G.RedGuildForeverBackup, ns = ns }
     W.switch = useComputer
     W.context = me
     W.flush()
@@ -837,8 +839,9 @@ local function addComputer(name, rank, copy)
     for full, e in pairs(ns.RealData().players) do
         base[full] = { ep = e.ep, gp = e.gp, main = e.main, t = e.t }
     end
-    local c = { name = name, rank = rank, ns = {}, db = {} }
+    local c = { name = name, rank = rank, ns = {}, db = {}, backup = {} }
     _G.RedGuildForeverDB = c.db
+    _G.RedGuildForeverBackup = c.backup
     W.player, W.rank, W.context = name, rank, c
     W.load(c.ns)
     if copy then
@@ -1766,6 +1769,108 @@ test("an alt brings its points to the main, undo takes them back", function()
     assert(ns.Undo())
     eq(note("Max Ironhide"), "1000,100", "the link is undone")
     eq(note("Ben Swift"), "300,250", "Ben has his own points again")
+    noErrors()
+end)
+
+------------------------------------------------------------------------
+-- Whispers and automatic backups
+------------------------------------------------------------------------
+local function whisper(text, from)
+    W.chat = {}
+    ns.Fire("CHAT_MSG_WHISPER", text, (from or "Ben Swift") .. "-Forever")
+    local answers = {}
+    for _, c in ipairs(W.chat) do
+        if c.channel == "WHISPER" then table.insert(answers, c.msg) end
+    end
+    W.now = W.now + 3 -- the next whisper is not too fast
+    return answers, table.concat(answers, " | ")
+end
+
+test("whisper commands for players without the addon", function()
+    setup(guild())
+    local _, a = whisper("!ep", "Lisa Brightwater")
+    eq(a, "Lisa Brightwater: 1000 EP, 500 GP, priority 2.00, place 3 of 4.")
+    _, a = whisper("!ep max")
+    assert(a:find("^Max Ironhide: 1000 EP, 100 GP, priority 10.00, place 1 of 4"), a)
+    _, a = whisper("!ep Tom")
+    assert(a:find("More than one player matches Tom: Tom Hammer, Tom Spark"), a)
+    _, a = whisper("!EP Tom Spark")
+    assert(a:find("uses the points of Tom Hammer"), a)
+    assert(a:find("New member until 300 EP"), a)
+    _, a = whisper("!ep", "Ben Swift")
+    assert(a:find("^Ben Swift: 0 EP, 100 GP, priority 0.00"), a)
+    _, a = whisper("!top")
+    eq(a, "Top 4: 1. Max Ironhide 10.00, 2. Anna Frost 2.50, 3. Lisa Brightwater 2.00, 4. Tom Hammer 2.00")
+    _, a = whisper("!top mages")
+    eq(a, "Top 1 mages: 1. Anna Frost 2.50")
+    _, a = whisper("!top bards")
+    eq(a, "I do not know the class bards.")
+    _, a = whisper("!bid")
+    eq(a, "No bidding is open right now.")
+    _, a = whisper("!help")
+    assert(a:find("!ep") and a:find("ms, os or pass"), a)
+    -- not a command, and too fast after the last one
+    local list = whisper("hello there")
+    eq(#list, 0)
+    whisper("!ep")
+    W.now = W.now - 3
+    list = whisper("!ep")
+    eq(#list, 0, "one answer every two seconds")
+    -- in test mode real whispers get no answer
+    ns.SetTestMode(true)
+    list = whisper("!ep", "Max Ironhide")
+    eq(#list, 0)
+    noErrors()
+end)
+
+test("whisper bids always get an answer, and the winner a whisper", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide" }
+    local _, a = whisper("ms", "Lisa Brightwater")
+    eq(a, "No bidding is open right now. Wait for the announcement in raid chat.")
+    local list = whisper("+", "Lisa Brightwater")
+    eq(#list, 0, "a + for a raid invite gets no answer")
+    ns.StartAuction(W.link(50, "Ring of Answers"))
+    _, a = whisper("!bid")
+    assert(a:find("Ring of Answers%]|h|r for 100 GP, 30 seconds left") and a:find("Whisper me ms, os or pass"), a)
+    _, a = whisper("MS ", "Lisa Brightwater")
+    assert(a:find("Got your main spec bid"), a)
+    ns.CloseBidding()
+    _, a = whisper("os", "Max Ironhide")
+    assert(a:find("is closed already"), a)
+    W.chat = {}
+    ns.Award("Lisa Brightwater")
+    local told
+    for _, c in ipairs(W.chat) do
+        if c.channel == "WHISPER" and c.target == "Lisa Brightwater" then told = c.msg end
+    end
+    eq(told, "You got " .. W.link(50, "Ring of Answers") .. " for 100 GP. Your priority is now 1.67 (1000 EP, 600 GP).")
+    noErrors()
+end)
+
+test("automatic backups, and the newest comes back when the save file is empty", function()
+    setup(guild())
+    eq(ns.AutoBackup("test"), true, "first backup")
+    eq(ns.AutoBackup("test"), false, "nothing changed, no second copy")
+    for i = 1, 4 do
+        ns.Adjust("Lisa Brightwater", i, 0)
+        assert(ns.AutoBackup("test"))
+    end
+    eq(#RedGuildForeverBackup.list, 3, "the newest three are kept")
+    -- changes and logging out make a backup by themselves
+    ns.Adjust("Lisa Brightwater", 100, 0)
+    ns.Fire("PLAYER_LOGOUT")
+    local newest = ns.LatestAutoBackup()
+    assert(newest.text:find("Lisa Brightwater:100:0"), "the newest change is in it")
+    -- the main save file comes back empty
+    RedGuildForeverDB.guilds = {}
+    ns.Invalidate()
+    eq(ns.HasData(), false)
+    ns.RebuildFromRoster()
+    eq(ns.HasData(), true, "restored by itself")
+    eq(note("Lisa Brightwater"), "1110,500")
+    assert(W.printed[#W.printed - 0]:find("automatic backup") or W.printed[#W.printed - 1]:find("automatic backup"), W.printed[#W.printed])
     noErrors()
 end)
 

@@ -424,6 +424,7 @@ function ns.RebuildFromRoster()
     ns.members, ns.lookup = members, lookup
     if ns.MigrateOldOverrides then ns.MigrateOldOverrides() end
     ns.MigrateOldBench()
+    if ns.CheckEmptyData then ns.CheckEmptyData() end
     ns.Fire("RGF_POINTS_CHANGED")
 end
 

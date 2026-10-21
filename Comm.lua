@@ -588,6 +588,7 @@ ns.OnComm("E", function(text, sender)
     local entryTexts = {}
     for entryText in textValue:gmatch("[^;]+") do table.insert(entryTexts, entryText) end
     local changes = ns.MergeEntries(entryTexts, sender)
+    if changes > 0 then ns.Fire("RGF_DATA_MERGED") end
     ns.syncInfo.from[sender] = true
     ns.syncInfo.changes = (ns.syncInfo.changes or 0) + changes
     ns.syncInfo.last = ns.Now()
@@ -640,6 +641,102 @@ function ns.ImportText(textValue)
     ns.Fire("RGF_POINTS_CHANGED")
     if changes > 0 then ns.Sync(true) end
     return changes
+end
+
+------------------------------------------------------------------------
+-- Automatic backups. The newest three are kept in a second save file, one
+-- per character (RedGuildForeverBackup). When the guild data comes back
+-- empty, for example because the beta did not load the main save file, the
+-- newest backup is put back by itself.
+------------------------------------------------------------------------
+local KEEP = 3
+local backupDirty = false
+local backupQueued = false
+
+local function backups()
+    if type(RedGuildForeverBackup) ~= "table" then RedGuildForeverBackup = {} end
+    RedGuildForeverBackup.list = RedGuildForeverBackup.list or {}
+    return RedGuildForeverBackup.list
+end
+
+local function body(textValue)
+    return textValue:match("^[^;]+;[^;]*;%d+;(.*)$") or textValue
+end
+
+-- Returns true when a new backup was written.
+function ns.AutoBackup(reason)
+    if ns.IsTest() or not ns.GuildKey() or not ns.HasData() then return false end
+    local list = backups()
+    local textValue = ns.ExportText()
+    local key = ns.GuildKey()
+    for i = #list, 1, -1 do
+        if list[i].guild == key then
+            if body(list[i].text) == body(textValue) then
+                list[i].time = ns.Now() -- nothing changed
+                return false
+            end
+            break
+        end
+    end
+    table.insert(list, { time = ns.Now(), guild = key, text = textValue, reason = reason })
+    -- keep the newest few of each guild
+    local count = 0
+    for i = #list, 1, -1 do
+        if list[i].guild == key then
+            count = count + 1
+            if count > KEEP then table.remove(list, i) end
+        end
+    end
+    backupDirty = false
+    return true
+end
+
+-- The newest backup of the current guild, or nil
+function ns.LatestAutoBackup()
+    local key = ns.GuildKey()
+    local list = backups()
+    for i = #list, 1, -1 do
+        if list[i].guild == key then return list[i] end
+    end
+    return nil
+end
+
+-- Put the newest backup back. Works for everyone, members keep a copy too.
+function ns.RestoreAutoBackup()
+    local b = ns.LatestAutoBackup()
+    if not b then return nil end
+    local entryTexts = {}
+    for entryText in body(b.text):gmatch("[^;]+") do table.insert(entryTexts, entryText) end
+    local changes = ns.MergeEntries(entryTexts, ns.PlayerName())
+    ns.Invalidate()
+    ns.Fire("RGF_POINTS_CHANGED")
+    return changes, b
+end
+
+-- A backup ten minutes after changes, and when logging out
+local function changed()
+    backupDirty = true
+    if backupQueued then return end
+    backupQueued = true
+    ns.After(600, function()
+        backupQueued = false
+        if backupDirty then ns.AutoBackup("changes") end
+    end)
+end
+ns.On("RGF_LOCAL_CHANGE", changed)
+ns.On("RGF_DATA_MERGED", changed)
+ns.On("PLAYER_LOGOUT", function()
+    if backupDirty then ns.AutoBackup("logout") end
+end)
+
+-- The save file came back empty: use the newest automatic backup.
+function ns.CheckEmptyData()
+    if ns.IsTest() or not ns.GuildKey() or ns.HasData() then return end
+    local changes, b = ns.RestoreAutoBackup()
+    if changes and changes > 0 then
+        ns.Print(string.format("the save file had no data. The automatic backup from %s is back (%d entries), sync brings the newest changes",
+            date("%d.%m. %H:%M", b.time), changes))
+    end
 end
 
 ------------------------------------------------------------------------

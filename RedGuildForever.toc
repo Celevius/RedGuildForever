@@ -4,6 +4,7 @@
 ## Author: Dominik
 ## Version: 1.7.1
 ## SavedVariables: RedGuildForeverDB
+## SavedVariablesPerCharacter: RedGuildForeverBackup
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 ## AddonCompartmentFunc: RedGuildForever_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: RedGuildForever_OnAddonCompartmentEnter
@@ -14,6 +15,7 @@ Pricing.lua
 Points.lua
 Comm.lua
 Auction.lua
+Whisper.lua
 UI.lua
 LootPicker.lua
 Minimap.lua

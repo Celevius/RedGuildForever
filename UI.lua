@@ -499,6 +499,13 @@ local function buildSyncPage(parent)
         end
     end)
     page.import:SetPoint("LEFT", page.show, "RIGHT", 4, 0)
+    page.restore = button(page, "Restore automatic backup", 180, function()
+        local changes, b = ns.RestoreAutoBackup()
+        if changes then
+            ns.Print(string.format("automatic backup from %s restored, %d entries changed", date("%d.%m. %H:%M", b.time), changes))
+        end
+    end)
+    page.restore:SetPoint("LEFT", page.import, "RIGHT", 4, 0)
     return page
 end
 
@@ -514,6 +521,10 @@ local function refreshSyncPage(page)
         for _ in pairs(ns.Players()) do count = count + 1 end
         for _ in pairs(ns.Data().events or {}) do changes = changes + 1 end
         table.insert(lines, count .. " players and " .. changes .. " changes in the data.")
+        local auto = ns.LatestAutoBackup and ns.LatestAutoBackup()
+        if auto then
+            table.insert(lines, "Automatic backup from " .. date("%d.%m. %H:%M", auto.time) .. ", kept in a second save file of this character.")
+        end
         local waiting = ns.QueuedMessages and ns.QueuedMessages() or 0
         if waiting > 0 then table.insert(lines, waiting .. " sync messages are still waiting to go out.") end
         if ns.CanEdit() then
@@ -535,6 +546,7 @@ local function refreshSyncPage(page)
     page.notes:SetShown(editor and not hasData)
     page.decay:SetShown(editor and hasData)
     page.import:SetShown(editor)
+    page.restore:SetShown(ns.LatestAutoBackup and ns.LatestAutoBackup() ~= nil)
 end
 
 ------------------------------------------------------------------------

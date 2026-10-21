@@ -53,6 +53,7 @@ M.knownEvents = {
     ADDON_LOADED = true, GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
     CHAT_MSG_ADDON = true, CHAT_MSG_SYSTEM = true, CHAT_MSG_WHISPER = true,
     LOOT_OPENED = true, LOOT_SLOT_CLEARED = true, LOOT_CLOSED = true,
+    PLAYER_LOGOUT = true,
 }
 M.registered = {}
 
@@ -222,6 +223,7 @@ function M.install()
     _G.StaticPopup_Show = function(which) M.popup = which end
     _G.SlashCmdList = {}
     _G.RedGuildForeverDB = nil
+    _G.RedGuildForeverBackup = nil
 end
 
 -- load the files in the order the toc file lists them, like the game does
