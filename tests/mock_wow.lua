@@ -23,13 +23,16 @@ M.roster = {}
 
 function M.reset()
     M.chat, M.comms, M.printed, M.timers = {}, {}, {}, {}
+    M.context, M.switch, M.blockAddon = nil, nil, nil
 end
 
 -- run every queued timer in the order of their delay, timers can add timers.
 -- GetTime moves forward to each timer, like the game clock would.
+-- With several computers (M.switch), a timer runs on the computer that made it.
 function M.flush()
-    for _ = 1, 1000 do
-        if #M.timers == 0 then return end
+    local active = M.context
+    for _ = 1, 5000 do
+        if #M.timers == 0 then break end
         local best = 1
         for i, t in ipairs(M.timers) do
             if t.due < M.timers[best].due or (t.due == M.timers[best].due and t.seq < M.timers[best].seq) then
@@ -38,8 +41,10 @@ function M.flush()
         end
         local t = table.remove(M.timers, best)
         if t.due > M.now then M.now = t.due end
+        if t.ctx and M.switch then M.switch(t.ctx) end
         t.fn()
     end
+    if active and M.switch then M.switch(active) end
 end
 M.seq = 0
 
@@ -181,7 +186,8 @@ function M.install()
         RegisterAddonMessagePrefix = function() return true end,
         SendAddonMessage = function(prefix, msg, channel, target)
             assert(#msg <= 255, "addon message too long")
-            table.insert(M.comms, { prefix = prefix, msg = msg, channel = channel, target = target })
+            if M.blockAddon then return 9 end -- like a blocked message in an instance
+            table.insert(M.comms, { prefix = prefix, msg = msg, channel = channel, target = target, from = M.context })
             return 0
         end,
         SendChatMessage = function(msg, channel, _, target)
@@ -199,7 +205,7 @@ function M.install()
     _G.C_Timer = {
         After = function(delay, fn)
             M.seq = M.seq + 1
-            table.insert(M.timers, { due = M.now + (delay or 0), seq = M.seq, fn = fn })
+            table.insert(M.timers, { due = M.now + (delay or 0), seq = M.seq, fn = fn, ctx = M.context })
         end,
         NewTicker = function() return {} end,
     }

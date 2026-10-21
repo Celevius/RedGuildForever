@@ -40,6 +40,7 @@ local ns
 local function setup(roster)
     W.install()
     W.reset()
+    W.player = "Cel Dru"
     W.roster = roster
     W.raid, W.inRaid = {}, false
     W.canEdit, W.canView = true, true
@@ -52,7 +53,7 @@ local function setup(roster)
     ns = {}
     W.load(ns)
     -- the third column is the saved data of that player, as if it came from the save file
-    local players = ns.Players()
+    local players = ns.Base()
     for _, r in ipairs(roster) do
         if r[3] and r[3] ~= "" then
             local info = ns.ParseNote(r[3])
@@ -66,16 +67,24 @@ local function setup(roster)
         r[3] = "" -- officer notes stay empty, the addon does not use them
     end
     ns.Data().started = true
+    ns.Invalidate()
     ns.RebuildFromRoster()
     W.flush()
 end
 
--- change the saved data of a player directly, like another officer did
+-- change the starting points of a player directly
 local function set(name, value)
     local info = ns.ParseNote(value)
     W.server = W.server + 1
-    ns.Players()[ns.FullName(name)] = info.main and { main = info.main, t = W.server }
+    ns.Base()[ns.FullName(name)] = info.main and { main = info.main, t = W.server }
         or { ep = info.ep, gp = info.gp, t = W.server }
+    -- the starting points count, changes made before are forgotten
+    for id, ev in pairs(ns.Data().events) do
+        local hit = ev.alt == ns.FullName(name)
+        for _, c in ipairs(ev.ch or {}) do if ns.MainOf(c.n) == ns.FullName(name) then hit = true end end
+        if hit or ev.k == "D" then ns.Data().events[id] = nil end
+    end
+    ns.Invalidate()
 end
 
 local function guild()
@@ -626,7 +635,7 @@ test("officers edit points in the editor", function()
     W.flush()
     eq(note("Lisa Brightwater"), "1200,100", "saved with GP floor")
     eq(e.ep:GetText(), "1200", "editor reloaded")
-    local log = RedGuildForeverDB.log
+    local log = ns.Log()
     assert(log[#log].label:find("missed raid fix"), "reason in history")
     e.undo:Click()
     W.flush()
@@ -733,10 +742,12 @@ test("points live in the save file per guild, never in officer notes", function(
     W.flush()
     local data = RedGuildForeverDB.guilds["Redemption-Forever"]
     assert(data, "data for the guild")
-    local e = data.players["Lisa Brightwater-Forever"]
-    eq(e.ep, 1100) eq(e.gp, 500)
-    eq(e.t, W.server, "server time of the change")
-    eq(e.by, "Cel Dru-Forever", "who changed it")
+    local ev = select(2, next(data.events))
+    eq(ev.k, "P") eq(ev.ch[1].n, "Lisa Brightwater-Forever") eq(ev.ch[1].ep, 100)
+    eq(ev.t, W.server, "server time of the change")
+    eq(ev.by, "Cel Dru-Forever", "who changed it")
+    eq(data.players["Lisa Brightwater-Forever"].ep, 1000, "the starting points stay")
+    eq(note("Lisa Brightwater"), "1100,500", "points are the start plus the changes")
     for _, r in ipairs(W.roster) do eq(r[3], "", "officer note untouched") end
     -- another guild has its own data
     W.guildName = "Other Guild"
@@ -770,10 +781,11 @@ test("who may edit, guild leader, officer ranks and the guild info setting", fun
     W.rank = 3 eq(ns.CanEdit(), false)
 end)
 
--- collect the data messages one officer would send
+-- collect the data messages one editor would send with everything it has
 local function dataMessages()
     W.comms = {}
-    assert(ns.SendData(), "data sent")
+    assert(ns.SendAllData(), "data sent")
+    W.flush()
     local list = W.comms
     W.comms = {}
     return list
@@ -785,99 +797,260 @@ local function deliverFrom(list, sender)
     end
 end
 
-test("sync merges the newest change of each player", function()
-    setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna Frost is rank 2 and counts as officer
-    -- this is what Anna has, Lisa got loot on her computer
-    set("Lisa Brightwater", "1000,700")
-    local fromAnna = dataMessages()
-    -- our computer has an older Lisa but a newer Max
-    ns.Players()["Lisa Brightwater-Forever"].t = W.server - 50
-    ns.Players()["Lisa Brightwater-Forever"].gp = 500
-    set("Max Ironhide", "1200,100")
-    deliverFrom(fromAnna, "Anna Frost")
-    eq(note("Lisa Brightwater"), "1000,700", "newer Lisa from Anna wins")
-    eq(note("Max Ironhide"), "1200,100", "our newer Max stays")
-    eq(note("Tom Spark"), "@Tom Hammer", "alt links come along")
-    eq(ns.syncInfo.from["Anna Frost-Forever"], true)
-    -- we have something newer, so we answer with our data
+-- an editor sends these entries as one transfer
+local function transferFrom(sender, entries, mode)
+    local s = sender .. "-Forever"
+    local textValue = table.concat(entries, ";")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "H^77^" .. (mode or "L") .. "^-^-^-^-", "GUILD", s)
+    local count = 0
+    for i = 1, #textValue, 200 do
+        count = count + 1
+        ns.Fire("CHAT_MSG_ADDON", ns.prefix, "D^77^" .. count .. "^" .. textValue:sub(i, i + 199), "GUILD", s)
+    end
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "E^77^" .. count, "GUILD", s)
+end
+
+------------------------------------------------------------------------
+-- Several computers in one guild. Each has its own addon and save file,
+-- messages go from one to the others.
+------------------------------------------------------------------------
+local function useComputer(c)
+    _G.RedGuildForeverDB = c.db
+    _G.RedGuildForever = c.ns
+    W.player, W.rank = c.name, c.rank
+    W.context = c
+end
+
+local function network()
+    local me = { name = W.player, rank = W.rank or 0, db = _G.RedGuildForeverDB, ns = ns }
+    W.switch = useComputer
+    W.context = me
     W.flush()
-    local answered
-    for _, c in ipairs(W.comms) do if c.msg:match("^DB") then answered = true end end
-    assert(answered, "sends own data back")
+    W.comms = {}
+    return me
+end
+
+-- another player logs in with the addon, copy = start with our starting points
+local function addComputer(name, rank, copy)
+    local back = W.context
+    local base = {}
+    for full, e in pairs(ns.RealData().players) do
+        base[full] = { ep = e.ep, gp = e.gp, main = e.main, t = e.t }
+    end
+    local c = { name = name, rank = rank, ns = {}, db = {} }
+    _G.RedGuildForeverDB = c.db
+    W.player, W.rank, W.context = name, rank, c
+    W.load(c.ns)
+    if copy then
+        for full, e in pairs(base) do c.ns.Base()[full] = e end
+        c.ns.RealData().started = true
+        c.ns.Invalidate()
+    end
+    c.ns.RebuildFromRoster()
+    useComputer(back)
+    return c
+end
+
+-- deliver every message until nothing moves anymore. lose(c) drops a message.
+local function deliverAll(computers, lose)
+    local sent = {}
+    for _ = 1, 500 do
+        W.flush()
+        local list = W.comms
+        if #list == 0 then break end
+        W.comms = {}
+        local back = W.context
+        for _, c in ipairs(list) do
+            table.insert(sent, c)
+            if not (lose and lose(c)) then
+                for _, other in ipairs(computers) do
+                    if other ~= c.from and (c.channel ~= "WHISPER" or c.target == other.name) then
+                        useComputer(other)
+                        other.ns.Fire("CHAT_MSG_ADDON", c.prefix, c.msg, c.channel, c.from.name .. "-Forever")
+                    end
+                end
+            end
+        end
+        useComputer(back)
+    end
+    return sent
+end
+
+-- the points of a player on one computer, in the "ep,gp" style
+local function noteOn(c, name)
+    local back = W.context
+    useComputer(c)
+    local result = note(name)
+    useComputer(back)
+    return result
+end
+
+local function on(c, fn)
+    local back = W.context
+    useComputer(c)
+    local r = fn()
+    useComputer(back)
+    return r
+end
+
+test("changes made at the same time on two computers both count", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2" -- Anna Frost is rank 2 and an editor
+    local me = network()
+    local anna = addComputer("Anna Frost", 2, true)
+    local computers = { me, anna }
+    deliverAll(computers)
+    -- both are offline from each other, for example in two different raids
+    W.blockAddon = true
+    ns.BeginAction("Lisa wins a ring", { kind = "loot", item = 30 })
+    ns.Adjust("Lisa Brightwater", 0, 150)
+    ns.EndAction()
+    on(anna, function() return ns.AwardEP({ "Lisa Brightwater", "Max Ironhide" }, 100, "Raid night", "raid") end)
+    W.flush()
+    W.comms = {}
+    eq(note("Lisa Brightwater"), "1000,650", "our change")
+    eq(noteOn(anna, "Lisa Brightwater"), "1100,500", "Anna's change")
+    -- back online, one sync later both computers have both changes
+    W.blockAddon = false
+    ns.Sync(true)
+    deliverAll(computers)
+    eq(note("Lisa Brightwater"), "1100,650", "both changes count on our computer")
+    eq(noteOn(anna, "Lisa Brightwater"), "1100,650", "and on Anna's")
+    eq(note("Max Ironhide"), "1100,100")
+    eq(#ns.Log(), #on(anna, ns.Log), "the history is shared too")
     noErrors()
 end)
 
-test("sync from a member who is not an officer is ignored", function()
+test("a new computer gets everything and members never send", function()
     setup(guild())
-    set("Lisa Brightwater", "99999,100")
-    local fake = dataMessages()
-    set("Lisa Brightwater", "1000,500")
-    deliverFrom(fake, "Ben Swift") -- rank 3
-    eq(note("Lisa Brightwater"), "1000,500")
-end)
-
-test("members keep a copy and never send data", function()
-    setup(guild())
-    set("Lisa Brightwater", "1500,500")
-    local fromOfficer = dataMessages()
-    -- now we are a normal member with old data
-    W.canEdit = false
     W.guildInfo = "EPGP officers 2"
-    ns.Players()["Lisa Brightwater-Forever"] = { ep = 1000, gp = 500, t = 1 }
-    deliverFrom(fromOfficer, "Anna Frost")
-    eq(note("Lisa Brightwater"), "1500,500", "member copy updated")
-    W.comms = {}
-    ns.Sync(true)
+    local me = network()
+    ns.AwardEP({ "Lisa Brightwater", "Tom Spark" }, 100, "Raid night", "raid")
+    ns.SetAlt("Ben Swift", "Max Ironhide")
+    ns.BenchAdd("Anna Frost")
+    StaticPopupDialogs["REDGUILDFOREVER_DECAY"].OnAccept()
     W.flush()
-    for _, c in ipairs(W.comms) do
-        assert(not c.msg:match("^D[BDE]"), "a member sent data")
+    W.comms = {}
+    local ben = addComputer("Ben Swift", 3) -- rank 3, a member with an empty save file
+    local sent = deliverAll({ me, ben })
+    for _, name in ipairs({ "Lisa Brightwater", "Tom Hammer", "Max Ironhide", "Anna Frost" }) do
+        eq(noteOn(ben, name), note(name), name .. " the same on Ben's computer")
     end
-    eq(W.comms[1].msg, "SQ", "a member only asks")
+    eq(noteOn(ben, "Ben Swift"), "@Max Ironhide", "alt link arrived")
+    eq(on(ben, ns.Bench)[1], "Anna Frost-Forever", "the bench is shared")
+    for _, c in ipairs(sent) do
+        if c.from == ben then assert(c.msg:match("^Q%^"), "a member only asks, sent " .. c.msg) end
+    end
+    noErrors()
 end)
 
-test("the sync button asks everyone and officers answer", function()
+test("sync sends only what is missing", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    local me = network()
+    local anna = addComputer("Anna Frost", 2, true)
+    local computers = { me, anna }
+    deliverAll(computers)
+    -- the same data on both computers, a sync sends nothing but the questions
+    ns.Sync(true)
+    local sent = deliverAll(computers)
+    for _, c in ipairs(sent) do assert(c.msg:match("^Q%^"), "nothing to send, sent " .. c.msg:sub(1, 30)) end
+    -- one new change goes out by itself, as a small live transfer
+    ns.Adjust("Lisa Brightwater", 10, 0)
+    sent = deliverAll(computers)
+    assert(#sent <= 4, "only the new change, " .. #sent .. " messages")
+    eq(noteOn(anna, "Lisa Brightwater"), "1010,500")
+    noErrors()
+end)
+
+test("a lost piece is asked for again", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    local me = network()
+    local anna = addComputer("Anna Frost", 2, true)
+    local computers = { me, anna }
+    deliverAll(computers)
+    local lost = false
+    ns.Adjust("Lisa Brightwater", 25, 0)
+    deliverAll(computers, function(c)
+        if not lost and c.from == me and c.msg:match("^D%^") then lost = true return true end
+    end)
+    assert(lost, "a piece was dropped")
+    -- the live transfer was incomplete, Anna asks again and gets it
+    eq(noteOn(anna, "Lisa Brightwater"), "1025,500", "arrived on the second try")
+    noErrors()
+end)
+
+test("a big guild goes out in small messages, a few per second", function()
+    local roster = {}
+    for i = 1, 400 do table.insert(roster, { "Player Number" .. i, 3, (i * 7) .. "," .. (100 + i), "WARRIOR" }) end
+    table.insert(roster, 1, { "Cel Dru", 0, "", "DRUID" })
+    table.insert(roster, 2, { "Anna Frost", 2, "", "MAGE" })
+    setup(roster)
+    W.guildInfo = "EPGP officers 2"
+    local me = network()
+    for i = 1, 60 do ns.Adjust("Player Number" .. i, i, 0) end
+    W.flush()
+    W.comms = {}
+    local anna = addComputer("Anna Frost", 2)
+    local start = W.now
+    on(anna, function() return ns.Sync(true) end)
+    local sent = deliverAll({ me, anna }) -- the mock refuses messages over 255 bytes
+    assert(#sent > 40, "many messages, " .. #sent)
+    assert(W.now - start >= #sent * 0.25, "spread over time, not all at once")
+    eq(noteOn(anna, "Player Number60"), (420 + 60) .. ",160", "everything arrived")
+    noErrors()
+end)
+
+test("data from members and blocked messages", function()
+    setup(guild())
+    set("Lisa Brightwater", "1000,500")
+    transferFrom("Ben Swift", { "!P,abc123,1760000500,Ben Swift,,,Lisa Brightwater:5000:0,fake" })
+    eq(note("Lisa Brightwater"), "1000,500", "Ben is a member, ignored")
+    -- blocked messages wait and go out later
+    W.flush()
+    W.comms = {}
+    W.blockAddon = true
+    ns.Adjust("Lisa Brightwater", 1, 0)
+    W.now = W.now + 0.5
+    eq(#W.comms, 0, "nothing could go out")
+    W.blockAddon = false
+    W.flush()
+    assert(#W.comms > 0, "sent when it works again")
+end)
+
+test("the sync button asks everyone and editors answer", function()
     setup(guild())
     W.comms = {}
     ns.Command("sync")
     W.flush()
-    local asked, sent
-    for _, c in ipairs(W.comms) do
-        if c.msg == "SQ" then asked = true end
-        if c.msg:match("^DB") then sent = true end
-    end
-    assert(asked and sent, "asks and sends own data")
-    -- someone else asks, we answer
+    assert(W.comms[1].msg:match("^Q%^%d+%^%d+="), "asks with a digest " .. W.comms[1].msg)
+    -- someone with an empty save file asks, we answer with everything
     W.comms = {}
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "SQ", "GUILD", "Ben Swift-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "Q^5^" .. ns.SyncCutoff() .. "=", "GUILD", "Ben Swift-Forever")
     W.flush()
-    sent = false
-    for _, c in ipairs(W.comms) do if c.msg:match("^DB") then sent = true end end
-    assert(sent, "answers a sync request")
+    assert(W.comms[1].msg:match("^H%^%d+%^R%^5%^"), "answers the request " .. W.comms[1].msg)
     noErrors()
-end)
-
-test("a big guild fits in addon messages", function()
-    local roster = {}
-    for i = 1, 400 do table.insert(roster, { "Player Number" .. i, 3, (i * 7) .. "," .. (100 + i), "WARRIOR" }) end
-    table.insert(roster, 1, { "Cel Dru", 0, "", "DRUID" })
-    setup(roster)
-    assert(ns.SendData()) -- the mock asserts 255 bytes per message
 end)
 
 test("backup export and import", function()
     setup(guild())
+    ns.Adjust("Lisa Brightwater", 50, 0)
     local backup = ns.ExportText()
-    assert(backup:match("^RGFEPGP1;Redemption%-Forever;"), backup:sub(1, 40))
-    wipe(ns.Players())
+    assert(backup:match("^RGFEPGP2;Redemption%-Forever;"), backup:sub(1, 40))
+    wipe(ns.Base()) wipe(ns.Data().events) ns.Invalidate()
     eq(note("Lisa Brightwater"), nil)
     local changes = ns.ImportText(backup)
-    eq(changes, 5, "all players back")
-    eq(note("Lisa Brightwater"), "1000,500")
+    eq(changes, 6, "all players and the change back")
+    eq(note("Lisa Brightwater"), "1050,500")
     eq(note("Tom Spark"), "@Tom Hammer")
-    -- pasted with line breaks still works
-    wipe(ns.Players())
-    eq(ns.ImportText(backup:sub(1, 60) .. "\n" .. backup:sub(61)), 5)
+    -- pasted with line breaks still works, and nothing is counted twice
+    eq(ns.ImportText(backup:sub(1, 60) .. "\n" .. backup:sub(61)), 0)
+    eq(note("Lisa Brightwater"), "1050,500")
+    -- a backup of version 1.7
+    wipe(ns.Base()) wipe(ns.Data().events) ns.Invalidate()
+    eq(ns.ImportText("RGFEPGP1;Redemption-Forever;1;Lisa Brightwater,900,300,5;Tom Spark>Tom Hammer,5"), 2)
+    eq(note("Lisa Brightwater"), "900,300")
     eq(select(2, ns.ImportText("hello")), "this is not a Red Guild EPGP backup")
     eq(select(2, ns.ImportText(backup:gsub("Redemption", "Other"))), "this backup belongs to Other-Forever")
     W.canEdit = false
@@ -960,7 +1133,11 @@ local function realSnapshot()
         table.insert(parts, name .. "=" .. tostring(e.ep) .. "/" .. tostring(e.gp) .. "/" .. tostring(e.main) .. "/" .. tostring(e.t))
     end
     table.sort(parts)
-    return table.concat(parts, ";") .. "|bench=" .. table.concat(RedGuildForeverDB.bench, ",") .. "|log=" .. #RedGuildForeverDB.log
+    local bench, events = {}, 0
+    for name, e in pairs(ns.RealData().bench) do table.insert(bench, name .. tostring(e.on)) end
+    for _ in pairs(ns.RealData().events) do events = events + 1 end
+    table.sort(bench)
+    return table.concat(parts, ";") .. "|bench=" .. table.concat(bench, ",") .. "|events=" .. events .. "|log=" .. #RedGuildForeverDB.log
 end
 
 test("test mode is a sandbox for the whole addon", function()
@@ -1008,7 +1185,7 @@ test("test mode is a sandbox for the whole addon", function()
 
     -- sync is simulated
     ns.Command("sync") W.flush()
-    assert(ns.syncInfo.from["Simulated Officer-Forever"], "simulated officer")
+    assert(ns.syncInfo.from["Simulated Editor-Forever"], "simulated officer")
 
     -- nothing left this computer
     for _, c in ipairs(W.comms) do error("test mode sent an addon message " .. c.msg) end
@@ -1310,16 +1487,12 @@ end)
 test("rules from sync outside the limits or from members are ignored", function()
     setup(guild())
     W.guildInfo = "EPGP officers 2"
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^5", "GUILD", "Anna Frost-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^5^#baseGP,0," .. (W.server + 5) .. ";#unknown,5," .. (W.server + 5) .. ";#raidEP,140," .. (W.server + 5), "GUILD", "Anna Frost-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^5", "GUILD", "Anna Frost-Forever")
+    transferFrom("Anna Frost", { "#baseGP,0," .. (W.server + 5), "#unknown,5," .. (W.server + 5), "#raidEP,140," .. (W.server + 5) })
     eq(ns.Setting("baseGP"), 100, "a base GP of 0 is refused")
     eq(ns.Data().rules.unknown, nil)
     eq(ns.Setting("raidEP"), 140, "the valid rule arrives")
     -- Ben is rank 3, not an officer
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^6", "GUILD", "Ben Swift-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^6^#raidEP,999," .. (W.server + 50), "GUILD", "Ben Swift-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^6", "GUILD", "Ben Swift-Forever")
+    transferFrom("Ben Swift", { "#raidEP,999," .. (W.server + 50) })
     eq(ns.Setting("raidEP"), 140)
 end)
 
@@ -1403,11 +1576,7 @@ end)
 ------------------------------------------------------------------------
 -- Editors picked by the guild leader
 ------------------------------------------------------------------------
-local function syncFrom(sender, entries)
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^1", "GUILD", sender .. "-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^1^" .. table.concat(entries, ";"), "GUILD", sender .. "-Forever")
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^1", "GUILD", sender .. "-Forever")
-end
+local function syncFrom(sender, entries) transferFrom(sender, entries) end
 
 test("the guild leader picks editors of any rank and the rank rule stops counting", function()
     setup(guild())
@@ -1515,6 +1684,88 @@ test("the Data tab has sync, decay and backup, the bottom strip only raid button
     ns.ToggleStandings(1) ns.ToggleStandings(4)
     eq(page.decay:IsShown(), false, "members get no decay")
     eq(f.lootMaster:IsShown(), false)
+    noErrors()
+end)
+
+test("undo works after a reload and for changes of other editors", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    local me = network()
+    local anna = addComputer("Anna Frost", 2, true)
+    local computers = { me, anna }
+    ns.AwardEP({ "Lisa Brightwater" }, 100, "Raid night", "raid")
+    deliverAll(computers)
+    -- a reload: a fresh addon on the same save file still knows the change
+    local again = addComputer("Cel Dru", 0)
+    again.db = me.db
+    on(again, function()
+        ns.Invalidate()
+        local done = ns.Undo()
+        assert(done and done.label:find("Raid night"), "undone after the reload")
+    end)
+    useComputer(me) ns.Invalidate()
+    eq(note("Lisa Brightwater"), "1000,500")
+    -- Anna undoes a change of ours from the History tab, the undo is shared
+    ns.Adjust("Max Ironhide", 0, 200)
+    deliverAll(computers)
+    on(anna, function()
+        ns.ToggleStandings(3)
+        local log = ns.Log()
+        local id = log[#log].id
+        eq(log[#log].label, "Max Ironhide +200 GP", "our Max change is the newest")
+        assert(ns.UndoEvent(id), "undo from the history")
+        eq(ns.Log()[#ns.Log() - 1].undone, true, "marked as undone")
+    end)
+    deliverAll(computers)
+    eq(note("Max Ironhide"), "1000,100", "undone on our computer too")
+    eq(ns.UndoEvent(ns.Log()[1].id), nil, "an undo cannot be undone twice")
+    noErrors()
+end)
+
+test("raid EP and on time EP count once per night, also with two raids", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    local me = network()
+    local anna = addComputer("Anna Frost", 2, true)
+    local computers = { me, anna }
+    ns.BenchAdd("Ben Swift")
+    deliverAll(computers)
+    -- two raids at the same time, the bench is shared
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.Command("raid")
+    deliverAll(computers)
+    W.raid = { "Anna Frost", "Max Ironhide", "Tom Spark" }
+    on(anna, function() ns.Command("raid") end)
+    deliverAll(computers)
+    eq(note("Ben Swift"), "100,100", "the bench got raid EP once")
+    deliverAll(computers)
+    eq(note("Lisa Brightwater"), "1100,500")
+    eq(note("Max Ironhide"), "1100,100")
+    eq(note("Tom Hammer"), "300,100", "the alt Tom Spark gave EP to the main")
+    -- the same raid twice by mistake
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.Command("raid")
+    eq(note("Lisa Brightwater"), "1100,500", "not twice")
+    assert(W.printed[#W.printed]:find("already got raid night EP tonight"), W.printed[#W.printed])
+    -- on time is its own kind, and the next night counts again
+    ns.Command("ontime")
+    eq(note("Lisa Brightwater"), "1125,500")
+    W.server = W.server + 13 * 3600
+    ns.Command("raid")
+    eq(note("Lisa Brightwater"), "1225,500", "next night")
+    noErrors()
+end)
+
+test("an alt brings its points to the main, undo takes them back", function()
+    setup(guild())
+    set("Ben Swift", "300,250")
+    assert(ns.SetAlt("Ben Swift", "Max Ironhide"))
+    eq(note("Max Ironhide"), "1300,250", "EP and the GP above the start move over")
+    eq(note("Ben Swift"), "@Max Ironhide")
+    assert(ns.Undo())
+    eq(note("Max Ironhide"), "1000,100", "the link is undone")
+    eq(note("Ben Swift"), "300,250", "Ben has his own points again")
     noErrors()
 end)
 

@@ -2,23 +2,36 @@
 --
 -- RedGuildForeverDB.guilds["Guild Name-Realm"] = {
 --     started = true,                -- data exists or an editor started fresh
---     players = {
+--     players = {                    -- the starting points, from version 1.7 and older
 --         ["Cel Dru-Forever"] = { ep = 1250, gp = 300, t = 1760000000, by = "Cel Dru-Forever" },
 --         ["Cel Rog-Forever"] = { main = "Cel Dru-Forever", t = 1760000000, by = "..." },
 --     },
+--     events = {                     -- every change since then, see below
+--         ["68f1a2b30a1b2c"] = { id = "68f1a2b30a1b2c", k = "P", t = 1760000000, by = "Cel Dru-Forever",
+--             ch = { { n = "Lisa Brightwater-Forever", ep = 0, gp = 150 } }, item = 19019, r = "label" },
+--     },
 --     rules = { tier_boss = { v = 150, t = 1760000000, by = "..." } },
 --     editors = { ["Anna Frost-Forever"] = { on = true, t = 1760000000, by = "the guild leader" } },
+--     bench = { ["Anna Frost-Forever"] = { on = true, t = 1760000000 } },
 -- }
 --
--- t is the server time of the last change. Sync keeps the newest entry per
--- player, so editors can change points on different computers.
+-- Points are never stored as a total. Every change is an event, and the
+-- points are the starting points plus all events in the order they happened.
+-- Sync hands the events around, so changes made at the same time on
+-- different computers all count, nothing is overwritten.
+--   P  points: a list of characters with an EP and GP change, a label,
+--      optionally the item and the kind ("raid", "ontime" or "loot")
+--   D  decay by pct percent
+--   A  alt link, alt and main (no main makes the alt a main again)
+--   U  undo of the event ref
+-- Rules, editors and the bench are small settings, for them the newest
+-- change wins (t is the server time of the change).
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever
 
 ns.members = {}   -- guild roster, full name -> { index, rank, class, online }
 ns.lookup = {}    -- lower case full name -> full name
-ns.history = {}   -- actions this session, used by undo
 
 ------------------------------------------------------------------------
 -- Old officer note format, only used to import data from version 1.3 and older
@@ -41,7 +54,7 @@ end
 ------------------------------------------------------------------------
 -- The data set of the current guild
 ------------------------------------------------------------------------
-local tempData = { players = {} } -- used while the game does not know the guild yet
+local tempData = { players = {}, events = {}, rules = {}, editors = {}, bench = {} } -- used while the game does not know the guild yet
 
 function ns.Now()
     if GetServerTime then
@@ -67,11 +80,27 @@ local function copyData(src)
     for key, e in pairs(src.rules or {}) do
         rules[key] = { v = e.v, t = e.t, by = e.by }
     end
-    local editors = {}
+    local editors, bench, events = {}, {}, {}
     for full, e in pairs(src.editors or {}) do
         editors[full] = { on = e.on, t = e.t, by = e.by }
     end
-    return { players = players, rules = rules, editors = editors, started = true }
+    for full, e in pairs(src.bench or {}) do
+        bench[full] = { on = e.on, t = e.t }
+    end
+    for id, ev in pairs(src.events or {}) do
+        events[id] = ns.CopyEvent(ev)
+    end
+    return { players = players, rules = rules, editors = editors, bench = bench, events = events, started = true }
+end
+
+function ns.CopyEvent(ev)
+    local c = {}
+    for k, v in pairs(ev) do c[k] = v end
+    if ev.ch then
+        c.ch = {}
+        for i, x in ipairs(ev.ch) do c.ch[i] = { n = x.n, ep = x.ep, gp = x.gp } end
+    end
+    return c
 end
 
 function ns.RealData()
@@ -86,6 +115,8 @@ function ns.RealData()
     data.players = data.players or {}
     data.rules = data.rules or {}
     data.editors = data.editors or {}
+    data.events = data.events or {}
+    data.bench = data.bench or {}
     return data
 end
 
@@ -103,9 +134,8 @@ function ns.ResetTestData()
     local db = RedGuildForeverDB
     db.test = db.test or {}
     db.test.data = copyData(ns.RealData())
-    db.test.bench = {}
     db.test.log = {}
-    ns.history = {}
+    ns.Invalidate()
     ns.PickTestRaid()
     ns.Fire("RGF_POINTS_CHANGED")
     ns.Fire("RGF_BENCH_CHANGED")
@@ -142,7 +172,7 @@ function ns.SetTestMode(on)
     end
     if ns.auction then ns.CancelAuction() end
     db.settings.testMode = on
-    ns.history = {}
+    ns.Invalidate()
     if on then
         if not db.test or not db.test.data then ns.ResetTestData() end
         if not db.test.raid or #db.test.raid <= 1 then ns.PickTestRaid() end
@@ -157,14 +187,15 @@ function ns.SetTestMode(on)
     ns.Fire("RGF_AUCTION_CHANGED")
 end
 
-function ns.Players()
+-- The starting points (from version 1.7 and older, or a backup of it)
+function ns.Base()
     return ns.Data().players
 end
 
 -- true when there is data to work with, or an editor chose to start fresh
 function ns.HasData()
     local data = ns.Data()
-    return data.started or next(data.players) ~= nil
+    return data.started or next(data.players) ~= nil or next(data.events or {}) ~= nil
 end
 
 function ns.StartFresh()
@@ -276,14 +307,10 @@ function ns.SetEditor(name, on)
     end
     local me = ns.PlayerName()
     list[full] = { on = on, t = ns.Now(), by = me }
-    local log = ns.Log()
-    if log then
-        table.insert(log, { time = time and time() or 0, label = ns.ShortName(full) .. (on and " is now an editor" or " is no editor anymore"), count = 1, by = me })
-        while #log > 500 do table.remove(log, 1) end
-    end
+    ns.AddLogEntry(ns.ShortName(full) .. (on and " is now an editor" or " is no editor anymore"), 1)
     ns.Fire("RGF_EDITORS_CHANGED")
     ns.Fire("RGF_POINTS_CHANGED")
-    ns.Fire("RGF_LOCAL_CHANGE")
+    ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     return true, full
 end
 
@@ -379,6 +406,7 @@ end
 
 function ns.RebuildFromRoster()
     if not (IsInGuild and IsInGuild()) then return end
+    ns.Invalidate() -- the guild may be known only now, or another guild
     local members, lookup = {}, {}
     local count = GetNumGuildMembers() or 0
     for i = 1, count do
@@ -395,6 +423,7 @@ function ns.RebuildFromRoster()
     end
     ns.members, ns.lookup = members, lookup
     if ns.MigrateOldOverrides then ns.MigrateOldOverrides() end
+    ns.MigrateOldBench()
     ns.Fire("RGF_POINTS_CHANGED")
 end
 
@@ -426,14 +455,11 @@ function ns.SetRules(values)
         end
     end
     if #parts == 0 then return 0 end
-    local log = ns.Log()
-    if log then
-        table.insert(log, { time = time and time() or 0, label = "Settings changed, " .. table.concat(parts, ", "), count = #parts, by = me })
-        while #log > 500 do table.remove(log, 1) end
-    end
+    ns.AddLogEntry("Settings changed, " .. table.concat(parts, ", "), #parts)
+    ns.Invalidate()
     ns.Fire("RGF_RULES_CHANGED")
     ns.Fire("RGF_POINTS_CHANGED")
-    ns.Fire("RGF_LOCAL_CHANGE")
+    ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     return #parts
 end
 
@@ -445,8 +471,124 @@ function ns.ResetRules()
 end
 
 ------------------------------------------------------------------------
--- Reading points
+-- Reading points: the starting points plus every event, in order
 ------------------------------------------------------------------------
+local cache
+
+-- Forget the computed points, they are computed again when needed.
+function ns.Invalidate()
+    cache = nil
+end
+
+local function byTime(a, b)
+    if a.t ~= b.t then return a.t < b.t end
+    return a.id < b.id
+end
+
+-- Every event, oldest first
+function ns.SortedEvents()
+    local list = {}
+    for _, ev in pairs(ns.Data().events or {}) do table.insert(list, ev) end
+    table.sort(list, byTime)
+    return list
+end
+
+local function compute()
+    local data = ns.Data()
+    local base = ns.Setting("baseGP")
+    local players = {}
+    for full, e in pairs(data.players or {}) do
+        if e.main then
+            players[full] = { main = e.main }
+        elseif e.ep then
+            players[full] = { ep = e.ep, gp = math.max(e.gp or base, base) }
+        end
+    end
+    local events = ns.SortedEvents()
+    local undone = {}
+    for _, ev in ipairs(events) do
+        if ev.k == "U" and ev.ref then undone[ev.ref] = ev end
+    end
+    local function mainOf(full)
+        local e = players[full]
+        if e and e.main then
+            local m = players[e.main]
+            if not (m and m.main) then return e.main end
+        end
+        return full
+    end
+    local function points(full)
+        local e = players[full]
+        if not e or not e.ep then
+            e = { ep = 0, gp = base }
+            players[full] = e
+        end
+        return e
+    end
+    for _, ev in ipairs(events) do
+        if not undone[ev.id] then
+            if ev.k == "P" then
+                local seen = {}
+                for _, c in ipairs(ev.ch or {}) do
+                    local main = mainOf(c.n)
+                    if not seen[main] then
+                        seen[main] = true
+                        local e = points(main)
+                        e.ep = e.ep + (c.ep or 0)
+                        e.gp = math.max(e.gp + (c.gp or 0), base)
+                    end
+                end
+            elseif ev.k == "D" then
+                local f = 1 - (ev.pct or 0) / 100
+                for _, e in pairs(players) do
+                    if e.ep then
+                        e.ep = ns.Round(e.ep * f)
+                        e.gp = math.max(ns.Round(e.gp * f), base)
+                    end
+                end
+            elseif ev.k == "A" and ev.alt then
+                local alt = ev.alt
+                local ae = players[alt]
+                if ev.main then
+                    local main = mainOf(ev.main)
+                    if main ~= alt and not (ae and ae.main == main) then
+                        -- the alt brings its points to the main
+                        if ae and ae.ep then
+                            local me = points(main)
+                            me.ep = me.ep + ae.ep
+                            me.gp = math.max(me.gp + (ae.gp - base), base)
+                        end
+                        -- alts of the alt now belong to the main, there is only one level
+                        for _, e in pairs(players) do
+                            if e.main == alt then e.main = main end
+                        end
+                        players[alt] = { main = main }
+                    end
+                elseif ae and ae.main then
+                    players[alt] = { ep = 0, gp = base }
+                end
+            end
+        end
+    end
+    return { players = players, undone = undone, events = events }
+end
+
+-- The computed points: { players = ..., undone = { [id] = undo event }, events = sorted list }
+function ns.State()
+    -- a new guild or test mode has its own data
+    local data = ns.Data()
+    if not cache or cache.data ~= data then
+        cache = compute()
+        cache.data = data
+    end
+    return cache
+end
+
+-- Every character with points or an alt link, computed from the events
+function ns.Players()
+    return ns.State().players
+end
+
 local function entry(full)
     return full and ns.Players()[full]
 end
@@ -520,25 +662,36 @@ function ns.Standings(showAll)
 end
 
 ------------------------------------------------------------------------
--- Writing
+-- Writing: every change is a new event
 ------------------------------------------------------------------------
-local function stamp(e)
-    e.t = ns.Now()
-    e.by = ns.PlayerName()
-    return e
+local seq = 0
+
+-- Ids start with the time, then a counter, so the changes of one computer
+-- keep their order within a second, and a random part.
+local function newId()
+    seq = (seq + 1) % 256
+    return string.format("%x%02x%04x", ns.Now(), seq, math.random(0, 65535))
 end
 
-local function setPoints(main, ep, gp)
-    local players = ns.Players()
-    local e = players[main] or {}
-    e.ep, e.gp, e.main = ep, math.max(gp, ns.Setting("baseGP")), nil
-    players[main] = stamp(e)
+-- Store a change made on this computer. Sync sends it to everyone.
+function ns.AddEvent(ev)
+    local events = ns.Data().events
+    ev.t = ev.t or ns.Now()
+    ev.by = ev.by or ns.PlayerName()
+    ev.id = newId()
+    while events[ev.id] do ev.id = newId() end
+    events[ev.id] = ev
     ns.Data().started = true
+    ns.Invalidate()
+    ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_LOCAL_CHANGE", ev)
+    return ev
 end
 
--- Start an undoable action. Every change inside it is recorded.
-function ns.BeginAction(label)
-    local action = { label = label, changes = {}, time = time and time() or 0 }
+-- Start a change, every Adjust until EndAction goes into one event.
+-- opts.kind is "raid", "ontime" or "loot", opts.item the item id of loot.
+function ns.BeginAction(label, opts)
+    local action = { label = label, changes = {}, kind = opts and opts.kind, item = opts and opts.item }
     ns.currentAction = action
     return action
 end
@@ -547,14 +700,18 @@ function ns.EndAction()
     local action = ns.currentAction
     ns.currentAction = nil
     if action and #action.changes > 0 then
-        table.insert(ns.history, action)
-        local log = ns.Log()
-        if log then
-            table.insert(log, { time = action.time, label = action.label, count = #action.changes, by = ns.PlayerName() })
-            while #log > 500 do table.remove(log, 1) end
+        local ch = {}
+        for _, c in ipairs(action.changes) do table.insert(ch, { n = c.name, ep = c.ep, gp = c.gp }) end
+        if (action.label or "") == "" then
+            -- a change without a label, for example from another addon or a macro
+            local c = ch[1]
+            local parts = {}
+            if c.ep ~= 0 then table.insert(parts, string.format("%+d EP", c.ep)) end
+            if c.gp ~= 0 then table.insert(parts, string.format("%+d GP", c.gp)) end
+            action.label = ns.ShortName(c.n) .. " " .. table.concat(parts, " ") .. (#ch > 1 and (" and " .. (#ch - 1) .. " more") or "")
         end
-        ns.Fire("RGF_POINTS_CHANGED")
-        ns.Fire("RGF_LOCAL_CHANGE")
+        local ev = ns.AddEvent({ k = "P", ch = ch, r = action.label, kind = action.kind, item = action.item })
+        action.id = ev.id
     end
     return action
 end
@@ -572,11 +729,13 @@ function ns.Adjust(name, dEP, dGP)
         ns.Print((name or "?") .. " is not in the guild")
         return nil
     end
-    local ep, gp = ns.GetPoints(main)
-    local newEP, newGP = ep + (dEP or 0), math.max(gp + (dGP or 0), ns.Setting("baseGP"))
-    setPoints(main, newEP, newGP)
+    local change = { name = ns.Resolve(name), ep = math.floor(dEP or 0), gp = math.floor(dGP or 0) }
     if ns.currentAction then
-        table.insert(ns.currentAction.changes, { name = main, ep = newEP - ep, gp = newGP - gp })
+        table.insert(ns.currentAction.changes, change)
+    else
+        ns.BeginAction("")
+        table.insert(ns.currentAction.changes, change)
+        ns.EndAction()
     end
     return main
 end
@@ -603,68 +762,95 @@ function ns.SetExactPoints(name, ep, gp, reason)
     return main
 end
 
+local NIGHT = 12 * 3600
+
+-- true when the main already got EP of this kind ("raid" or "ontime") in the
+-- last 12 hours, from any raid. Two raids on the same evening give it once.
+function ns.GotTonight(main, kind)
+    local st = ns.State()
+    local since = ns.Now() - NIGHT
+    for i = #st.events, 1, -1 do
+        local ev = st.events[i]
+        if ev.t < since then break end
+        if ev.k == "P" and ev.kind == kind and not st.undone[ev.id] then
+            for _, c in ipairs(ev.ch or {}) do
+                if ns.MainOf(c.n) == main and (c.ep or 0) > 0 then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- Give EP to a list of characters, each player only once even with alts.
-function ns.AwardEP(names, amount, label)
-    if not ns.CanChange() then return 0, {} end
-    local done, skipped = {}, {}
-    ns.BeginAction(label .. " +" .. amount .. " EP")
+-- With a kind ("raid", "ontime") players who already got it tonight are left out.
+-- Returns the number of players, the names outside the guild and the names
+-- that already got it.
+function ns.AwardEP(names, amount, label, kind)
+    if not ns.CanChange() then return 0, {}, {} end
+    local done, skipped, already = {}, {}, {}
+    local count = 0
+    ns.BeginAction(label .. " +" .. amount .. " EP", { kind = kind })
     for _, name in ipairs(names) do
         local main = ns.MainOf(name)
         if main and ns.members[main] then
             if not done[main] then
                 done[main] = true
-                ns.Adjust(main, amount, 0)
+                if kind and ns.GotTonight(main, kind) then
+                    table.insert(already, name)
+                else
+                    ns.Adjust(name, amount, 0)
+                    count = count + 1
+                end
             end
         else
             table.insert(skipped, name)
         end
     end
     ns.EndAction()
-    local count = 0
-    for _ in pairs(done) do count = count + 1 end
-    return count, skipped
+    return count, skipped, already
 end
 
 function ns.Decay()
     if not ns.CanChange() then return 0 end
-    local factor = 1 - ns.Setting("decayPercent") / 100
     local count = 0
-    local mains = {}
-    for full, e in pairs(ns.Players()) do
-        if e.ep and not e.main then table.insert(mains, full) end
+    for _, e in pairs(ns.Players()) do
+        if e.ep then count = count + 1 end
     end
-    table.sort(mains)
-    ns.BeginAction("Weekly decay " .. ns.Setting("decayPercent") .. "%")
-    for _, full in ipairs(mains) do
-        local ep, gp = ns.GetPoints(full)
-        local newEP = ns.Round(ep * factor)
-        local newGP = math.max(ns.Round(gp * factor), ns.Setting("baseGP"))
-        if newEP ~= ep or newGP ~= gp then
-            ns.Adjust(full, newEP - ep, newGP - gp)
-            count = count + 1
-        end
-    end
-    ns.EndAction()
+    local pct = ns.Setting("decayPercent")
+    ns.AddEvent({ k = "D", pct = pct, r = "Weekly decay " .. pct .. "%" })
     return count
 end
 
-function ns.Undo()
-    if not ns.CanChange() then return nil end
-    local action = table.remove(ns.history)
-    if not action then return nil end
-    ns.BeginAction("Undo " .. action.label)
-    for i = #action.changes, 1, -1 do
-        local c = action.changes[i]
-        ns.Adjust(c.name, -c.ep, -c.gp)
+-- The newest change of this player that is not undone yet
+function ns.LastOwnEvent()
+    local st = ns.State()
+    local me = ns.PlayerName()
+    for i = #st.events, 1, -1 do
+        local ev = st.events[i]
+        if ev.by == me and ev.k ~= "U" and not st.undone[ev.id] then return ev end
     end
-    local undo = ns.EndAction()
-    if undo and #undo.changes > 0 then
-        table.remove(ns.history) -- the undo itself should not be undoable
-    end
-    return action
+    return nil
 end
 
--- Link an alt to a main. Points stay with the main.
+-- Undo any change, also one from an earlier session or another editor.
+-- The change stays in the history, marked as undone.
+function ns.UndoEvent(id)
+    if not ns.CanChange() then return nil end
+    local ev = ns.Data().events[id]
+    if not ev or ev.k == "U" or ns.State().undone[id] then return nil end
+    ns.AddEvent({ k = "U", ref = id, r = "Undo " .. (ev.r or "") })
+    return { label = ev.r or "", id = id }
+end
+
+-- Undo the newest change of this player
+function ns.Undo()
+    if not ns.CanChange() then return nil end
+    local ev = ns.LastOwnEvent()
+    if not ev then return nil end
+    return ns.UndoEvent(ev.id)
+end
+
+-- Link an alt to a main. The alt's points move to the main.
 function ns.SetAlt(alt, main)
     if not ns.CanChange() then return false end
     local a, m = ns.Resolve(alt), ns.Resolve(main)
@@ -681,24 +867,25 @@ function ns.SetAlt(alt, main)
         return false
     end
     local ae = entry(a)
-    if ae and ae.ep and (ae.ep ~= 0 or (ae.gp or 0) > ns.Setting("baseGP")) then
-        ns.Print(ns.ShortName(a) .. " had " .. ae.ep .. " EP and " .. ae.gp .. " GP, these are dropped. Edit the main if needed")
+    if ae and ae.main == m then
+        ns.Print(ns.ShortName(a) .. " is already an alt of " .. ns.ShortName(m))
+        return false
     end
-    ns.Players()[a] = stamp({ main = m })
-    ns.Data().started = true
-    ns.Fire("RGF_POINTS_CHANGED")
-    ns.Fire("RGF_LOCAL_CHANGE")
+    if ae and ae.ep and (ae.ep ~= 0 or (ae.gp or 0) > ns.Setting("baseGP")) then
+        ns.Print(string.format("%s brings %d EP and %d GP above the start to %s", ns.ShortName(a), ae.ep,
+            ae.gp - ns.Setting("baseGP"), ns.ShortName(m)))
+    end
+    ns.AddEvent({ k = "A", alt = a, main = m, r = ns.ShortName(a) .. " linked as alt of " .. ns.ShortName(m) })
     return true
 end
 
+-- The alt becomes a main again and starts at 0 EP. Undo brings the link back.
 function ns.UnsetAlt(alt)
     if not ns.CanChange() then return false end
     local a = ns.Resolve(alt)
     local e = entry(a)
     if not e or not e.main then ns.Print(alt .. " is not linked as an alt") return false end
-    setPoints(a, 0, ns.Setting("baseGP"))
-    ns.Fire("RGF_POINTS_CHANGED")
-    ns.Fire("RGF_LOCAL_CHANGE")
+    ns.AddEvent({ k = "A", alt = a, r = ns.ShortName(a) .. " is a main again" })
     return true
 end
 
@@ -709,6 +896,7 @@ function ns.ImportOfficerNotes()
         return 0
     end
     if not GetNumGuildMembers then return 0 end
+    local base = ns.Base()
     local players = ns.Players()
     local count = 0
     for i = 1, GetNumGuildMembers() or 0 do
@@ -717,68 +905,129 @@ function ns.ImportOfficerNotes()
             local full = ns.FullName(name)
             local info = ns.ParseNote(officerNote)
             if (info.ep or info.main) and not players[full] then
-                if info.main then
-                    players[full] = stamp({ main = info.main })
-                else
-                    players[full] = stamp({ ep = info.ep, gp = math.max(info.gp, ns.Setting("baseGP")) })
-                end
+                local e = info.main and { main = info.main }
+                    or { ep = info.ep, gp = math.max(info.gp, ns.Setting("baseGP")) }
+                e.t, e.by = ns.Now(), ns.PlayerName()
+                base[full] = e
                 count = count + 1
             end
         end
     end
     if count > 0 then
         ns.Data().started = true
+        ns.Invalidate()
         ns.Fire("RGF_POINTS_CHANGED")
-        ns.Fire("RGF_LOCAL_CHANGE")
+        ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     end
     return count
 end
 
 ------------------------------------------------------------------------
--- Bench
+-- History: every event plus the settings changes of this computer
 ------------------------------------------------------------------------
-function ns.Bench()
+local function settingsLog()
+    local db = RedGuildForeverDB
+    if not db then return {} end
     if ns.IsTest() then
-        RedGuildForeverDB.test.bench = RedGuildForeverDB.test.bench or {}
-        return RedGuildForeverDB.test.bench
+        db.test = db.test or {}
+        db.test.log = db.test.log or {}
+        return db.test.log
     end
-    return RedGuildForeverDB.bench
+    db.log = db.log or {}
+    return db.log
 end
 
+function ns.AddLogEntry(label, count)
+    local log = settingsLog()
+    table.insert(log, { time = ns.Now(), label = label, count = count or 1, by = ns.PlayerName() })
+    while #log > 500 do table.remove(log, 1) end
+end
+
+-- How many players an event changed
+local function eventCount(ev)
+    if ev.k == "P" then return #(ev.ch or {}) end
+    return 1
+end
+
+-- Everything that happened, oldest first. Entries of events carry the id,
+-- so the History tab can undo them.
 function ns.Log()
-    if not RedGuildForeverDB then return nil end
-    if ns.IsTest() then
-        RedGuildForeverDB.test = RedGuildForeverDB.test or {}
-        RedGuildForeverDB.test.log = RedGuildForeverDB.test.log or {}
-        return RedGuildForeverDB.test.log
+    local st = ns.State()
+    local list = {}
+    for _, e in ipairs(settingsLog()) do
+        table.insert(list, { time = e.time or 0, label = e.label, count = e.count or 1, by = e.by, order = #list })
     end
-    return RedGuildForeverDB.log
+    for _, ev in ipairs(st.events) do
+        table.insert(list, { time = ev.t, label = ev.r ~= "" and ev.r or "Points changed", count = eventCount(ev), by = ev.by,
+            id = ev.id, undo = ev.k == "U", undone = st.undone[ev.id] ~= nil, item = ev.item, order = #list })
+    end
+    table.sort(list, function(a, b)
+        if a.time ~= b.time then return a.time < b.time end
+        return a.order < b.order
+    end)
+    return list
+end
+
+------------------------------------------------------------------------
+-- Bench, shared with Sync. The newest change of each player wins.
+------------------------------------------------------------------------
+function ns.Bench()
+    local list = {}
+    for full, e in pairs(ns.Data().bench or {}) do
+        if e.on then table.insert(list, full) end
+    end
+    table.sort(list)
+    return list
+end
+
+local function setBench(full, on)
+    local bench = ns.Data().bench
+    bench[full] = { on = on, t = ns.Now() }
+    ns.Data().started = ns.Data().started or ns.HasData()
+end
+
+local function benchChanged()
+    ns.Fire("RGF_BENCH_CHANGED")
+    ns.Fire("RGF_LOCAL_CHANGE", { state = true })
 end
 
 function ns.BenchAdd(name)
+    if not ns.CanEdit() then return false end
     local full = ns.Resolve(name)
     if not full then return false end
-    for _, n in ipairs(ns.Bench()) do if n == full then return false end end
-    table.insert(ns.Bench(), full)
-    ns.Fire("RGF_BENCH_CHANGED")
+    local e = ns.Data().bench[full]
+    if e and e.on then return false end
+    setBench(full, true)
+    benchChanged()
     return true, full
 end
 
 function ns.BenchRemove(name)
+    if not ns.CanEdit() then return false end
     local full = ns.Resolve(name)
-    for i, n in ipairs(ns.Bench()) do
-        if n == full then
-            table.remove(ns.Bench(), i)
-            ns.Fire("RGF_BENCH_CHANGED")
-            return true, full
-        end
-    end
-    return false
+    local e = full and ns.Data().bench[full]
+    if not (e and e.on) then return false end
+    setBench(full, false)
+    benchChanged()
+    return true, full
 end
 
 function ns.BenchClear()
-    wipe(ns.Bench())
-    ns.Fire("RGF_BENCH_CHANGED")
+    if not ns.CanEdit() then return end
+    for _, full in ipairs(ns.Bench()) do setBench(full, false) end
+    benchChanged()
+end
+
+-- The bench of version 1.7 and older was saved only on this computer.
+-- Move it into the guild data once, so it is shared.
+function ns.MigrateOldBench()
+    local old = RedGuildForeverDB and RedGuildForeverDB.bench
+    if type(old) ~= "table" or #old == 0 or ns.IsTest() or not ns.GuildKey() then return end
+    local bench = ns.RealData().bench
+    for _, full in ipairs(old) do
+        if not bench[full] then bench[full] = { on = true, t = ns.Now() } end
+    end
+    wipe(old)
 end
 
 function ns.RaidMembers()

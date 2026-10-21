@@ -87,7 +87,7 @@ local help = {
     "/rgf alt Cel Rog, Cel Dru  link the alt Cel Rog to the main Cel Dru",
     "/rgf unalt Cel Rog  make an alt a main again",
     "/rgf decay  weekly decay",
-    "/rgf undo  undo the last change from this session",
+    "/rgf undo  undo your newest change, also one from an earlier day. The History tab can undo any change",
     "/rgf price [item] 250  fixed price for an item, or clear",
     "/rgf sync  sync the data with everyone online",
     "/rgf export  open the Sync tab with backup export and import",
@@ -106,18 +106,28 @@ local function pointsLine(name)
     return line
 end
 
-local function awardGroup(amount, label)
+local function shortNames(list)
+    local short = {}
+    for _, n in ipairs(list) do table.insert(short, ns.ShortName(n)) end
+    return table.concat(short, ", ")
+end
+
+-- kind is "raid" or "ontime", each player gets it once per raid night
+local function awardGroup(amount, label, kind)
     if not needOfficer() then return end
     local names = ns.RaidAndBench()
     local benched = #ns.Bench()
-    local count, skipped = ns.AwardEP(names, amount, label)
-    local msg = string.format("%d players got %d EP for %s", count, amount, label:lower())
-    if benched > 0 then msg = msg .. ", the " .. benched .. " on the bench included" end
-    ns.Announce(msg .. ".")
+    local count, skipped, already = ns.AwardEP(names, amount, label, kind)
+    if count > 0 then
+        local msg = string.format("%d players got %d EP for %s", count, amount, label:lower())
+        if benched > 0 then msg = msg .. ", the bench included" end
+        ns.Announce(msg .. ".")
+    end
+    if #already > 0 then
+        ns.Print("already got " .. label:lower() .. " EP tonight, from this or another raid: " .. shortNames(already))
+    end
     if #skipped > 0 then
-        local short = {}
-        for _, n in ipairs(skipped) do table.insert(short, ns.ShortName(n)) end
-        ns.Print("not in the guild, no EP " .. table.concat(short, ", "))
+        ns.Print("not in the guild, no EP " .. shortNames(skipped))
     end
 end
 
@@ -150,10 +160,10 @@ function ns.Command(line)
         ns.StartAuction(link, tier)
 
     elseif cmd == "raid" then
-        awardGroup(ns.Setting("raidEP"), "Raid night")
+        awardGroup(ns.Setting("raidEP"), "Raid night", "raid")
 
     elseif cmd == "ontime" then
-        awardGroup(ns.Setting("onTimeEP"), "Being on time")
+        awardGroup(ns.Setting("onTimeEP"), "Being on time", "ontime")
 
     elseif cmd == "bench" then
         local sub = (w[2] or ""):lower()
@@ -221,7 +231,7 @@ function ns.Command(line)
     elseif cmd == "undo" then
         if not needOfficer() then return end
         local action = ns.Undo()
-        ns.Print(action and ("undone " .. action.label) or "nothing to undo in this session")
+        ns.Print(action and ("undone " .. action.label) or "nothing of yours to undo")
 
     elseif cmd == "price" then
         local link = itemLink(line)
@@ -313,7 +323,8 @@ function ns.Command(line)
         if #log == 0 then ns.Print("no changes recorded yet") return end
         for i = math.max(1, #log - 9), #log do
             local e = log[i]
-            ns.Print(date("%d.%m %H:%M", e.time) .. " " .. e.label .. " (" .. e.count .. " players, by " .. ns.ShortName(e.by) .. ")")
+            ns.Print(date("%d.%m %H:%M", e.time) .. " " .. e.label .. " (" .. e.count .. " players, by " .. ns.ShortName(e.by) .. ")"
+                .. (e.undone and ", undone" or ""))
         end
 
     else

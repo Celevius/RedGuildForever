@@ -344,9 +344,10 @@ local benchColumns = {
 }
 
 local historyColumns = {
-    { key = "time", label = "Time", w = 90 },
-    { key = "label", label = "Change", w = 260 },
-    { key = "by", label = "By", w = 110 },
+    { key = "time", label = "Time", w = 82 },
+    { key = "label", label = "Change", w = 250 },
+    { key = "by", label = "By", w = 80 },
+    { key = "action", label = "", w = 60 },
 }
 
 local function showPage(id)
@@ -436,7 +437,7 @@ local function buildSyncPage(parent)
     info:SetPoint("TOPLEFT", 12, -32)
     info:SetWidth(470)
     info:SetWordWrap(true)
-    info:SetText("Every player keeps a copy of the points in the addon's save file. Sync shares the newest data with everyone online, the newest change of each player wins. Editors send their data, everyone else only receives.")
+    info:SetText("Every player keeps a copy of the points in the addon's save file. Every change is kept, and Sync hands the changes to everyone online, so changes made at the same time in two raids all count. Editors send, everyone else only receives.")
 
     page.state = text(page, "GameFontHighlight")
     page.state:SetPoint("TOPLEFT", 12, -72)
@@ -509,9 +510,12 @@ local function refreshSyncPage(page)
             table.insert(lines, "If your guild is new, click Start fresh. If you used version 1.3 or older, import the officer notes.")
         end
     else
-        local count = 0
+        local count, changes = 0, 0
         for _ in pairs(ns.Players()) do count = count + 1 end
-        table.insert(lines, count .. " players in the data.")
+        for _ in pairs(ns.Data().events or {}) do changes = changes + 1 end
+        table.insert(lines, count .. " players and " .. changes .. " changes in the data.")
+        local waiting = ns.QueuedMessages and ns.QueuedMessages() or 0
+        if waiting > 0 then table.insert(lines, waiting .. " sync messages are still waiting to go out.") end
         if ns.CanEdit() then
             table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid.")
         end
@@ -886,7 +890,17 @@ local function buildHistoryPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
     headerRow(page, historyColumns)
-    page.list = scrollList(page, 18, function(row) rowCells(row, historyColumns) end)
+    page.list = scrollList(page, 20, function(row)
+        rowCells(row, historyColumns)
+        -- every change can be undone, also an old one or one of another editor
+        row.undo = button(row, "Undo", 56, function()
+            if not row.id then return end
+            local done = ns.UndoEvent(row.id)
+            if done then ns.Print("undone " .. done.label) end
+        end)
+        row.undo:SetHeight(18)
+        row.undo:SetPoint("RIGHT", -4, 0)
+    end)
     page.list:SetPoint("TOPLEFT", 4, -30)
     page.list:SetPoint("BOTTOMRIGHT", -26, 4)
     return page
@@ -1005,14 +1019,17 @@ end
 
 local function refreshHistoryPage(page)
     local log = ns.Log() or {}
+    local canEdit = ns.CanEdit()
     local n = 0
     for i = #log, 1, -1 do
         local e = log[i]
         n = n + 1
         local row = page.list:Row(n)
+        row.id = e.id
         row.cells.time:SetText(date("%d.%m. %H:%M", e.time))
-        row.cells.label:SetText(e.label)
+        row.cells.label:SetText(e.undone and ("|cff808080" .. e.label .. ", undone|r") or e.label)
         row.cells.by:SetText(ns.ShortName(e.by))
+        row.undo:SetShown(canEdit and e.id ~= nil and not e.undo and not e.undone)
         row:Show()
     end
     page.list:SetCount(n)
@@ -1046,7 +1063,7 @@ function ns.RefreshStandings()
     elseif tab == 2 then
         status = #ns.Bench() .. " players on the bench"
     elseif tab == 3 then
-        status = "Changes made by editors on this computer"
+        status = "Every change of every editor, shared with Sync"
     elseif tab == 4 then
         status = "Sync, decay and backup"
     elseif tab == 5 then

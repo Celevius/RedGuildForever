@@ -285,7 +285,7 @@ function ns.Award(name)
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
     local cost = spec == "MS" and a.price or ns.OffSpecCost(a.price)
-    ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP")
+    ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP", { kind = "loot", item = a.itemID })
     local main = ns.Adjust(full, 0, cost)
     ns.EndAction()
     if not main then return false end

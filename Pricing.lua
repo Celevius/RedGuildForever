@@ -73,7 +73,7 @@ local function setOverride(link, gp)
     data.rules = data.rules or {}
     data.rules["item:" .. itemID] = { v = gp, t = ns.Now(), by = ns.PlayerName() }
     ns.Fire("RGF_RULES_CHANGED")
-    ns.Fire("RGF_LOCAL_CHANGE")
+    ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     return true
 end
 

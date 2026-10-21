@@ -5,7 +5,7 @@ local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
 ns.version = "1.7.1"
-ns.prefix = "RGFEPGP" -- addon message prefix, max 16 characters
+ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
 -- Guild rules. The defaults match the guild loot rule book. The guild
@@ -331,7 +331,6 @@ ns.On("ADDON_LOADED", function(name)
     RedGuildForeverDB = RedGuildForeverDB or {}
     RedGuildForeverDB.log = RedGuildForeverDB.log or {}
     RedGuildForeverDB.priceOverrides = RedGuildForeverDB.priceOverrides or {}
-    RedGuildForeverDB.bench = RedGuildForeverDB.bench or {}
     ns.Fire("RGF_READY")
 end)
 
