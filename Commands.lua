@@ -79,6 +79,9 @@ local help = {
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Editors|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
+    "/rgf start  start the raid, gives the on time EP and starts the loot list",
+    "/rgf end  end the raid, gives the raid EP",
+    "/rgf loot  the loot of the raid, or /rgf loot Cel Dru for the items of a player",
     "/rgf raid  give raid EP to the raid and the bench",
     "/rgf ontime  give the on time bonus to the raid and the bench",
     "/rgf bench  open the bench, or /rgf bench add Cel Dru, remove Cel Dru, clear",
@@ -106,29 +109,10 @@ local function pointsLine(name)
     return line
 end
 
-local function shortNames(list)
-    local short = {}
-    for _, n in ipairs(list) do table.insert(short, ns.ShortName(n)) end
-    return table.concat(short, ", ")
-end
-
 -- kind is "raid" or "ontime", each player gets it once per raid night
 local function awardGroup(amount, label, kind)
     if not needOfficer() then return end
-    local names = ns.RaidAndBench()
-    local benched = #ns.Bench()
-    local count, skipped, already = ns.AwardEP(names, amount, label, kind)
-    if count > 0 then
-        local msg = string.format("%d players got %d EP for %s", count, amount, label:lower())
-        if benched > 0 then msg = msg .. ", the bench included" end
-        ns.Announce(msg .. ".")
-    end
-    if #already > 0 then
-        ns.Print("already got " .. label:lower() .. " EP tonight, from this or another raid: " .. shortNames(already))
-    end
-    if #skipped > 0 then
-        ns.Print("not in the guild, no EP " .. shortNames(skipped))
-    end
+    ns.AwardGroup(amount, label, kind)
 end
 
 function ns.Command(line)
@@ -158,6 +142,25 @@ function ns.Command(line)
         local after = line:sub((line:find(link, 1, true) or 0) + #link):lower()
         local tier = after:match("boss") and "boss" or (after:match("rare") and "rare" or "normal")
         ns.StartAuction(link, tier)
+
+    elseif cmd == "start" then
+        ns.StartRaid()
+
+    elseif cmd == "end" then
+        ns.EndRaid()
+
+    elseif cmd == "loot" then
+        if w[2] then
+            local full = typedMember(joinWords(w, 2))
+            if not full then return end
+            local items = ns.LootOf(full, 10)
+            if #items == 0 then ns.Print(ns.ShortName(full) .. " got no items yet") end
+            for _, l in ipairs(items) do
+                ns.Print(date("%d.%m.", l.time) .. " " .. l.link .. " " .. l.gp .. " GP" .. (l.name ~= full and (" (" .. ns.ShortName(l.name) .. ")") or ""))
+            end
+        else
+            for line in ns.RaidLootText():gmatch("[^\n]+") do ns.Print(line) end
+        end
 
     elseif cmd == "raid" then
         awardGroup(ns.Setting("raidEP"), "Raid night", "raid")

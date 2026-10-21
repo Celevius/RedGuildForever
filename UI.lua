@@ -339,8 +339,15 @@ local standingsColumns = {
 }
 
 local benchColumns = {
-    { key = "name", label = "Benched players", w = 330 },
+    { key = "name", label = "Bench", w = 330 },
     { key = "action", label = "", w = 110 },
+}
+
+local raidLootColumns = {
+    { key = "item", label = "Loot of the raid", w = 210 },
+    { key = "name", label = "Winner", w = 140 },
+    { key = "gp", label = "GP", w = 50, justify = "RIGHT" },
+    { key = "time", label = "Time", w = 50, justify = "RIGHT" },
 }
 
 local historyColumns = {
@@ -391,6 +398,7 @@ local function buildStandingsPage(parent)
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("New member until " .. ns.Setting("minEP") .. " EP", 0.4, 0.78, 1, true)
             end
+            ns.AddLootLines(GameTooltip, self.entry.name)
             if ns.CanEdit() then
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("Click to edit", 0, 1, 0)
@@ -407,20 +415,67 @@ local function buildStandingsPage(parent)
     return page
 end
 
-local function buildBenchPage(parent)
+-- The last items of a player in a tooltip
+function ns.AddLootLines(tip, name)
+    local items = ns.LootOf and ns.LootOf(name, 3) or {}
+    if #items == 0 then return end
+    tip:AddLine(" ")
+    tip:AddLine("Last items", 1, 0.82, 0)
+    for _, l in ipairs(items) do
+        tip:AddDoubleLine(l.link, date("%d.%m.", l.time) .. "  " .. l.gp .. " GP", nil, nil, nil, 1, 1, 1)
+    end
+end
+
+-- Raid tab: start and end the raid, the bench, and the loot of the raid
+local function buildRaidPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
-    headerRow(page, benchColumns)
-    page.list = scrollList(page, 22, function(row)
+    page.state = text(page, "GameFontHighlight")
+    page.state:SetPoint("TOPLEFT", 12, -10)
+    page.state:SetWidth(470)
+    page.state:SetWordWrap(true)
+    page.toggle = button(page, "Start raid", 110, function()
+        if ns.Session() then ns.EndRaid() else ns.StartRaid() end
+    end)
+    page.toggle:SetPoint("TOPLEFT", 10, -40)
+    page.copy = button(page, "Loot list for Discord", 160, function()
+        ns.ShowCopyText("Loot list", ns.RaidLootText())
+    end)
+    page.copy:SetPoint("LEFT", page.toggle, "RIGHT", 4, 0)
+
+    local benchHolder = CreateFrame("Frame", nil, page)
+    benchHolder:SetPoint("TOPLEFT", 0, -66)
+    benchHolder:SetPoint("TOPRIGHT", 0, -66)
+    benchHolder:SetHeight(128)
+    headerRow(benchHolder, benchColumns)
+    page.list = scrollList(benchHolder, 22, function(row)
         rowCells(row, benchColumns)
         row.remove = button(row, "Remove", 90, function() ns.BenchRemove(row.name) end)
         row.remove:SetHeight(20)
         row.remove:SetPoint("RIGHT", -4, 0)
     end)
     page.list:SetPoint("TOPLEFT", 4, -30)
-    page.list:SetPoint("BOTTOMRIGHT", -26, 30)
+    page.list:SetPoint("BOTTOMRIGHT", -26, 0)
+
+    local lootHolder = CreateFrame("Frame", nil, page)
+    lootHolder:SetPoint("TOPLEFT", 0, -198)
+    lootHolder:SetPoint("BOTTOMRIGHT", 0, 22)
+    headerRow(lootHolder, raidLootColumns)
+    page.loot = scrollList(lootHolder, 18, function(row)
+        rowCells(row, raidLootColumns)
+        row:SetScript("OnEnter", function(self)
+            if not (self.entry and self.entry.link and self.entry.link:find("|H")) then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            pcall(GameTooltip.SetHyperlink, GameTooltip, self.entry.link)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end)
+    page.loot:SetPoint("TOPLEFT", 4, -30)
+    page.loot:SetPoint("BOTTOMRIGHT", -26, 0)
+
     page.hint = text(page, "GameFontDisableSmall", "CENTER")
-    page.hint:SetPoint("BOTTOM", 0, 10)
+    page.hint:SetPoint("BOTTOM", 0, 6)
     page.hint:SetText("Benched players get the same EP as the raid.")
     return page
 end
@@ -873,6 +928,7 @@ end
 ns.On("RGF_READY", registerOptions)
 ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
 ns.On("RGF_RULES_CHANGED", function() ns.RefreshSettings() end)
+ns.On("RGF_RAID_CHANGED", function() ns.RefreshStandings() end)
 ns.On("RGF_EDITORS_CHANGED", function()
     ns.RefreshSettings()
     if ns.RefreshStandings then ns.RefreshStandings() end
@@ -938,7 +994,7 @@ local function buildMain()
 
     f.pages = {
         buildStandingsPage(f.Inset),
-        buildBenchPage(f.Inset),
+        buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
         buildSyncPage(f.Inset),
         buildSettingsPage(f.Inset),
@@ -973,7 +1029,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Bench", "History", "Data", "Settings" }, showPage)
+    tabs(f, name, { "Standings", "Raid", "History", "Data", "Settings" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1015,7 +1071,24 @@ local function refreshStandingsPage(page)
     return #list
 end
 
-local function refreshBenchPage(page)
+local function refreshRaidPage(page)
+    local canEdit = ns.CanEdit()
+    local s = ns.Session()
+    local last = ns.LastSession()
+    if s then
+        page.state:SetText(string.format("Raid running since %s, %d players so far. End raid gives the raid EP.",
+            date("%H:%M", s.start), ns.SeenCount(s)))
+        page.toggle:SetText("End raid")
+    elseif last then
+        page.state:SetText(string.format("Last raid on %s, %d players. Start raid gives the on time EP and starts a new loot list.",
+            date("%d.%m. %H:%M", last.start), ns.SeenCount(last)))
+        page.toggle:SetText("Start raid")
+    else
+        page.state:SetText("Start raid gives the on time EP and starts the loot list, End raid gives the raid EP.")
+        page.toggle:SetText("Start raid")
+    end
+    page.toggle:SetShown(canEdit)
+
     local list = ns.Bench()
     for i, name in ipairs(list) do
         local row = page.list:Row(i)
@@ -1023,10 +1096,25 @@ local function refreshBenchPage(page)
         row.cells.name:SetText(ns.ShortName(name))
         local m = ns.members[name]
         row.cells.name:SetTextColor(classColor(m and m.class))
-        row.remove:SetShown(ns.CanEdit())
+        row.remove:SetShown(canEdit)
         row:Show()
     end
     page.list:SetCount(#list)
+
+    local loot = ns.RaidLoot(last)
+    for i, l in ipairs(loot) do
+        local row = page.loot:Row(i)
+        row.entry = l
+        row.cells.item:SetText(l.link)
+        row.cells.name:SetText(ns.ShortName(l.name))
+        local m = ns.members[l.name]
+        row.cells.name:SetTextColor(classColor(m and m.class))
+        row.cells.gp:SetText(l.gp)
+        row.cells.time:SetText(date("%H:%M", l.time))
+        row:Show()
+    end
+    page.loot:SetCount(#loot)
+    page.copy:SetEnabled(#loot > 0)
 end
 
 local function refreshHistoryPage(page)
@@ -1054,7 +1142,7 @@ function ns.RefreshStandings()
     if tab == 1 then
         count = refreshStandingsPage(main.pages[1])
     elseif tab == 2 then
-        refreshBenchPage(main.pages[2])
+        refreshRaidPage(main.pages[2])
     elseif tab == 3 then
         refreshHistoryPage(main.pages[3])
     elseif tab == 4 then
@@ -1073,7 +1161,7 @@ function ns.RefreshStandings()
     if not (IsInGuild and IsInGuild()) then
         status = "You are not in a guild"
     elseif tab == 2 then
-        status = #ns.Bench() .. " players on the bench"
+        status = ns.Session() and "Raid running" or (#ns.Bench() .. " players on the bench")
     elseif tab == 3 then
         status = "Every change of every editor, shared with Sync"
     elseif tab == 4 then
@@ -1381,9 +1469,15 @@ local function buildLootMaster()
     f.slot = itemButton(f, 37)
     f.slot:SetPoint("TOPRIGHT", -14, -27)
 
+    -- one button per item when several are up for bids
+    f.itemTabs = {}
+    f.switchHint = text(f.Inset, "GameFontDisableSmall")
+    f.switchHint:SetPoint("TOPLEFT", 12, -14)
+    f.switchHint:SetText("One item is up for bids.")
+
     -- price row
     local tierLabel = text(f.Inset, "GameFontNormalSmall")
-    tierLabel:SetPoint("TOPLEFT", 10, -12)
+    tierLabel:SetPoint("TOPLEFT", 10, -40)
     tierLabel:SetText("Drops from")
     f.tierButtons = {}
     local prev = tierLabel
@@ -1406,14 +1500,14 @@ local function buildLootMaster()
     f.priceSet:SetPoint("LEFT", f.priceBox, "RIGHT", 4, 0)
 
     f.state = text(f.Inset, "GameFontNormal")
-    f.state:SetPoint("TOPLEFT", 10, -42)
+    f.state:SetPoint("TOPLEFT", 10, -70)
     f.state:SetWidth(540)
     f.counts = text(f.Inset, "GameFontHighlightSmall")
-    f.counts:SetPoint("TOPLEFT", 10, -60)
+    f.counts:SetPoint("TOPLEFT", 10, -88)
     f.counts:SetWidth(540)
 
     local listHolder = CreateFrame("Frame", nil, f.Inset)
-    listHolder:SetPoint("TOPLEFT", 0, -74)
+    listHolder:SetPoint("TOPLEFT", 0, -102)
     listHolder:SetPoint("BOTTOMRIGHT")
     headerRow(listHolder, bidColumns)
     f.list = scrollList(listHolder, 22, function(row)
@@ -1434,6 +1528,17 @@ local function buildLootMaster()
         end)
         row.award:SetHeight(20)
         row.award:SetPoint("RIGHT", -2, 0)
+        -- what the bidder got lately, helps with close calls
+        row:SetScript("OnEnter", function(self)
+            if not self.bid then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(ns.ShortName(self.bid.name))
+            local items = ns.LootOf(self.bid.name, 3)
+            if #items == 0 then GameTooltip:AddLine("No items yet", 1, 1, 1) end
+            ns.AddLootLines(GameTooltip, self.bid.name)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end)
     f.list:SetPoint("TOPLEFT", 4, -30)
     f.list:SetPoint("BOTTOMRIGHT", -26, 4)
@@ -1531,7 +1636,28 @@ function ns.RefreshLootMaster()
     end
     lm = lm or buildLootMaster()
     if not lm:IsShown() then lm:Show() end
-    setTitle(lm, a.test and "Loot Master  |cffff8040Test mode|r" or "Loot Master")
+    ns.lootMasterFrame = lm
+    -- the item buttons
+    local multi = #ns.auctions > 1
+    lm.switchHint:SetShown(not multi)
+    for i, x in ipairs(ns.auctions) do
+        local b = lm.itemTabs[i]
+        if not b then
+            b = button(lm.Inset, "", 88, function(self) if self.auction then ns.SelectAuction(self.auction) end end)
+            b:SetHeight(22)
+            b:SetPoint("TOPLEFT", 8 + (i - 1) * 90, -8)
+            lm.itemTabs[i] = b
+        end
+        b.auction = x
+        local name = x.link:match("%[(.-)%]") or "?"
+        if #name > 9 then name = name:sub(1, 8) .. "." end
+        b:SetText((x.open and "|cff40ff40" or "") .. x.n .. ". " .. name .. (x.open and "|r" or ""))
+        b:SetEnabled(x ~= a)
+        b:SetShown(multi and i <= 6)
+    end
+    for i = #ns.auctions + 1, #lm.itemTabs do lm.itemTabs[i]:Hide() end
+    local title = "Loot Master" .. (#ns.auctions > 1 and ("  " .. a.n .. " of " .. #ns.auctions) or "")
+    setTitle(lm, a.test and (title .. "  |cffff8040Test mode|r") or title)
     local _, _, icon = ns.ItemInfo(a.link)
     setPortrait(lm, icon or ICON_UNKNOWN)
     lm.item:SetText(a.link)
@@ -1591,6 +1717,7 @@ ns.On("RGF_AUCTION_CHANGED", function() ns.RefreshLootMaster() end)
 -- Bid popup for raiders, inspired by the Need or Greed loot roll
 ------------------------------------------------------------------------
 local popup
+local nextUnanswered, showPopup
 
 local function buildPopup()
     local f = window("RedGuildForeverBidFrame", 380, 214, "Loot Bid", ICON_UNKNOWN)
@@ -1632,8 +1759,11 @@ local function buildPopup()
     f.ms = button(f, "Main Spec", 112, function() ns.SendBid(f.inc, "MS") end)
     f.ms:SetPoint("BOTTOMLEFT", 6, 4)
     f.pass = button(f, "Pass", 112, function()
-        if f.inc and f.inc.myBid then ns.SendBid(f.inc, "PASS") end
-        f:Hide()
+        local inc = f.inc
+        if inc and inc.myBid then ns.SendBid(inc, "PASS") end
+        if inc then inc.myBid = inc.myBid or "PASS" end
+        local nextInc = nextUnanswered(inc)
+        if nextInc then showPopup(nextInc) else f:Hide() end
     end)
     f.pass:SetPoint("BOTTOMRIGHT", -6, 4)
     f.os = button(f, "Off Spec", 112, function() ns.SendBid(f.inc, "OS") end)
@@ -1659,9 +1789,48 @@ local function buildPopup()
     return f
 end
 
+-- The next item that is open and not answered yet, lowest number first
+nextUnanswered = function(except)
+    local best
+    local now = GetTime()
+    for _, inc in pairs(ns.incoming) do
+        if inc ~= except and not inc.myBid and now < inc.endsAt then
+            if not best or (inc.n or 0) < (best.n or 0) or ((inc.n or 0) == (best.n or 0) and inc.id < best.id) then
+                best = inc
+            end
+        end
+    end
+    return best
+end
+
+local function waitingCount(except)
+    local n = 0
+    local now = GetTime()
+    for _, inc in pairs(ns.incoming) do
+        if inc ~= except and not inc.myBid and now < inc.endsAt then n = n + 1 end
+    end
+    return n
+end
+
 ns.On("RGF_INCOMING_AUCTION", function(inc)
     popup = popup or buildPopup()
+    local current = popup:IsShown() and popup.inc
+    if current and current ~= inc and not current.myBid and GetTime() < current.endsAt then
+        -- the player still has to answer the shown item, the new one waits
+        showPopup(current)
+        return
+    end
+    if current == inc and inc.myBid then
+        -- answered, go on with the next item that waits
+        local nextInc = nextUnanswered(inc)
+        if nextInc then inc = nextInc end
+    end
+    showPopup(inc)
+end)
+
+showPopup = function(inc)
     popup.inc = inc
+    ns.bidPopup = popup
     setTitle(popup, ns.IsTest() and "Loot Bid  |cffff8040Test mode|r" or "Loot Bid")
     local _, _, icon = ns.ItemInfo(inc.link)
     setPortrait(popup, icon or ICON_UNKNOWN)
@@ -1682,15 +1851,59 @@ ns.On("RGF_INCOMING_AUCTION", function(inc)
     popup.os:SetEnabled(open)
     popup.ms:SetText(inc.myBid == "MS" and "|cff40ff40Main Spec|r" or "Main Spec")
     popup.os:SetText(inc.myBid == "OS" and "|cff40ff40Off Spec|r" or "Off Spec")
+    local waiting = waitingCount(inc)
+    popup.timerText:SetText("")
+    if waiting > 0 then
+        popup.note:SetText(note .. "\n|cffff8040" .. waiting .. (waiting == 1 and " more item waits" or " more items wait") .. "|r")
+    end
     if not popup:IsShown() then
         popup:Show()
         sound("RAID_WARNING")
     end
-end)
+end
 
 ns.On("RGF_INCOMING_CLOSED", function(inc)
-    if popup and popup.inc == inc then popup:Hide() end
+    if popup and popup.inc == inc then
+        local nextInc = nextUnanswered(inc)
+        if nextInc then showPopup(nextInc) else popup:Hide() end
+    end
 end)
+
+------------------------------------------------------------------------
+-- A window with text to copy, for Discord
+------------------------------------------------------------------------
+local copyFrame
+
+function ns.ShowCopyText(title, textValue)
+    if not copyFrame then
+        local f = window("RedGuildForeverCopyFrame", 460, 380, title, ICON_STANDINGS)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+        f:SetFrameStrata("DIALOG")
+        f.hint = text(f, "GameFontHighlightSmall")
+        f.hint:SetPoint("TOPLEFT", 66, -34)
+        f.hint:SetWidth(360)
+        f.hint:SetText("Press Ctrl C to copy, then paste it in Discord.")
+        local scroll = create("ScrollFrame", nil, f.Inset, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 8, -8)
+        scroll:SetPoint("BOTTOMRIGHT", -28, 8)
+        local box = CreateFrame("EditBox", nil, scroll)
+        box:SetMultiLine(true)
+        box:SetAutoFocus(false)
+        box:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+        box:SetWidth(400)
+        box:SetScript("OnEscapePressed", function() f:Hide() end)
+        scroll:SetScrollChild(box)
+        f.box = box
+        copyFrame = f
+        ns.copyFrame = f
+    end
+    setTitle(copyFrame, title)
+    copyFrame.box:SetText(textValue)
+    copyFrame:Show()
+    copyFrame.box:SetFocus()
+    copyFrame.box:HighlightText()
+end
 
 ------------------------------------------------------------------------
 -- Decay confirmation, the normal Blizzard yes or no dialog
@@ -1703,6 +1916,16 @@ if StaticPopupDialogs then
         OnAccept = function()
             if ns.StartFresh() then ns.Print("started with empty data, you can now give EP") end
         end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+    StaticPopupDialogs["REDGUILDFOREVER_LEAVERS"] = {
+        text = "%s players left the raid before the end:\n%s\nGive them the raid EP too?",
+        button1 = YES or "Yes",
+        button2 = NO or "No",
+        OnAccept = function() ns.AwardLeavers() end,
         timeout = 0,
         whileDead = true,
         hideOnEscape = true,

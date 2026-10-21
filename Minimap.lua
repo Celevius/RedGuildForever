@@ -25,8 +25,11 @@ function ns.MenuEntries()
     }
     if ns.CanEdit() then
         table.insert(entries, { text = "Loot Master", func = function() ns.OpenLootMaster() end })
-        table.insert(entries, { text = "Give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.Command("raid") end })
-        table.insert(entries, { text = "Give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.Command("ontime") end })
+        if ns.Session() then
+            table.insert(entries, { text = "End raid, give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.EndRaid() end })
+        else
+            table.insert(entries, { text = "Start raid, give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.StartRaid() end })
+        end
         table.insert(entries, { text = "Undo last change", func = function() ns.Command("undo") end })
         table.insert(entries, { divider = true })
     end
@@ -77,7 +80,7 @@ function ns.ShowTooltip(owner)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("|cffffd100Left click|r open standings", 1, 1, 1)
-    GameTooltip:AddLine("|cffffd100Right click|r " .. (ns.CanEdit() and "loot master and raid EP" or "sync and settings"), 1, 1, 1)
+    GameTooltip:AddLine("|cffffd100Right click|r " .. (ns.CanEdit() and "loot master, start and end the raid" or "sync and settings"), 1, 1, 1)
     if owner == ns.minimapButton then
         GameTooltip:AddLine("|cffffd100Drag|r move this button", 1, 1, 1)
     end

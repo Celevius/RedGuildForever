@@ -67,7 +67,7 @@ end
 ns.On("LOOT_OPENED", function()
     local good = ns.ScanLoot()
     local inGroup = (IsInGroup and IsInGroup()) or ns.IsTest()
-    if good and ns.Setting("autoOpenLoot") and ns.CanEdit() and inGroup and not (ns.auction and ns.auction.open) then
+    if good and ns.Setting("autoOpenLoot") and ns.CanEdit() and inGroup and #ns.OpenAuctions() == 0 then
         ns.OpenPicker()
     end
 end)
@@ -224,6 +224,8 @@ local function buildPicker()
         ns.Fire("RGF_LOOT_CHANGED")
     end)
     f.clear:SetPoint("BOTTOMLEFT", 6, 4)
+    f.startAll = UI.button(f, "Bid on all", 110, function() ns.StartAllFromPicker() end)
+    f.startAll:SetPoint("RIGHT", f.start, "LEFT", -2, 0)
 
     f:SetScript("OnReceiveDrag", function() takeCursorItem() end)
     f:HookScript("OnShow", function() ns.RefreshPicker() end)
@@ -258,13 +260,16 @@ function ns.RefreshPicker()
     end
     for tier, b in pairs(picker.tierButtons) do b:SetEnabled(tier ~= state.tier) end
 
-    local busy = ns.auction and ns.auction.open
-    picker.start:SetEnabled(link ~= nil and not busy and officer)
+    local open = #ns.OpenAuctions()
+    picker.start:SetEnabled(link ~= nil and officer)
     picker.start:SetText("Start bidding")
-    if busy then
-        picker.sub:SetText("|cffff8040bidding for another item is still open|r")
-    elseif not officer then
+    local all = ns.CorpseItems()
+    picker.startAll:SetEnabled(officer and #all > 1)
+    picker.startAll:SetText(#all > 1 and ("Bid on all " .. #all) or "Bid on all")
+    if not officer then
         picker.sub:SetText("only editors start bidding, turn on test mode in the settings to try it")
+    elseif open > 0 then
+        picker.sub:SetText("|cffffd100" .. open .. (open == 1 and " item is" or " items are") .. " up for bids already, you can add more|r")
     else
         picker.sub:SetText("or pick one from the loot below")
     end
@@ -305,6 +310,34 @@ function ns.StartFromPicker()
     return ok
 end
 
+-- The rare and better items on the open corpse, for Bid on all
+function ns.CorpseItems()
+    local list = {}
+    for i = #ns.lootSeen, 1, -1 do
+        local item = ns.lootSeen[i]
+        if item.onCorpse and (item.quality or 0) >= AUTO_OPEN_QUALITY then table.insert(list, item) end
+    end
+    return list
+end
+
+function ns.StartAllFromPicker()
+    local items = {}
+    for _, item in ipairs(ns.CorpseItems()) do table.insert(items, { item.link, state.tier }) end
+    if #items == 0 then return 0 end
+    local count = ns.StartAuctions(items)
+    if count > 0 and not ns.IsTest() then
+        for _, item in ipairs(items) do
+            local _, i = findSeen(item[1])
+            if i then table.remove(ns.lootSeen, i) end
+        end
+    end
+    if count > 0 then
+        state.link = nil
+        if picker then picker:Hide() end
+    end
+    return count
+end
+
 function ns.OpenPicker()
     picker = picker or buildPicker()
     ns.picker, ns.pickerState = picker, state
@@ -325,7 +358,8 @@ end
 
 -- The Loot Master button: the running bidding if there is one, otherwise Start Bidding.
 function ns.OpenLootMaster()
-    if ns.auction then
+    if ns.auction or ns.auctions[1] then
+        ns.auction = ns.auction or ns.auctions[1]
         ns.RefreshLootMaster()
     else
         ns.OpenPicker()

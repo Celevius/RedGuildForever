@@ -53,7 +53,7 @@ M.knownEvents = {
     ADDON_LOADED = true, GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
     CHAT_MSG_ADDON = true, CHAT_MSG_SYSTEM = true, CHAT_MSG_WHISPER = true,
     LOOT_OPENED = true, LOOT_SLOT_CLEARED = true, LOOT_CLOSED = true,
-    PLAYER_LOGOUT = true,
+    PLAYER_LOGOUT = true, GROUP_ROSTER_UPDATE = true,
 }
 M.registered = {}
 

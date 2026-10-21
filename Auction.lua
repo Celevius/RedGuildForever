@@ -11,7 +11,8 @@ local _, ns = ...
 ns = ns or _G.RedGuildForever
 
 local SEP = "^"
-ns.auction = nil   -- the auction this player runs as loot master
+ns.auctions = {}   -- the auctions this player runs as loot master, several can be open
+ns.auction = nil   -- the one shown in the Loot Master window
 ns.incoming = {}   -- auctions this player can bid on, by id
 
 local EPSILON = 0.000001
@@ -133,14 +134,60 @@ local function bidsText(list, limit)
     return table.concat(parts, ", ")
 end
 
-function ns.StartAuction(link, tier)
+-- The lowest number no running auction uses, raiders whisper "ms 2" with it
+local function freeNumber()
+    local used = {}
+    for _, a in ipairs(ns.auctions) do used[a.n] = true end
+    local n = 1
+    while used[n] do n = n + 1 end
+    return n
+end
+
+function ns.SelectAuction(a)
+    ns.auction = a
+    ns.Fire("RGF_AUCTION_CHANGED")
+end
+
+local function removeAuction(a)
+    for i, x in ipairs(ns.auctions) do
+        if x == a then table.remove(ns.auctions, i) break end
+    end
+    if ns.auction == a then
+        -- show the next one that still needs the loot master
+        ns.auction = ns.auctions[1]
+    end
+end
+
+local function priceText(a)
+    return (a.fixed and "fixed price" or ns.defaults.tierNames[a.tier] or "custom") .. ", " .. a.price .. " GP"
+end
+
+-- Raid chat lines are short, so a long list goes out in several lines
+local function sayList(a, first, parts, last)
+    local line = first
+    for i, part in ipairs(parts) do
+        local sep = i == 1 and " " or ", "
+        if #line + #sep + #part > 240 then
+            say(a, line)
+            line = part
+        else
+            line = line .. sep .. part
+        end
+    end
+    if #line + #last > 250 then
+        say(a, line .. ".")
+        line = last:gsub("^%.%s*", "")
+        say(a, line)
+    else
+        say(a, line .. last)
+    end
+end
+
+-- Open bidding for one item. With quiet the caller announces it.
+function ns.StartAuction(link, tier, quiet)
     local test = ns.IsTest()
     if not ns.CanEdit() then
         ns.Print("only the guild leader and editors can start bidding, turn on test mode in the settings to try it")
-        return false
-    end
-    if ns.auction and ns.auction.open then
-        ns.Print("bidding for " .. ns.auction.link .. " is still open, finish it first")
         return false
     end
     local itemID, _, icon = ns.ItemInfo(link)
@@ -152,30 +199,59 @@ function ns.StartAuction(link, tier)
     local price, _, fixed = ns.ItemPrice(link, tier)
     local seconds = ns.Setting("bidSeconds")
     local auction = {
-        id = newId(), link = link, itemID = itemID, icon = icon,
+        id = newId(), n = freeNumber(), link = link, itemID = itemID, icon = icon,
         tier = tier, price = price, fixed = fixed,
         bids = {}, open = true, endsAt = (GetTime and GetTime() or 0) + seconds,
         owner = ns.PlayerName(), expected = ns.RaidMembers(), test = test,
     }
-    ns.auction = auction
-    local a = auction
+    table.insert(ns.auctions, auction)
+    if not (ns.auction and ns.auction.open) then ns.auction = auction end
     if IsInGroup() and not test then
-        ns.SendComm(table.concat({ "A", auction.id, seconds, price, link }, SEP), IsInRaid() and "RAID" or "PARTY")
+        ns.SendComm(table.concat({ "A", auction.id, seconds, price, auction.n, link }, SEP), IsInRaid() and "RAID" or "PARTY")
     end
     -- the loot master gets the same bid popup as everyone else
-    ns.ReceiveAuction(auction.id, ns.PlayerName(), ns.PlayerName(), link, price, seconds)
-    say(a, string.format("Bids open for %s (%s, %d GP). Use the popup or whisper me ms or os. %d seconds.",
-        link, fixed and "fixed price" or ns.defaults.tierNames[tier], price, seconds))
+    ns.ReceiveAuction(auction.id, ns.PlayerName(), ns.PlayerName(), link, price, seconds, auction.n)
+    if not quiet then
+        if #ns.OpenAuctions() > 1 then
+            say(auction, string.format("Bids open for %d. %s (%s). Whisper me ms %d or os %d. %d seconds.",
+                auction.n, link, priceText(auction), auction.n, auction.n, seconds))
+        else
+            say(auction, string.format("Bids open for %s (%s). Use the popup or whisper me ms or os. %d seconds.",
+                link, priceText(auction), seconds))
+        end
+    end
     ns.After(seconds, function()
-        if ns.auction == auction and auction.open then ns.CloseBidding() end
+        if auction.open then ns.CloseBidding(auction) end
     end)
     if test then ns.SimulateBids(auction) end
     ns.Fire("RGF_AUCTION_CHANGED")
-    return true
+    return auction
 end
 
-function ns.SetAuctionTier(tier)
-    local a = ns.auction
+-- Open bidding for several items at once, items = { { link, tier }, ... }.
+-- Returns the number of started auctions.
+function ns.StartAuctions(items)
+    local started = {}
+    for _, item in ipairs(items) do
+        local a = ns.StartAuction(item[1], item[2], true)
+        if a then table.insert(started, a) end
+    end
+    if #started == 0 then return 0 end
+    if #started == 1 and #ns.OpenAuctions() == 1 then
+        local a = started[1]
+        say(a, string.format("Bids open for %s (%s). Use the popup or whisper me ms or os. %d seconds.",
+            a.link, priceText(a), ns.Setting("bidSeconds")))
+    else
+        local parts = {}
+        for _, a in ipairs(started) do table.insert(parts, a.n .. ". " .. a.link .. " " .. a.price .. " GP") end
+        sayList(started[1], "Bids open for", parts, string.format(". Use the popup or whisper me ms %d, os %d or pass %d with the number. %d seconds.",
+            started[1].n, started[#started].n, started[1].n, ns.Setting("bidSeconds")))
+    end
+    return #started
+end
+
+function ns.SetAuctionTier(tier, auction)
+    local a = auction or ns.auction
     if not a or a.fixed or not ns.Setting("tiers")[tier] then return end
     a.tier = tier
     a.price = ns.ItemPrice(a.link, tier)
@@ -193,8 +269,8 @@ end
 
 -- Passes are kept, so the loot master sees who said no.
 -- The loot master can type any price for this one item.
-function ns.SetAuctionPrice(gp)
-    local a = ns.auction
+function ns.SetAuctionPrice(gp, auction)
+    local a = auction or ns.auction
     gp = tonumber(gp)
     if not a or not gp or gp < 0 then return false end
     a.price = math.floor(gp)
@@ -225,8 +301,8 @@ function ns.RecordBid(name, spec, auction)
     return true
 end
 
-function ns.CloseBidding()
-    local a = ns.auction
+function ns.CloseBidding(auction)
+    local a = auction or ns.auction
     if not a or not a.open then return end
     a.open = false
     ns.lastClosed = { link = a.link, at = GetTime and GetTime() or 0 }
@@ -239,13 +315,13 @@ function ns.CloseBidding()
         if #os > 0 then text = text .. " Off spec " .. bidsText(os, 5) .. "." end
         say(a, text)
         local tied = ns.TiedForFirst(a)
-        if #tied > 0 then ns.RequestRolls() end
+        if #tied > 0 then ns.RequestRolls(a) end
     end
     ns.Fire("RGF_AUCTION_CHANGED")
 end
 
-function ns.RequestRolls()
-    local a = ns.auction
+function ns.RequestRolls(auction)
+    local a = auction or ns.auction
     if not a then return end
     local tied = ns.TiedForFirst(a)
     if #tied == 0 then return end
@@ -270,16 +346,16 @@ local function closeOwnPopup(a, winner)
 end
 
 -- Award to a bidder or to the guild bank (name nil).
-function ns.Award(name)
-    local a = ns.auction
+function ns.Award(name, auction)
+    local a = auction or ns.auction
     if not a then return false end
-    if a.open then ns.CloseBidding() end
+    if a.open then ns.CloseBidding(a) end
     local channel = groupChannel(a)
     if not name then
         say(a, a.link .. " goes to the guild bank or gets disenchanted. It costs 0 GP.")
         if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
         closeOwnPopup(a)
-        ns.auction = nil
+        removeAuction(a)
         ns.Fire("RGF_AUCTION_CHANGED")
         return true
     end
@@ -312,20 +388,25 @@ function ns.Award(name)
             a.link, cost, ns.FormatPR(pr), ep, gp), "WHISPER", bid and bid.raw or ns.ShortName(full))
     end
     ns.lastAward = { link = a.link, name = full, cost = cost }
-    ns.auction = nil
+    removeAuction(a)
     ns.Fire("RGF_AUCTION_CHANGED")
     return true
 end
 
-function ns.CancelAuction()
-    local a = ns.auction
+function ns.CancelAuction(auction)
+    local a = auction or ns.auction
     if not a then return end
     local channel = groupChannel(a)
     if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
     say(a, "Bidding for " .. a.link .. " was cancelled.")
     closeOwnPopup(a)
-    ns.auction = nil
+    removeAuction(a)
     ns.Fire("RGF_AUCTION_CHANGED")
+end
+
+-- Cancel everything, used when test mode is switched
+function ns.CancelAllAuctions()
+    while ns.auctions[1] do ns.CancelAuction(ns.auctions[1]) end
 end
 
 ------------------------------------------------------------------------
@@ -348,20 +429,24 @@ function ns.ParseRoll(text)
     return name, tonumber(roll), tonumber(low), tonumber(high)
 end
 
+-- With several ties at once, a roll counts for the first item the player still has to roll for.
 ns.On("CHAT_MSG_SYSTEM", function(text)
-    local a = ns.auction
-    if not a or not a.rollsOpen or type(text) ~= "string" then return end
+    if type(text) ~= "string" then return end
     local ok, name, roll, low, high = pcall(ns.ParseRoll, text)
     if not ok or not name or low ~= 1 or high ~= 100 then return end
-    local bid = a.bids[ns.Resolve(name)]
-    if bid and bid.wantsRoll and not bid.roll then
-        bid.roll = roll
-        ns.Fire("RGF_AUCTION_CHANGED")
-        if #ns.TiedForFirst(a) == 0 then
-            a.rollsOpen = false
-            local all = ns.SortedBids(a)
-            say(a, ns.ShortName(all[1].name) .. " has the highest roll for " .. a.link .. ".")
+    local full = ns.Resolve(name)
+    for _, a in ipairs(ns.auctions) do
+        local bid = a.rollsOpen and a.bids[full]
+        if bid and bid.wantsRoll and not bid.roll then
+            bid.roll = roll
             ns.Fire("RGF_AUCTION_CHANGED")
+            if #ns.TiedForFirst(a) == 0 then
+                a.rollsOpen = false
+                local all = ns.SortedBids(a)
+                say(a, ns.ShortName(all[1].name) .. " has the highest roll for " .. a.link .. ".")
+                ns.Fire("RGF_AUCTION_CHANGED")
+            end
+            return
         end
     end
 end)
@@ -394,7 +479,9 @@ end
 -- The open auctions of this loot master, numbered like in the raid announcement
 function ns.OpenAuctions()
     local list = {}
-    if ns.auction and ns.auction.open then table.insert(list, ns.auction) end
+    for _, a in ipairs(ns.auctions) do
+        if a.open then table.insert(list, a) end
+    end
     return list
 end
 
@@ -436,12 +523,12 @@ end)
 ------------------------------------------------------------------------
 -- Show the bid popup. The loot master calls this himself, everyone else
 -- gets it by addon message. A second call for the same item keeps the bid.
-function ns.ReceiveAuction(id, owner, ownerRaw, link, price, seconds)
+function ns.ReceiveAuction(id, owner, ownerRaw, link, price, seconds, n)
     if not id or not link then return end
     local inc = ns.incoming[id]
     if not inc then
         inc = {
-            id = id, owner = owner, ownerRaw = ownerRaw or owner, link = link,
+            id = id, owner = owner, ownerRaw = ownerRaw or owner, link = link, n = n,
             duration = seconds or 30,
             endsAt = (GetTime and GetTime() or 0) + (seconds or 30),
         }
@@ -452,8 +539,8 @@ function ns.ReceiveAuction(id, owner, ownerRaw, link, price, seconds)
 end
 
 ns.OnComm("A", function(text, sender, _, rawSender)
-    local p = ns.SplitWithTail(text, 5)
-    ns.ReceiveAuction(p[2], sender, rawSender, p[5], tonumber(p[4]), tonumber(p[3]))
+    local p = ns.SplitWithTail(text, 6)
+    ns.ReceiveAuction(p[2], sender, rawSender, p[6], tonumber(p[4]), tonumber(p[3]), tonumber(p[5]))
 end)
 
 ns.OnComm("P", function(text)
@@ -488,7 +575,8 @@ function ns.SendBid(inc, spec)
         ns.RecordBid(ns.PlayerName(), spec)
     elseif not ns.SendComm(msg, "WHISPER", inc.ownerRaw or inc.owner) then
         -- addon messages can be blocked, a normal whisper always works
-        ns.SendChat(spec == "MS" and "ms" or (spec == "OS" and "os" or "pass"), "WHISPER", inc.ownerRaw or inc.owner)
+        local word = spec == "MS" and "ms" or (spec == "OS" and "os" or "pass")
+        ns.SendChat(word .. (inc.n and (" " .. inc.n) or ""), "WHISPER", inc.ownerRaw or inc.owner)
     end
     inc.myBid = spec
     ns.Fire("RGF_INCOMING_AUCTION", inc)
@@ -519,7 +607,7 @@ function ns.SimulateBids(a)
         local answer = answers[(i - 1) % #answers + 1]
         if answer then
             ns.After(1 + i * 1.5, function()
-                if ns.auction == a and a.open then ns.RecordBid(name, answer) end
+                if a.open then ns.RecordBid(name, answer, a) end
             end)
         end
     end
@@ -535,14 +623,16 @@ end
 
 -- In test mode the fake bidders roll by themselves
 ns.On("RGF_TEST_ROLLS", function()
-    local a = ns.auction
-    if not a or not a.test or not a.rollsOpen then return end
     local me = ns.PlayerName()
-    for _, b in ipairs(ns.TiedForFirst(a)) do
-        if b.name ~= me and b.wantsRoll and not b.roll then
-            b.roll = math.random(1, 100)
+    for _, a in ipairs(ns.auctions) do
+        if a.test and a.rollsOpen then
+            for _, b in ipairs(ns.TiedForFirst(a)) do
+                if b.name ~= me and b.wantsRoll and not b.roll then
+                    b.roll = math.random(1, 100)
+                end
+            end
+            if #ns.TiedForFirst(a) == 0 then a.rollsOpen = false end
         end
     end
-    if #ns.TiedForFirst(a) == 0 then a.rollsOpen = false end
     ns.Fire("RGF_AUCTION_CHANGED")
 end)

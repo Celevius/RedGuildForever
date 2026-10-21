@@ -166,11 +166,13 @@ function ns.SetTestMode(on)
     db.settings = db.settings or {}
     on = on and true or false
     if ns.IsTest() == on then return end
-    if ns.auction and not ns.auction.test then
-        ns.Print("finish the bidding for " .. ns.auction.link .. " before switching test mode")
-        return false
+    for _, a in ipairs(ns.auctions or {}) do
+        if not a.test then
+            ns.Print("finish the bidding for " .. a.link .. " before switching test mode")
+            return false
+        end
     end
-    if ns.auction then ns.CancelAuction() end
+    if ns.CancelAllAuctions then ns.CancelAllAuctions() end
     db.settings.testMode = on
     ns.Invalidate()
     if on then

@@ -497,7 +497,7 @@ end)
 
 test("loot master whispers keep the name the game used", function()
     setup(guild())
-    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^123456^30^100^" .. W.link(41, "Ring"), "RAID", "Lisa Brightwater")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^123456^30^100^1^" .. W.link(41, "Ring"), "RAID", "Lisa Brightwater")
     local inc = ns.incoming["123456"]
     eq(inc.owner, "Lisa Brightwater-Forever")
     eq(inc.ownerRaw, "Lisa Brightwater")
@@ -536,14 +536,14 @@ test("minimap button opens the standings and the menu", function()
     click(b, "RightButton")
     local texts = {}
     for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
-    assert(texts["Give raid EP (100)"] and texts["Loot Master"], "raid entries for editors")
+    assert(texts["Start raid, give on time EP (25)"] and texts["Loot Master"], "raid entries for editors")
     assert(texts["Sync now"] and texts["Settings"], "entries for everyone")
     for _, gone in ipairs({ "Standings", "Bench", "History", "Weekly decay", "Edit target", "Hide minimap button" }) do
         assert(not texts[gone], gone .. " is in the window, not in the menu")
     end
     local count = 0
     for _, item in ipairs(menu.items) do if item.text then count = count + 1 end end
-    eq(count, 6, "short menu for editors")
+    eq(count, 5, "short menu for editors")
     -- every entry runs without errors
     W.inRaid = true W.raid = { "Cel Dru", "Lisa Brightwater" }
     for _, item in ipairs(menu.items) do
@@ -551,9 +551,15 @@ test("minimap button opens the standings and the menu", function()
             item.fn() W.flush()
         end
     end
-    eq(note("Lisa Brightwater"), "1125,500", "raid EP and on time EP from the menu")
+    eq(note("Lisa Brightwater"), "1025,500", "start raid from the menu gives the on time EP")
+    menu = fakeMenu()
+    click(b, "RightButton")
+    texts = {}
+    for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
+    texts["End raid, give raid EP (100)"]() W.flush()
+    eq(note("Lisa Brightwater"), "1125,500", "end raid from the menu gives the raid EP")
     texts["Undo last change"]() W.flush()
-    eq(note("Lisa Brightwater"), "1100,500", "undo from the menu takes back the on time EP")
+    eq(note("Lisa Brightwater"), "1025,500", "undo from the menu takes back the raid EP")
     noErrors()
 end)
 
@@ -1871,6 +1877,183 @@ test("automatic backups, and the newest comes back when the save file is empty",
     eq(ns.HasData(), true, "restored by itself")
     eq(note("Lisa Brightwater"), "1110,500")
     assert(W.printed[#W.printed - 0]:find("automatic backup") or W.printed[#W.printed - 1]:find("automatic backup"), W.printed[#W.printed])
+    noErrors()
+end)
+
+------------------------------------------------------------------------
+-- Several items at once, raid nights and loot lists
+------------------------------------------------------------------------
+local function raidChat()
+    local lines = {}
+    for _, c in ipairs(W.chat) do if c.channel == "RAID" then table.insert(lines, c.msg) end end
+    return table.concat(lines, " | ")
+end
+
+test("bidding on several items at once", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Anna Frost" }
+    W.itemSlots = { [81] = "INVTYPE_FINGER", [82] = "INVTYPE_HEAD", [83] = "INVTYPE_HAND" }
+    W.chat = {}
+    eq(ns.StartAuctions({ { W.link(81, "Ring A"), "normal" }, { W.link(82, "Helm B"), "boss" }, { W.link(83, "Gloves C"), "normal" } }), 3)
+    local chat = raidChat()
+    assert(chat:find("Bids open for 1%. .-Ring A.- 75 GP, 2%. .-Helm B.- 225 GP, 3%. .-Gloves C.- 100 GP"), chat)
+    assert(chat:find("whisper me ms 1, os 3 or pass 1 with the number"), chat)
+    eq(select(2, chat:gsub("Bids open", "")), 1, "one announcement")
+    for _, c in ipairs(W.chat) do assert(#c.msg <= 255, "raid line too long") end
+    eq(#ns.OpenAuctions(), 3)
+    -- a whisper without a number is not clear
+    local _, a = whisper("ms", "Lisa Brightwater")
+    assert(a:find("Several items are open: 1 .-Ring A.-, 2 .-Helm B.-, 3 .-Gloves C"), a)
+    _, a = whisper("ms 2", "Lisa Brightwater")
+    assert(a:find("Got your main spec bid for .-Helm B"), a)
+    _, a = whisper("os 3", "Max Ironhide")
+    assert(a:find("off spec bid for .-Gloves C"), a)
+    -- an addon bid goes to the right item
+    local helm = ns.auctions[2]
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "B^" .. helm.id .. "^MS", "WHISPER", "Max Ironhide-Forever")
+    eq(helm.bids["Max Ironhide-Forever"].spec, "MS")
+    eq(ns.auctions[1].bids["Max Ironhide-Forever"], nil, "not on the ring")
+    -- the Loot Master window switches between the items
+    ns.OpenLootMaster()
+    local lm = ns.lootMasterFrame
+    assert(lm.itemTabs[2]:IsShown(), "item buttons")
+    lm.itemTabs[2]:Click()
+    eq(ns.auction, helm, "shows the helm")
+    -- all close after the bidding time, awarding one shows the next
+    W.flush()
+    eq(#ns.OpenAuctions(), 0, "closed by the timer")
+    ns.Award("Max Ironhide")
+    eq(note("Max Ironhide"), "1000,325", "the helm costs the end boss price")
+    eq(#ns.auctions, 2)
+    eq(ns.auction, ns.auctions[1], "the next item is shown")
+    -- a new item gets the free number
+    local new = ns.StartAuction(W.link(84, "Cloak D"))
+    eq(new.n, 2, "number 2 is free again")
+    ns.CancelAllAuctions()
+    eq(#ns.auctions, 0)
+    noErrors()
+end)
+
+test("ties on two items at once, each roll counts once", function()
+    setup(guild())
+    set("Tom Hammer", "1000,500") -- ties with Lisa
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Tom Hammer" }
+    ns.StartAuctions({ { W.link(85, "Belt E") }, { W.link(86, "Boots F") } })
+    for _, a in ipairs(ns.auctions) do
+        ns.RecordBid("Lisa Brightwater", "MS", a)
+        ns.RecordBid("Tom Hammer", "MS", a)
+    end
+    W.flush()
+    local belt, boots = ns.auctions[1], ns.auctions[2]
+    assert(belt.rollsOpen and boots.rollsOpen, "both need rolls")
+    ns.Fire("CHAT_MSG_SYSTEM", "Lisa Brightwater rolls 90 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Tom Hammer rolls 10 (1-100)")
+    eq(belt.bids["Lisa Brightwater-Forever"].roll, 90)
+    eq(boots.bids["Lisa Brightwater-Forever"].roll, nil, "the first roll is for the first item")
+    ns.Fire("CHAT_MSG_SYSTEM", "Lisa Brightwater rolls 5 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Tom Hammer rolls 60 (1-100)")
+    eq(ns.SortedBids(belt)[1].name, "Lisa Brightwater-Forever")
+    eq(ns.SortedBids(boots)[1].name, "Tom Hammer-Forever")
+    noErrors()
+end)
+
+test("the bid popup shows one item after the other", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    local a1 = "A^111111^30^100^1^" .. W.link(87, "First")
+    local a2 = "A^222222^30^150^2^" .. W.link(88, "Second")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, a1, "RAID", "Anna Frost")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, a2, "RAID", "Anna Frost")
+    local p = ns.bidPopup
+    eq(p.inc.id, "111111", "the first item stays until it is answered")
+    assert(p.note:GetText():find("1 more item waits"), p.note:GetText())
+    W.comms = {}
+    p.ms:Click()
+    eq(p.inc.id, "222222", "then the second")
+    eq(W.comms[1].msg, "B^111111^MS")
+    p.pass:Click()
+    eq(p:IsShown(), false, "nothing left")
+    -- without addon messages the whisper names the item number
+    W.blockAddon = true
+    W.chat = {}
+    ns.SendBid(ns.incoming["222222"], "OS")
+    eq(W.chat[1].msg, "os 2")
+    noErrors()
+end)
+
+test("Start Bidding can open all items of the corpse at once", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    _G.IsInGroup = function() return true end
+    W.loot = { { link = W.link(91, "Epic One"), quality = 4 }, { link = W.link(92, "Rare Two"), quality = 3 },
+        { link = W.link(93, "Green Three"), quality = 2 } }
+    ns.Fire("LOOT_OPENED")
+    local p = ns.picker
+    assert(p:IsShown(), "opens by itself")
+    eq(p.startAll:GetText(), "Bid on all 2", "rare and better items")
+    p.startAll:Click()
+    eq(#ns.OpenAuctions(), 2)
+    eq(ns.auctions[1].link, W.link(91, "Epic One"), "in the order of the corpse")
+    eq(p:IsShown(), false)
+    noErrors()
+end)
+
+test("a raid night with start, end, leavers and the loot list", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide" }
+    ns.BenchAdd("Ben Swift")
+    ns.ToggleStandings(2)
+    local page = ns.mainFrame.pages[2]
+    eq(page.toggle:GetText(), "Start raid")
+    page.toggle:Click()
+    assert(ns.Session(), "raid running")
+    eq(note("Lisa Brightwater"), "1025,500", "on time EP at the start")
+    eq(note("Ben Swift"), "25,100", "and for the bench")
+    eq(page.toggle:GetText(), "End raid")
+    -- Tom joins later, Max leaves early
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Tom Spark" }
+    ns.Fire("GROUP_ROSTER_UPDATE")
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Tom Spark" }
+    ns.Fire("GROUP_ROSTER_UPDATE")
+    -- loot during the raid
+    ns.StartAuction(W.link(94, "Raid Gloves"))
+    ns.RecordBid("Tom Spark", "MS")
+    ns.Award("Tom Spark")
+    ns.StartAuction(W.link(95, "Raid Ring"))
+    ns.Award("Lisa Brightwater")
+    page.toggle:Click()
+    eq(ns.Session(), nil, "raid finished")
+    eq(note("Lisa Brightwater"), "1125,600", "raid EP at the end")
+    eq(note("Tom Hammer"), "300,200", "the alt in the raid gave EP to the main")
+    eq(note("Max Ironhide"), "1025,100", "Max left early, only the on time EP")
+    eq(W.popup, "REDGUILDFOREVER_LEAVERS", "asks about the players who left")
+    StaticPopupDialogs["REDGUILDFOREVER_LEAVERS"].OnAccept()
+    eq(note("Max Ironhide"), "1125,100", "Max gets it after the question")
+    -- the loot list
+    local loot = ns.RaidLoot(ns.LastSession())
+    eq(#loot, 2)
+    eq(loot[1].name, "Lisa Brightwater-Forever", "newest first")
+    local textValue = ns.RaidLootText()
+    assert(textValue:find("4 players, 2 items"), textValue)
+    assert(textValue:find("Raid Gloves  Tom Spark  100 GP\nRaid Ring  Lisa Brightwater  100 GP"), textValue)
+    page.copy:Click()
+    eq(ns.copyFrame.box:GetText(), textValue, "copy window for Discord")
+    -- loot of a player, the alt counts for the main
+    local items = ns.LootOf("Tom Hammer")
+    eq(#items, 1) eq(items[1].name, "Tom Spark-Forever")
+    local _, a = whisper("!loot Tom Hammer")
+    assert(a:find("^Tom Hammer: %d%d%.%d%d%. .-Raid Gloves.- 100 GP"), a)
+    -- an undone award leaves the list
+    ns.Command("undo")
+    eq(#ns.RaidLoot(ns.LastSession()), 2, "undo took back the leavers EP first")
+    ns.Command("undo") ns.Command("undo") -- the raid EP, then the ring
+    eq(#ns.RaidLoot(ns.LastSession()), 1, "the undone ring is gone")
+    ns.ToggleStandings(1)
     noErrors()
 end)
 
