@@ -108,6 +108,7 @@ function ns.EndRaid()
         StaticPopup_Show("REDGUILDFOREVER_LEAVERS", #leavers, names(leavers))
     end
     if ns.AutoBackup then ns.AutoBackup("raid") end
+    ns.RemindDecay()
     ns.Fire("RGF_RAID_CHANGED")
     return true, leavers
 end
@@ -126,6 +127,11 @@ function ns.SeenCount(s)
     for _ in pairs(s and s.seen or {}) do n = n + 1 end
     return n
 end
+
+-- a minute after login, when sync had time to bring the newest decay
+ns.On("RGF_READY", function()
+    ns.After(60, function() ns.RemindDecay() end)
+end)
 
 ns.On("GROUP_ROSTER_UPDATE", function()
     local s = ns.Session()

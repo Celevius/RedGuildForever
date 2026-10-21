@@ -2057,5 +2057,34 @@ test("a raid night with start, end, leavers and the loot list", function()
     noErrors()
 end)
 
+test("the weekly decay reminds when it is due and warns before a second one", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    eq(ns.DecayDue(), false, "no changes yet, nothing is due")
+    ns.Adjust("Lisa Brightwater", 10, 0)
+    W.server = W.server + 8 * 86400
+    eq(ns.DecayDue(), true, "a week after the first change")
+    W.printed = {}
+    ns.Fire("RGF_READY") W.flush()
+    local said
+    for _, p in ipairs(W.printed) do if p:find("the weekly decay is due, there was none yet") then said = true end end
+    assert(said, "reminder after login")
+    eq(ns.RemindDecay(), false, "only once per session")
+    -- the decay, then a second one by mistake on another computer
+    ns.Command("decay")
+    eq(W.popup, "REDGUILDFOREVER_DECAY")
+    StaticPopupDialogs["REDGUILDFOREVER_DECAY"].OnAccept()
+    eq(ns.DecayDue(), false, "done for this week")
+    W.server = W.server + 2 * 86400
+    ns.Command("decay")
+    eq(W.popup, "REDGUILDFOREVER_DECAY_AGAIN", "warns, the last one was two days ago")
+    ns.ToggleStandings(4)
+    assert(ns.mainFrame.pages[4].state:GetText():find("Last one on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[4].state:GetText())
+    W.server = W.server + 6 * 86400
+    ns.Command("decay")
+    eq(W.popup, "REDGUILDFOREVER_DECAY", "a week later it asks normally")
+    noErrors()
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

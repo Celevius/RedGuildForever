@@ -824,6 +824,59 @@ function ns.Decay()
     return count
 end
 
+-- The newest decay that is not undone, or nil
+function ns.LastDecay()
+    local st = ns.State()
+    for i = #st.events, 1, -1 do
+        local ev = st.events[i]
+        if ev.k == "D" and not st.undone[ev.id] then return ev end
+    end
+    return nil
+end
+
+local WEEK = 7 * 24 * 3600
+
+-- true when the weekly decay is due: the last one is a week old, or there
+-- was none yet and the oldest change is a week old
+function ns.DecayDue()
+    local last = ns.LastDecay()
+    if last then return ns.Now() - last.t >= WEEK, last end
+    local st = ns.State()
+    local first = st.events[1]
+    return first ~= nil and ns.Now() - first.t >= WEEK, nil
+end
+
+-- Asks before the decay. A decay in the last six days, also by another
+-- editor, gets an extra warning, so nobody decays twice by mistake.
+function ns.AskDecay()
+    if not ns.CanChange() then return false end
+    local last = ns.LastDecay()
+    if last and ns.Now() - last.t < 6 * 24 * 3600 then
+        local days = math.floor((ns.Now() - last.t) / 86400)
+        local when = days == 0 and "today" or (days == 1 and "yesterday" or (days .. " days ago"))
+        if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_DECAY_AGAIN", when, ns.ShortName(last.by)) end
+    elseif StaticPopup_Show then
+        StaticPopup_Show("REDGUILDFOREVER_DECAY", ns.Setting("decayPercent"))
+    end
+    return true
+end
+
+-- Remind editors once per session when the decay is due
+local reminded = false
+function ns.RemindDecay()
+    if reminded or ns.IsTest() or not ns.CanEdit() or not ns.HasData() then return false end
+    local due, last = ns.DecayDue()
+    if not due then return false end
+    reminded = true
+    if last then
+        ns.Print(string.format("the weekly decay is due, the last one was on %s by %s. Run it in the Data tab or with /rgf decay",
+            date("%d.%m.", last.t), ns.ShortName(last.by)))
+    else
+        ns.Print("the weekly decay is due, there was none yet. Run it in the Data tab or with /rgf decay")
+    end
+    return true
+end
+
 -- The newest change of this player that is not undone yet
 function ns.LastOwnEvent()
     local st = ns.State()

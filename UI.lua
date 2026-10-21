@@ -506,7 +506,7 @@ local function buildSyncPage(parent)
     end)
     page.fresh:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
     -- decay only works with data, start fresh and the notes import only without
-    page.decay = button(page, "Weekly decay", 120, function() ns.Command("decay") end)
+    page.decay = button(page, "Weekly decay", 120, function() ns.AskDecay() end)
     page.decay:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
     page.notes = button(page, "Import officer notes", 150, function()
         local n = ns.ImportOfficerNotes()
@@ -583,7 +583,11 @@ local function refreshSyncPage(page)
         local waiting = ns.QueuedMessages and ns.QueuedMessages() or 0
         if waiting > 0 then table.insert(lines, waiting .. " sync messages are still waiting to go out.") end
         if ns.CanEdit() then
-            table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid.")
+            local last = ns.LastDecay()
+            local due = ns.DecayDue()
+            table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid. "
+                .. (last and ("Last one on " .. date("%d.%m.", last.t) .. " by " .. ns.ShortName(last.by) .. ".") or "There was none yet.")
+                .. (due and " |cffff8040It is due.|r" or ""))
         end
     end
     local si = ns.syncInfo or {}
@@ -1381,7 +1385,7 @@ local function buildEditor()
             for _, a in ipairs(alts) do table.insert(names, ns.ShortName(a)) end
             f.altText:SetText("Alts " .. table.concat(names, ", ") .. ". To link this player as an alt, unlink these first.")
         else
-            f.altText:SetText("Type the main to share points with it.")
+            f.altText:SetText("Type the main to share points with it. The points of this character move to the main, Undo takes them back.")
         end
 
         f.onBench = false
@@ -1926,6 +1930,19 @@ if StaticPopupDialogs then
         button1 = YES or "Yes",
         button2 = NO or "No",
         OnAccept = function() ns.AwardLeavers() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+    StaticPopupDialogs["REDGUILDFOREVER_DECAY_AGAIN"] = {
+        text = "The last decay was %s, by %s.\nRun another one anyway?",
+        button1 = YES or "Yes",
+        button2 = NO or "No",
+        OnAccept = function()
+            local n = ns.Decay()
+            ns.Print("decay done for " .. n .. " players")
+        end,
         timeout = 0,
         whileDead = true,
         hideOnEscape = true,

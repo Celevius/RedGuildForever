@@ -222,14 +222,12 @@ function ns.Command(line)
     elseif cmd == "unalt" and w[2] then
         local alt = typedMember(joinWords(w, 2))
         if alt and ns.UnsetAlt(alt) then
-            ns.Print(ns.ShortName(alt) .. " is a main again and starts at 0 EP")
+            ns.Print(ns.ShortName(alt) .. " is a main again and starts at 0 EP, undo brings the link back")
         end
 
     elseif cmd == "decay" then
         if not needOfficer() then return end
-        if StaticPopup_Show then
-            StaticPopup_Show("REDGUILDFOREVER_DECAY", ns.Setting("decayPercent"))
-        end
+        ns.AskDecay()
 
     elseif cmd == "undo" then
         if not needOfficer() then return end
