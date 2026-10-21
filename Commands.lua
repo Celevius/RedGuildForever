@@ -95,6 +95,7 @@ local help = {
     "/rgf sync  sync the data with everyone online",
     "/rgf export  open the Sync tab with backup export and import",
     "/rgf log  show the last changes",
+    "/rgf discord  the standings as text for Discord, with the search and class of the window",
     "|cffffd100Guild leader|r",
     "/rgf editors  show who may change data",
     "/rgf editor add Cel Dru  let a player change data, any guild rank works",
@@ -286,8 +287,12 @@ function ns.Command(line)
         ns.RequestRoster()
         ns.Sync()
 
+    elseif cmd == "discord" then
+        ns.ToggleStandings(ns.TAB.standings)
+        ns.ShowCopyText("Standings", ns.StandingsText(ns.mainFrame.pages[ns.TAB.standings].shown or {}))
+
     elseif cmd == "export" then
-        ns.ToggleStandings(4)
+        ns.ToggleStandings(ns.TAB.data)
 
     elseif cmd == "fresh" then
         if not needOfficer() then return end
@@ -297,7 +302,7 @@ function ns.Command(line)
         ns.SetTestMode(not ns.IsTest())
 
     elseif cmd == "settings" or cmd == "options" then
-        ns.ToggleStandings(5)
+        ns.ToggleStandings(ns.TAB.settings)
 
     elseif cmd == "edit" then
         if not needOfficer() then return end

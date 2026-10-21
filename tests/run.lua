@@ -1081,9 +1081,9 @@ end)
 
 test("sync tab builds and shows the backup", function()
     setup(guild())
-    ns.ToggleStandings(4)
+    ns.ToggleStandings(ns.TAB.data)
     ns.ToggleStandings(1)
-    ns.ToggleStandings(4)
+    ns.ToggleStandings(ns.TAB.data)
     noErrors()
 end)
 
@@ -1153,8 +1153,8 @@ test("test mode is a sandbox for the whole addon", function()
     setup(guild())
     local before = realSnapshot()
     -- turn it on with the checkbox in the Settings tab
-    ns.ToggleStandings(5)
-    local view = ns.settingsViews[1]
+    ns.ToggleStandings(ns.TAB.settings)
+    local view = ns.mainFrame.pages[ns.TAB.settings].view
     view.test:SetChecked(true)
     view.test:Click()
     eq(ns.IsTest(), true)
@@ -1377,9 +1377,10 @@ local function typeInto(box, value)
     box:GetScript("OnTextChanged")(box, true)
 end
 
+-- the view with the guild rules, in the Rules tab
 local function settingsView()
-    ns.ToggleStandings(5)
-    return ns.settingsViews[#ns.settingsViews]
+    ns.ToggleStandings(ns.TAB.rules)
+    return ns.mainFrame.pages[ns.TAB.rules].view
 end
 
 test("rules start with the rule book values", function()
@@ -1661,7 +1662,8 @@ test("editor commands and the editor section in the settings", function()
     assert(W.printed[#W.printed]:find("Ben Swift is now an editor"), W.printed[#W.printed])
     ns.Command("editors")
     assert(W.printed[#W.printed]:find("Ben Swift"), W.printed[#W.printed])
-    local view = settingsView()
+    ns.ToggleStandings(ns.TAB.settings)
+    local view = ns.mainFrame.pages[ns.TAB.settings].view
     eq(view.addEditor:IsEnabled(), true, "leader can add")
     assert(view.editorList:GetText():find("Ben Swift"), view.editorList:GetText())
     view.editorBox:SetText("Anna")
@@ -1680,17 +1682,17 @@ end)
 
 test("the Data tab has sync, decay and backup, the bottom strip only raid buttons", function()
     setup(guild())
-    ns.ToggleStandings(4)
+    ns.ToggleStandings(ns.TAB.data)
     local f = ns.mainFrame
     assert(f, "window built")
-    local page = f.pages[4]
+    local page = f.pages[ns.TAB.data]
     eq(page.decay:IsShown(), true, "decay for editors with data")
     eq(page.notes:IsShown(), false, "old notes import only without data")
     eq(page.fresh:IsShown(), false)
     page.decay:Click()
     eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
     W.canEdit = false
-    ns.ToggleStandings(1) ns.ToggleStandings(4)
+    ns.ToggleStandings(1) ns.ToggleStandings(ns.TAB.data)
     eq(page.decay:IsShown(), false, "members get no decay")
     eq(f.lootMaster:IsShown(), false)
     noErrors()
@@ -2078,11 +2080,43 @@ test("the weekly decay reminds when it is due and warns before a second one", fu
     W.server = W.server + 2 * 86400
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY_AGAIN", "warns, the last one was two days ago")
-    ns.ToggleStandings(4)
-    assert(ns.mainFrame.pages[4].state:GetText():find("Last one on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[4].state:GetText())
+    ns.ToggleStandings(ns.TAB.data)
+    assert(ns.mainFrame.pages[ns.TAB.data].state:GetText():find("Last one on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[ns.TAB.data].state:GetText())
     W.server = W.server + 6 * 86400
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY", "a week later it asks normally")
+    noErrors()
+end)
+
+test("standings search, class filter and the Discord text", function()
+    setup(guild())
+    ns.ToggleStandings(ns.TAB.standings)
+    local page = ns.mainFrame.pages[ns.TAB.standings]
+    eq(#page.shown, 4)
+    page.search:SetText("to")
+    page.search:GetScript("OnTextChanged")(page.search)
+    eq(#page.shown, 1, "Tom Hammer")
+    eq(page.shown[1].name, "Tom Hammer-Forever")
+    page.search:SetText("")
+    page.search:GetScript("OnTextChanged")(page.search)
+    -- without a menu system the class button steps through the classes
+    _G.MenuUtil = nil
+    ns.SetStandingsClass("MAGE")
+    eq(#page.shown, 1) eq(page.shown[1].name, "Anna Frost-Forever")
+    eq(page.class:GetText(), "Mage")
+    page.discord:Click()
+    local textValue = ns.copyFrame.box:GetText()
+    assert(textValue:find("^Standings of Redemption on %d%d%.%d%d%.%d%d%d%d, Mage\n1%. Anna Frost  2%.50  %(500 EP, 200 GP%)"), textValue)
+    ns.SetStandingsClass(nil)
+    ns.Command("discord")
+    assert(ns.copyFrame.box:GetText():find("4%. Tom Hammer  2%.00  %(200 EP, 100 GP%) new"), ns.copyFrame.box:GetText())
+    -- the Rules tab has the guild rules, the Settings tab the rest
+    ns.ToggleStandings(ns.TAB.rules)
+    assert(ns.mainFrame.pages[ns.TAB.rules].view.ruleBoxes.raidEP, "rules in the Rules tab")
+    eq(ns.mainFrame.pages[ns.TAB.rules].view.test, nil)
+    ns.ToggleStandings(ns.TAB.settings)
+    assert(ns.mainFrame.pages[ns.TAB.settings].view.test, "test mode in the Settings tab")
+    eq(next(ns.mainFrame.pages[ns.TAB.settings].view.ruleBoxes), nil)
     noErrors()
 end)
 

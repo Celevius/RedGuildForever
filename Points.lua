@@ -973,7 +973,7 @@ function ns.ImportOfficerNotes()
         ns.Data().started = true
         ns.Invalidate()
         ns.Fire("RGF_POINTS_CHANGED")
-        ns.Fire("RGF_LOCAL_CHANGE", { state = true })
+        ns.Fire("RGF_LOCAL_CHANGE", { state = true, base = true })
     end
     return count
 end

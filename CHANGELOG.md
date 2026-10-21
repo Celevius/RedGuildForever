@@ -2,6 +2,37 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.0.0 (21 October 2026)
+
+### Added
+* **Every change is kept.** Awards, raid EP, decay, alt links and undo are stored as changes, and the points are computed from them. Two loot masters in two raids at the same time both count, also when they could not reach each other during the raid
+* **Raid nights.** **Start raid** gives the on time bonus and starts the loot list, **End raid** gives the raid EP. Players who left early are offered the raid EP too. New Raid tab with the bench and the loot of the raid, `/rgf start`, `/rgf end`
+* **Raid EP once per night.** The raid EP and the on time bonus count once per player in 12 hours, so the bench or an alt in a second raid never gets them twice
+* **Several items at once.** **Bid on all** in Start Bidding opens every rare and better item of the corpse, numbered in one raid announcement. The Loot Master window switches between them, the bid popup shows one after the other, raiders without the addon whisper `ms 2`
+* **Whisper commands** for players without the addon: `!ep`, `!ep Name`, `!bid`, `!top`, `!top mage`, `!loot`, `!loot Name` and `!help`. Every addon user with data answers
+* Every whisper bid gets an answer, also when bidding is closed or nothing is open. A `+` for a raid invite gets none
+* The winner gets a whisper with the item and the new priority
+* **Loot history.** The last items of a player show in the standings tooltip and when you hover a bidder in the Loot Master window. `/rgf loot` and **Loot list for Discord**
+* **Automatic backups** in a second save file of the character, ten minutes after changes, at the end of a raid and when logging out. If the main save file comes back empty, the newest backup is put back by itself. **Restore automatic backup** in the Data tab
+* **Undo for every change.** **Undo last change** also works for changes of an earlier day, the History tab can undo any change of any editor
+* **Weekly decay reminder** after login and at the end of a raid, and a warning before a second decay in the same week, also when another editor ran the first one
+* **Rules tab.** The guild rules have their own tab, the Settings tab keeps test mode, the interface and the editors
+* **Search and class filter** in the standings, and **Copy for Discord** for the shown list, also `/rgf discord`
+* A window with text to copy for Discord
+
+### Changed
+* **New sync.** Both sides compare a short summary and only what is missing is sent. Sync messages go out a few per second instead of all at once, a transfer with a missing piece is asked for again, and the addon syncs every 15 minutes. Version 2.0 does not talk to 1.7 and older, everyone who changes data has to update at the same time
+* The bench is shared with Sync, so every loot master sees the same bench. The bench of this computer moves over by itself
+* The History tab shows every change of every editor, shared with Sync
+* A linked alt brings its EP and the GP above the start to the main, before they were dropped. Undo takes the link back
+* The minimap menu has **Start raid** and **End raid** instead of the two EP entries
+* Backups contain every change. Backups of version 1.7 can still be imported
+
+### Fixed
+* Changes made at the same time on two computers could overwrite each other, now both count
+* With two raids on one evening the bench could get the raid EP twice
+* A big guild could lose sync messages because they all went out at once
+
 ## 1.7.1 (21 October 2026)
 
 ### Changed

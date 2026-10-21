@@ -396,7 +396,7 @@ end
 ------------------------------------------------------------------------
 local incoming = {}      -- transfers that are still arriving, by sender
 local pendingReplies = {} -- replies we plan to send, by request
-local live = { events = {}, state = false, queued = false }
+local live = { events = {}, state = false, base = false, queued = false }
 local resyncQueued = false
 ns.syncInfo = { at = nil, from = {}, changes = 0 }
 
@@ -489,6 +489,7 @@ ns.On("RGF_LOCAL_CHANGE", function(what)
         table.insert(live.events, what)
     else
         live.state = true
+        if type(what) == "table" and what.base then live.base = true end
     end
     if live.queued then return end
     live.queued = true
@@ -500,11 +501,13 @@ ns.On("RGF_LOCAL_CHANGE", function(what)
             local entryText = ns.EncodeEvent(ev)
             if entryText then table.insert(entryTexts, entryText) end
         end
-        if live.state then
-            local b = buildBuckets(0).S
-            for _, entryText in ipairs(b and b.entries or {}) do table.insert(entryTexts, entryText) end
+        if live.state or live.base then
+            local buckets = buildBuckets(0)
+            for _, key in ipairs(live.base and { "S", "B" } or { "S" }) do
+                for _, entryText in ipairs(buckets[key] and buckets[key].entries or {}) do table.insert(entryTexts, entryText) end
+            end
         end
-        live.events, live.state = {}, false
+        live.events, live.state, live.base = {}, false, false
         if #entryTexts > 0 then sendTransfer("L", "-", "-", "-", "-", entryTexts) end
     end)
 end)

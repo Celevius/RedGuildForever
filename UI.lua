@@ -361,16 +361,96 @@ local function showPage(id)
     if not main then return end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
-    main.standingsButtons:SetShown(id == 1 and ns.CanEdit())
-    main.benchButtons:SetShown(id == 2 and ns.CanEdit())
-    main.showAll:SetShown(id == 1)
+    main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
+    main.benchButtons:SetShown(id == ns.TAB.raid and ns.CanEdit())
+    main.showAll:SetShown(id == ns.TAB.standings)
     ns.RefreshStandings()
+end
+
+-- What the standings show: a part of the name and one class
+local filter = { text = "", class = nil }
+ns.standingsFilter = filter
+
+local function className(token)
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    if names and names[token] then return names[token] end
+    return token:sub(1, 1) .. token:sub(2):lower()
+end
+
+-- The classes in the guild, sorted by name
+local function guildClasses()
+    local seen, list = {}, {}
+    for _, m in pairs(ns.members) do
+        if m.class and not seen[m.class] then
+            seen[m.class] = true
+            table.insert(list, m.class)
+        end
+    end
+    table.sort(list, function(a, b) return className(a) < className(b) end)
+    return list
+end
+
+function ns.SetStandingsClass(token)
+    filter.class = token
+    ns.RefreshStandings()
+end
+
+local function classMenu(owner)
+    local classes = guildClasses()
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
+            root:CreateButton("All classes", function() ns.SetStandingsClass(nil) end)
+            for _, token in ipairs(classes) do
+                root:CreateButton(className(token), function() ns.SetStandingsClass(token) end)
+            end
+        end)
+        if ok then return end
+    end
+    -- no menu system, step through the classes
+    local nextClass = classes[1]
+    for i, token in ipairs(classes) do
+        if token == filter.class then nextClass = classes[i + 1] end
+    end
+    ns.SetStandingsClass(nextClass)
+end
+
+-- The shown standings as text for Discord
+function ns.StandingsText(list)
+    local guild = ns.GuildKey() and ns.SplitRealm(ns.GuildKey()) or "the guild"
+    local title = "Standings of " .. guild .. " on " .. date("%d.%m.%Y")
+    if filter.class then title = title .. ", " .. className(filter.class) end
+    local lines = { title }
+    for i, e in ipairs(list) do
+        table.insert(lines, string.format("%d. %s  %s  (%d EP, %d GP)%s", i, ns.ShortName(e.name), ns.FormatPR(e.pr),
+            e.ep, e.gp, e.ep < ns.Setting("minEP") and " new" or ""))
+    end
+    return table.concat(lines, "\n")
 end
 
 local function buildStandingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
-    headerRow(page, standingsColumns, function(key)
+    local searchLabel = text(page, "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", 10, -10)
+    searchLabel:SetText("Search")
+    page.search = ns.UIInputBox(page, 120, false)
+    page.search:SetMaxLetters(30)
+    page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    page.search:SetScript("OnTextChanged", function(self)
+        filter.text = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    page.class = button(page, "All classes", 110, function(self) classMenu(self) end)
+    page.class:SetPoint("LEFT", page.search, "RIGHT", 8, 0)
+    page.discord = button(page, "Copy for Discord", 130, function()
+        ns.ShowCopyText("Standings", ns.StandingsText(page.shown or {}))
+    end)
+    page.discord:SetPoint("TOPRIGHT", -8, -5)
+
+    local holder = CreateFrame("Frame", nil, page)
+    holder:SetPoint("TOPLEFT", 0, -28)
+    holder:SetPoint("BOTTOMRIGHT")
+    headerRow(holder, standingsColumns, function(key)
         if sortKey == key then
             sortDesc = not sortDesc
         else
@@ -378,7 +458,7 @@ local function buildStandingsPage(parent)
         end
         ns.RefreshStandings()
     end)
-    page.list = scrollList(page, 18, function(row)
+    page.list = scrollList(holder, 18, function(row)
         rowCells(row, standingsColumns)
         row:SetScript("OnEnter", function(self)
             if not self.entry then return end
@@ -667,7 +747,9 @@ local function saveRules(view)
 end
 ns.SaveRulesView = saveRules
 
-local function buildSettingsContent(holder, top)
+-- parts.settings: test mode, interface and editors, parts.rules: the guild rules
+local function buildSettingsContent(holder, top, parts)
+    parts = parts or { settings = true, rules = true }
     local view = { ruleBoxes = {}, ruleOrder = {} }
 
     -- everything sits on a scrolling child, the page is longer than the window
@@ -696,6 +778,7 @@ local function buildSettingsContent(holder, top)
         return fs
     end
 
+    if parts.settings then
     -- Test mode
     heading("Test mode")
     view.test = checkbox(parent, "Test mode", function(checked)
@@ -780,7 +863,9 @@ local function buildSettingsContent(holder, top)
     y = y - 30
     view.editorStatus = paragraph(nil, 2)
     y = y - 10
+    end
 
+    if parts.rules then
     -- Guild rules
     heading("Guild rules", "GameFontNormalLarge")
     view.rulesInfo = paragraph(nil, 3)
@@ -835,12 +920,13 @@ local function buildSettingsContent(holder, top)
     end)
     view.defaults:SetPoint("LEFT", view.discard, "RIGHT", 4, 0)
     y = y - 40
+    end
 
     view.version = paragraph("GameFontDisableSmall")
     view.version:SetText("Red Guild EPGP " .. ns.version)
 
     parent:SetHeight(-y + 20)
-    fillRules(view)
+    if view.save then fillRules(view) end
     table.insert(settingsViews, view)
     return view
 end
@@ -882,35 +968,47 @@ function ns.RefreshSettings()
         or "The rules are still the defaults of the rule book."
 
     for _, view in ipairs(settingsViews) do
-        view.test:SetChecked(test)
-        view.raid:SetText(raidText)
-        view.reset:SetEnabled(test)
-        view.newRaid:SetEnabled(test)
-        local mm = RedGuildForeverDB and RedGuildForeverDB.minimap
-        view.minimap:SetChecked(not (mm and mm.hide))
-        view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
+        if view.test then
+            view.test:SetChecked(test)
+            view.raid:SetText(raidText)
+            view.reset:SetEnabled(test)
+            view.newRaid:SetEnabled(test)
+            local mm = RedGuildForeverDB and RedGuildForeverDB.minimap
+            view.minimap:SetChecked(not (mm and mm.hide))
+            view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
 
-        view.editorList:SetText(editorText)
-        view.editorBox:SetEnabled(canManage)
-        view.addEditor:SetEnabled(canManage)
-        view.removeEditor:SetEnabled(canManage)
-        view.rankEditors:SetShown(canManage and not ns.EditorsInUse())
-
-        if not view.dirty then fillRules(view) end
-        for _, box in pairs(view.ruleBoxes) do box:SetEnabled(canEdit) end
-        view.defaults:SetEnabled(canEdit)
-        view.changedBy:SetText(changedBy)
-        if not canEdit and (view.status:GetText() or "") == "" then
-            view.status:SetText("|cff999999Only the guild leader and editors can change the rules.|r")
+            view.editorList:SetText(editorText)
+            view.editorBox:SetEnabled(canManage)
+            view.addEditor:SetEnabled(canManage)
+            view.removeEditor:SetEnabled(canManage)
+            view.rankEditors:SetShown(canManage and not ns.EditorsInUse())
         end
-        updateRulesPreview(view)
+
+        if view.save then
+            if not view.dirty then fillRules(view) end
+            for _, box in pairs(view.ruleBoxes) do box:SetEnabled(canEdit) end
+            view.defaults:SetEnabled(canEdit)
+            view.changedBy:SetText(changedBy)
+            if not canEdit and (view.status:GetText() or "") == "" then
+                view.status:SetText("|cff999999Only the guild leader and editors can change the rules.|r")
+            end
+            updateRulesPreview(view)
+        end
     end
 end
 
 local function buildSettingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
-    buildSettingsContent(page)
+    page.view = buildSettingsContent(page, nil, { settings = true })
+    return page
+end
+
+-- Rules tab: every price, multiplier and EP amount of the guild
+local function buildRulesPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    page.view = buildSettingsContent(page, nil, { rules = true })
     return page
 end
 
@@ -1000,6 +1098,7 @@ local function buildMain()
         buildStandingsPage(f.Inset),
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
+        buildRulesPage(f.Inset),
         buildSyncPage(f.Inset),
         buildSettingsPage(f.Inset),
     }
@@ -1033,13 +1132,17 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Raid", "History", "Data", "Settings" }, showPage)
+    tabs(f, name, { "Standings", "Raid", "History", "Rules", "Data", "Settings" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
 
 local function sortedStandings()
-    local list = ns.Standings(showAll)
+    local list = {}
+    for _, e in ipairs(ns.Standings(showAll)) do
+        local nameOk = filter.text == "" or ns.ShortName(e.name):lower():find(filter.text, 1, true)
+        if nameOk and (not filter.class or e.class == filter.class) then table.insert(list, e) end
+    end
     table.sort(list, function(a, b)
         local x, y = a[sortKey], b[sortKey]
         if sortKey == "name" then x, y = ns.ShortName(x), ns.ShortName(y) end
@@ -1054,6 +1157,8 @@ end
 
 local function refreshStandingsPage(page)
     local list = sortedStandings()
+    page.shown = list
+    page.class:SetText(filter.class and className(filter.class) or "All classes")
     local minEP = ns.Setting("minEP")
     for i, e in ipairs(list) do
         local row = page.list:Row(i)
@@ -1143,14 +1248,15 @@ function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
     local count = 0
-    if tab == 1 then
-        count = refreshStandingsPage(main.pages[1])
-    elseif tab == 2 then
-        refreshRaidPage(main.pages[2])
-    elseif tab == 3 then
-        refreshHistoryPage(main.pages[3])
-    elseif tab == 4 then
-        refreshSyncPage(main.pages[4])
+    local T = ns.TAB
+    if tab == T.standings then
+        count = refreshStandingsPage(main.pages[T.standings])
+    elseif tab == T.raid then
+        refreshRaidPage(main.pages[T.raid])
+    elseif tab == T.history then
+        refreshHistoryPage(main.pages[T.history])
+    elseif tab == T.data then
+        refreshSyncPage(main.pages[T.data])
     else
         ns.RefreshSettings()
     end
@@ -1164,13 +1270,15 @@ function ns.RefreshStandings()
     local status
     if not (IsInGuild and IsInGuild()) then
         status = "You are not in a guild"
-    elseif tab == 2 then
+    elseif tab == T.raid then
         status = ns.Session() and "Raid running" or (#ns.Bench() .. " players on the bench")
-    elseif tab == 3 then
+    elseif tab == T.history then
         status = "Every change of every editor, shared with Sync"
-    elseif tab == 4 then
+    elseif tab == T.rules then
+        status = "The guild rules, the same for everyone"
+    elseif tab == T.data then
         status = "Sync, decay and backup"
-    elseif tab == 5 then
+    elseif tab == T.settings then
         status = "Settings"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
@@ -1193,7 +1301,7 @@ function ns.ToggleStandings(tab)
 end
 
 function ns.ToggleBench()
-    ns.ToggleStandings(2)
+    ns.ToggleStandings(ns.TAB.raid)
 end
 
 ns.On("RGF_POINTS_CHANGED", function() ns.RefreshStandings() end)
