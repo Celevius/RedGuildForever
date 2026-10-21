@@ -264,7 +264,7 @@ function ns.RefreshPicker()
     if busy then
         picker.sub:SetText("|cffff8040bidding for another item is still open|r")
     elseif not officer then
-        picker.sub:SetText("only officers start bidding, turn on test mode in the settings to try it")
+        picker.sub:SetText("only editors start bidding, turn on test mode in the settings to try it")
     else
         picker.sub:SetText("or pick one from the loot below")
     end

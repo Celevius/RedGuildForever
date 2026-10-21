@@ -1,15 +1,17 @@
 -- Points: EP and GP stored in the addon's own save file, one data set per guild.
 --
 -- RedGuildForeverDB.guilds["Guild Name-Realm"] = {
---     started = true,                -- data exists or an officer started fresh
+--     started = true,                -- data exists or an editor started fresh
 --     players = {
 --         ["Cel Dru-Forever"] = { ep = 1250, gp = 300, t = 1760000000, by = "Cel Dru-Forever" },
 --         ["Cel Rog-Forever"] = { main = "Cel Dru-Forever", t = 1760000000, by = "..." },
 --     },
+--     rules = { tier_boss = { v = 150, t = 1760000000, by = "..." } },
+--     editors = { ["Anna Frost-Forever"] = { on = true, t = 1760000000, by = "the guild leader" } },
 -- }
 --
 -- t is the server time of the last change. Sync keeps the newest entry per
--- player, so officers can change points on different computers.
+-- player, so editors can change points on different computers.
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever
@@ -65,7 +67,11 @@ local function copyData(src)
     for key, e in pairs(src.rules or {}) do
         rules[key] = { v = e.v, t = e.t, by = e.by }
     end
-    return { players = players, rules = rules, started = true }
+    local editors = {}
+    for full, e in pairs(src.editors or {}) do
+        editors[full] = { on = e.on, t = e.t, by = e.by }
+    end
+    return { players = players, rules = rules, editors = editors, started = true }
 end
 
 function ns.RealData()
@@ -79,6 +85,7 @@ function ns.RealData()
     end
     data.players = data.players or {}
     data.rules = data.rules or {}
+    data.editors = data.editors or {}
     return data
 end
 
@@ -154,7 +161,7 @@ function ns.Players()
     return ns.Data().players
 end
 
--- true when there is data to work with, or an officer chose to start fresh
+-- true when there is data to work with, or an editor chose to start fresh
 function ns.HasData()
     local data = ns.Data()
     return data.started or next(data.players) ~= nil
@@ -168,9 +175,14 @@ function ns.StartFresh()
 end
 
 ------------------------------------------------------------------------
--- Who may change data: the guild leader and the officer ranks.
--- The guild leader can set the officer ranks in the guild information,
--- for example "EPGP officers 2" lets ranks 0, 1 and 2 edit (0 is the leader).
+-- Who may change data: the guild leader and the editors.
+-- The guild leader picks the editors by hand in the Settings tab or with
+-- /rgf editor add Name. The list is saved with the guild data and shared
+-- with Sync, everyone only accepts list changes made by the guild leader.
+--
+-- Until the guild leader adds the first editor, the old rank rule still
+-- applies, so updating the addon never locks anyone out: rank 0 and 1, or
+-- what "EPGP officers 2" in the guild information allows.
 ------------------------------------------------------------------------
 function ns.OfficerRank()
     if GetGuildInfoText then
@@ -189,27 +201,117 @@ function ns.MyRank()
     return rankIndex
 end
 
-function ns.CanEdit()
-    if ns.IsTest() then return true end -- in test mode everyone can try the officer tools
-    if not (IsInGuild and IsInGuild()) then return false end
-    local rank = ns.MyRank()
+local function rankOf(full)
+    if full == ns.PlayerName() then return ns.MyRank() end
+    local m = ns.members[full]
+    return m and m.rank
+end
+
+function ns.EditorList()
+    local data = ns.Data()
+    data.editors = data.editors or {}
+    return data.editors
+end
+
+-- true once the guild leader added or removed an editor
+function ns.EditorsInUse()
+    return next(ns.EditorList()) ~= nil
+end
+
+function ns.IsGuildLeader(full)
+    full = full and ns.Resolve(full)
+    return full ~= nil and rankOf(full) == 0
+end
+
+function ns.IsEditor(full)
+    full = full and ns.Resolve(full)
+    if not full then return false end
+    local rank = rankOf(full)
+    if rank == 0 then return true end
+    if ns.EditorsInUse() then
+        local e = ns.EditorList()[full]
+        return e ~= nil and e.on == true
+    end
     return rank ~= nil and rank <= ns.OfficerRank()
+end
+ns.IsOfficer = ns.IsEditor -- older name
+
+function ns.CanEdit()
+    if ns.IsTest() then return true end -- in test mode everyone can try the editor tools
+    if not (IsInGuild and IsInGuild()) then return false end
+    return ns.IsEditor(ns.PlayerName())
 end
 ns.CanEditNotes = ns.CanEdit -- older name, used in a few places
 
-function ns.IsOfficer(full)
-    local m = ns.members[ns.Resolve(full) or ""]
-    return m and m.rank ~= nil and m.rank <= ns.OfficerRank()
+-- Only the guild leader manages the editors. In test mode everyone can try it.
+function ns.CanManageEditors()
+    if ns.IsTest() then return true end
+    return IsInGuild and IsInGuild() and ns.MyRank() == 0 or false
+end
+
+-- Editors by name, sorted. Removed editors are left out.
+function ns.Editors()
+    local list = {}
+    for full, e in pairs(ns.EditorList()) do
+        if e.on then table.insert(list, full) end
+    end
+    table.sort(list)
+    return list
+end
+
+-- Add (on true) or remove an editor. Returns true, or nil and a reason.
+function ns.SetEditor(name, on)
+    if not ns.CanManageEditors() then return nil, "only the guild leader can add or remove editors" end
+    local full = ns.FindMember(name, true)
+    if not full or not ns.members[full] then return nil, "nobody in the guild is called " .. (name or "?") end
+    if rankOf(full) == 0 then return nil, ns.ShortName(full) .. " is the guild leader and can always edit" end
+    on = on and true or false
+    local list = ns.EditorList()
+    local e = list[full]
+    if e and e.on == on then
+        return nil, ns.ShortName(full) .. (on and " is already an editor" or " is not an editor")
+    end
+    if not e and not on and not ns.EditorsInUse() then
+        return nil, "the editor list is still empty, add the editors you want first"
+    end
+    local me = ns.PlayerName()
+    list[full] = { on = on, t = ns.Now(), by = me }
+    local log = ns.Log()
+    if log then
+        table.insert(log, { time = time and time() or 0, label = ns.ShortName(full) .. (on and " is now an editor" or " is no editor anymore"), count = 1, by = me })
+        while #log > 500 do table.remove(log, 1) end
+    end
+    ns.Fire("RGF_EDITORS_CHANGED")
+    ns.Fire("RGF_POINTS_CHANGED")
+    ns.Fire("RGF_LOCAL_CHANGE")
+    return true, full
+end
+
+-- Start the list with everyone the old rank rule allows, without the guild leader.
+-- Returns the number of added editors.
+function ns.AddRankEditors()
+    if not ns.CanManageEditors() then return 0 end
+    local limit, names = ns.OfficerRank(), {}
+    for full, m in pairs(ns.members) do
+        if m.rank and m.rank > 0 and m.rank <= limit then table.insert(names, full) end
+    end
+    table.sort(names)
+    local count = 0
+    for _, full in ipairs(names) do
+        local e = ns.EditorList()[full]
+        if not (e and e.on) and ns.SetEditor(full, true) then count = count + 1 end
+    end
+    return count
 end
 
 -- Every change goes through here, it explains why a change is not possible.
 function ns.CanChange()
     if not ns.CanEdit() then
-        ns.Print("only the guild leader and officers can change points")
+        ns.Print("only the guild leader and editors can change points")
         return false
     end
     if not ns.HasData() then
-        ns.Print("no EPGP data loaded yet. Click Sync to get it from the other officers, or Start fresh if your guild is new")
+        ns.Print("no EPGP data loaded yet. Click Sync to get it from the editors, or Start fresh if your guild is new")
         ns.Fire("RGF_NEEDS_DATA")
         return false
     end
@@ -302,7 +404,7 @@ end
 -- Change several rules at once. values maps rule keys to typed values.
 -- Returns the number of changed rules, or nil and a reason.
 function ns.SetRules(values)
-    if not ns.CanChange() then return nil, "only the guild leader and officers can change the rules" end
+    if not ns.CanChange() then return nil, "only the guild leader and editors can change the rules" end
     local checked = {}
     for _, def in ipairs(ns.RULES) do
         local value = values[def.key]
@@ -603,7 +705,7 @@ end
 -- One time import of points from officer notes (versions 1.3 and older).
 function ns.ImportOfficerNotes()
     if not ns.CanEdit() then
-        ns.Print("only the guild leader and officers can import")
+        ns.Print("only the guild leader and editors can import")
         return 0
     end
     if not GetNumGuildMembers then return 0 end

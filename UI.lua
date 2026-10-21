@@ -436,7 +436,7 @@ local function buildSyncPage(parent)
     info:SetPoint("TOPLEFT", 12, -32)
     info:SetWidth(470)
     info:SetWordWrap(true)
-    info:SetText("Every player keeps a copy of the points in the addon's save file. Sync shares the newest data with everyone online, the newest change of each player wins. Officers send their data, members only receive.")
+    info:SetText("Every player keeps a copy of the points in the addon's save file. Sync shares the newest data with everyone online, the newest change of each player wins. Editors send their data, everyone else only receives.")
 
     page.state = text(page, "GameFontHighlight")
     page.state:SetPoint("TOPLEFT", 12, -72)
@@ -501,7 +501,7 @@ end
 local function refreshSyncPage(page)
     local lines = {}
     if not ns.HasData() then
-        table.insert(lines, "|cffff8040No data loaded yet.|r Click Sync now to get it from the other officers.")
+        table.insert(lines, "|cffff8040No data loaded yet.|r Click Sync now to get it from the editors.")
         if ns.CanEdit() then
             table.insert(lines, "If your guild is new, click Start fresh. If you used version 1.3 or older, import the officer notes.")
         end
@@ -578,7 +578,7 @@ local function saveRules(view)
     elseif ns.IsTest() then
         view.status:SetText(ns.TEST_TAG .. GREEN .. "Saved " .. changed .. (changed == 1 and " change" or " changes") .. " in the test data.|r")
     else
-        view.status:SetText(GREEN .. "Saved " .. changed .. (changed == 1 and " change" or " changes") .. ". Sync shares them with the other officers.|r")
+        view.status:SetText(GREEN .. "Saved " .. changed .. (changed == 1 and " change" or " changes") .. ". Sync shares them with the other editors.|r")
     end
     updateRulesPreview(view)
     return true
@@ -651,10 +651,58 @@ local function buildSettingsContent(holder, top)
     view.autoLoot:SetPoint("TOPLEFT", 12, y)
     y = y - 40
 
+    -- Editors
+    heading("Editors", "GameFontNormalLarge")
+    local editorInfo = paragraph(nil, 3)
+    editorInfo:SetText("Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is. Only the guild leader adds or removes them. Sync shares the list with everyone.")
+    view.editorList = paragraph("GameFontHighlight", 3)
+    view.editorBox = ns.UIInputBox(parent, 180, false)
+    view.editorBox:SetMaxLetters(48)
+    view.editorBox:SetPoint("TOPLEFT", 20, y)
+    local function changeEditor(on)
+        local name = view.editorBox:GetText() or ""
+        if name:match("^%s*$") then
+            name = UnitIsPlayer and UnitIsPlayer("target") and ns.UnitFullName("target") or ""
+        end
+        if name:match("^%s*$") then
+            view.editorStatus:SetText("|cffff8040Type a name or target the player first.|r")
+            return
+        end
+        local full, matches = ns.FindMember(name, true)
+        if not full then
+            view.editorStatus:SetText("|cffff8040" .. (matches and ("More than one player matches " .. name .. ", type more of the name.")
+                or ("Nobody in the guild is called " .. name .. ".")) .. "|r")
+            return
+        end
+        local ok, result = ns.SetEditor(full, on)
+        if ok then
+            view.editorBox:SetText("")
+            view.editorStatus:SetText(GREEN .. ns.ShortName(result) .. (on and " is now an editor." or " is no editor anymore.") .. "|r")
+        else
+            view.editorStatus:SetText("|cffff8040" .. result .. "|r")
+        end
+        ns.RefreshSettings()
+    end
+    view.editorBox:SetScript("OnEnterPressed", function() changeEditor(true) end)
+    view.addEditor = button(parent, "Add", 80, function() changeEditor(true) end)
+    view.addEditor:SetPoint("LEFT", view.editorBox, "RIGHT", 6, 0)
+    view.removeEditor = button(parent, "Remove", 80, function() changeEditor(false) end)
+    view.removeEditor:SetPoint("LEFT", view.addEditor, "RIGHT", 4, 0)
+    y = y - 30
+    view.rankEditors = button(parent, "Add the current officer ranks", 210, function()
+        local count = ns.AddRankEditors()
+        view.editorStatus:SetText(GREEN .. "Added " .. count .. (count == 1 and " editor." or " editors.") .. "|r")
+        ns.RefreshSettings()
+    end)
+    view.rankEditors:SetPoint("TOPLEFT", 14, y)
+    y = y - 30
+    view.editorStatus = paragraph(nil, 2)
+    y = y - 10
+
     -- Guild rules
     heading("Guild rules", "GameFontNormalLarge")
     view.rulesInfo = paragraph(nil, 3)
-    view.rulesInfo:SetText("These rules are the same for the whole guild. Sync shares them with every officer, the newest change wins. The guild leader and officers can change them, everyone else can look.")
+    view.rulesInfo:SetText("These rules are the same for the whole guild. Sync shares them with every editor, the newest change wins. The guild leader and editors can change them, everyone else can look.")
 
     for _, def in ipairs(ns.RULES) do
         if def.section then
@@ -726,6 +774,21 @@ function ns.RefreshSettings()
         raidText = "|cff999999Turn on test mode to get a simulated raid.|r"
     end
     local canEdit = ns.CanEdit()
+    local canManage = ns.CanManageEditors()
+
+    -- who may edit
+    local editorText
+    if ns.EditorsInUse() then
+        local names = {}
+        for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
+        editorText = "Editors besides the guild leader: |cffffffff" .. (#names > 0 and table.concat(names, ", ") or "nobody") .. "|r"
+    else
+        editorText = "The list is still empty, so the old rank rule applies: the guild leader and rank 1 to " .. ns.OfficerRank()
+            .. " may edit. Once the guild leader adds the first editor, only the list counts."
+    end
+    if not canManage then
+        editorText = editorText .. "\n|cff999999Only the guild leader can change the list.|r"
+    end
 
     -- who changed the rules last
     local last
@@ -745,12 +808,18 @@ function ns.RefreshSettings()
         view.minimap:SetChecked(not (mm and mm.hide))
         view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
 
+        view.editorList:SetText(editorText)
+        view.editorBox:SetEnabled(canManage)
+        view.addEditor:SetEnabled(canManage)
+        view.removeEditor:SetEnabled(canManage)
+        view.rankEditors:SetShown(canManage and not ns.EditorsInUse())
+
         if not view.dirty then fillRules(view) end
         for _, box in pairs(view.ruleBoxes) do box:SetEnabled(canEdit) end
         view.defaults:SetEnabled(canEdit)
         view.changedBy:SetText(changedBy)
         if not canEdit and (view.status:GetText() or "") == "" then
-            view.status:SetText("|cff999999Only the guild leader and officers can change the rules.|r")
+            view.status:SetText("|cff999999Only the guild leader and editors can change the rules.|r")
         end
         updateRulesPreview(view)
     end
@@ -781,6 +850,10 @@ end
 ns.On("RGF_READY", registerOptions)
 ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
 ns.On("RGF_RULES_CHANGED", function() ns.RefreshSettings() end)
+ns.On("RGF_EDITORS_CHANGED", function()
+    ns.RefreshSettings()
+    if ns.RefreshStandings then ns.RefreshStandings() end
+end)
 
 if StaticPopupDialogs then
     StaticPopupDialogs["REDGUILDFOREVER_RESET_RULES"] = {
@@ -973,7 +1046,7 @@ function ns.RefreshStandings()
     elseif tab == 2 then
         status = #ns.Bench() .. " players on the bench"
     elseif tab == 3 then
-        status = "Changes made by officers on this computer"
+        status = "Changes made by editors on this computer"
     elseif tab == 4 then
         status = "Sync and backup"
     elseif tab == 5 then
@@ -1204,7 +1277,7 @@ end
 
 function ns.OpenEditor(name)
     if not ns.CanEdit() then
-        ns.Print("only the guild leader and officers can change points")
+        ns.Print("only the guild leader and editors can change points")
         return false
     end
     local full = ns.FindMember(name)
@@ -1594,7 +1667,7 @@ end)
 ------------------------------------------------------------------------
 if StaticPopupDialogs then
     StaticPopupDialogs["REDGUILDFOREVER_FRESH"] = {
-        text = "Start with empty EPGP data for this guild?\nOnly do this for a new guild. If other officers have data, click Sync instead.",
+        text = "Start with empty EPGP data for this guild?\nOnly do this for a new guild. If editors have data, click Sync instead.",
         button1 = YES or "Yes",
         button2 = NO or "No",
         OnAccept = function()

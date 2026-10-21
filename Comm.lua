@@ -2,7 +2,7 @@
 --
 -- Messages use "^" as separator, because item links contain "|".
 --   SQ                      ask everyone to sync (GUILD)
---   DB^n / DD^n^data / DE^n an officer sends all data, begin, data, end (GUILD)
+--   DB^n / DD^n^data / DE^n an editor sends all data, begin, data, end (GUILD)
 --   A^id^seconds^gp^link    an auction starts (RAID)
 --   B^id^MS|OS|PASS         a bid (WHISPER to the loot master)
 --   C^id^winner             an auction ends (RAID)
@@ -67,8 +67,8 @@ end)
 ------------------------------------------------------------------------
 -- Sync
 --
--- Everyone keeps a copy of the data. Officers send their whole data set,
--- everyone merges it and the newest change per player wins. An officer who
+-- Everyone keeps a copy of the data. Editors send their whole data set,
+-- everyone merges it and the newest change per player wins. An editor who
 -- notices he has newer entries than the sender answers with his own data,
 -- so after one sync everyone online has the same data.
 ------------------------------------------------------------------------
@@ -76,11 +76,15 @@ local incoming = {}
 local broadcastQueued = false
 ns.syncInfo = { at = nil, from = {}, changes = 0 }
 
--- Entries are "Name,ep,gp,time", "Alt>Main,time" and for guild rules
--- "#rule,value,time", separated by ";". A cleared fixed item price is
--- sent as the value "x". Versions 1.5 and older ignore rule entries.
+-- Entries are "Name,ep,gp,time", "Alt>Main,time", for guild rules
+-- "#rule,value,time" and for editors "@Name,1 or 0,time,changed by",
+-- separated by ";". A cleared fixed item price is sent as the value "x".
+-- Versions 1.5 and older ignore rule entries, 1.6 and older editor entries.
 local function encode()
     local entries = {}
+    for full, e in pairs(ns.Data().editors or {}) do
+        table.insert(entries, string.format("@%s,%d,%d,%s", ns.ShortName(full), e.on and 1 or 0, e.t or 0, ns.ShortName(e.by or "")))
+    end
     for key, e in pairs(ns.Data().rules or {}) do
         local value = e.v == nil and "x" or ns.FormatNumber(e.v)
         table.insert(entries, string.format("#%s,%s,%d", key, value, e.t or 0))
@@ -97,8 +101,12 @@ local function encode()
     return entries
 end
 
--- Returns the player name (or "#rule") and the entry.
+-- Returns the player name (or "#rule", "@editor") and the entry.
 local function decode(entryText)
+    local editor, on, et, by = entryText:match("^@([^,;]+),([01]),(%d+),([^,;]*)$")
+    if editor then
+        return "@" .. ns.FullName(editor), { on = on == "1", t = tonumber(et), by = by ~= "" and ns.FullName(by) or nil }
+    end
     local key, value, rt = entryText:match("^#([^,;]+),([^,;]*),(%d+)$")
     if key then
         if not (ns.RULE[key] or key:match("^item:%d+$")) then return nil end
@@ -156,7 +164,7 @@ function ns.QueueBroadcast(delay)
     end)
 end
 
--- The Sync button. Officers send their data, everyone asks for the newest.
+-- The Sync button. Editors send their data, everyone asks for the newest.
 function ns.Sync(quiet)
     if ns.IsTest() then
         ns.SimulateSync(quiet)
@@ -177,7 +185,7 @@ function ns.Sync(quiet)
             for name in pairs(ns.syncInfo.from) do table.insert(who, ns.ShortName(name)) end
             table.sort(who)
             if #who == 0 then
-                ns.Print("sync done, no other officer with data is online")
+                ns.Print("sync done, no other editor with data is online")
             else
                 ns.Print("sync done with " .. table.concat(who, ", ") .. ", " .. ns.syncInfo.changes .. " changes")
             end
@@ -196,7 +204,7 @@ ns.OnComm("SQ", function(_, sender)
 end)
 
 ns.OnComm("DB", function(text, sender)
-    if sender == ns.PlayerName() or not ns.IsOfficer(sender) then return end
+    if sender == ns.PlayerName() or not ns.IsEditor(sender) then return end
     incoming[sender] = { nonce = ns.Split(text)[2], players = {} }
 end)
 
@@ -210,28 +218,38 @@ ns.OnComm("DD", function(text, sender)
     end
 end)
 
--- Merge the data of another officer. Returns how many entries changed and
--- whether we have entries the sender does not know or knows older.
--- Merge data of another officer. Players and "#rule" entries both keep
--- the newest change. Returns how many entries changed and whether we have
--- entries the sender does not know or knows older.
+-- Only the guild leader changes the editor list. An entry counts when the
+-- guild leader sends it, or when an editor passes on a change the guild
+-- leader made.
+local function trustedEditorEntry(e, sender)
+    return ns.IsGuildLeader(sender) or (e.by ~= nil and ns.IsGuildLeader(e.by))
+end
+
+-- Merge the data of another editor. Players, "#rule" and "@editor" entries
+-- all keep the newest change. Returns how many entries changed and whether
+-- we have entries the sender does not know or knows older.
 function ns.MergeData(theirs, sender)
     local data = ns.Data()
     data.rules = data.rules or {}
-    local players, rules = data.players, data.rules
-    local changes, rulesChanged = 0, false
+    data.editors = data.editors or {}
+    local players, rules, editors = data.players, data.rules, data.editors
+    local changes, rulesChanged, editorsChanged = 0, false, false
     local function tableFor(name)
-        if name:sub(1, 1) == "#" then return rules, name:sub(2) end
+        local first = name:sub(1, 1)
+        if first == "#" then return rules, name:sub(2) end
+        if first == "@" then return editors, name:sub(2) end
         return players, name
     end
     for name, e in pairs(theirs) do
         local tbl, key = tableFor(name)
         local local_ = tbl[key]
-        if not local_ or (e.t or 0) > (local_.t or 0) then
-            e.by = sender
+        local trusted = tbl ~= editors or trustedEditorEntry(e, sender)
+        if trusted and (not local_ or (e.t or 0) > (local_.t or 0)) then
+            if tbl ~= editors or not e.by then e.by = sender end
             tbl[key] = e
             changes = changes + 1
             if tbl == rules then rulesChanged = true end
+            if tbl == editors then editorsChanged = true end
         end
     end
     local weAreNewer = false
@@ -243,8 +261,10 @@ function ns.MergeData(theirs, sender)
     end
     check(players, "")
     if not weAreNewer then check(rules, "#") end
+    if not weAreNewer then check(editors, "@") end
     if changes > 0 or next(theirs) then data.started = true end
     if rulesChanged then ns.Fire("RGF_RULES_CHANGED") end
+    if editorsChanged then ns.Fire("RGF_EDITORS_CHANGED") end
     return changes, weAreNewer
 end
 
@@ -274,7 +294,7 @@ end
 
 -- Returns the number of changed entries, or nil and a reason.
 function ns.ImportText(textValue)
-    if not ns.CanEdit() then return nil, "only the guild leader and officers can import" end
+    if not ns.CanEdit() then return nil, "only the guild leader and editors can import" end
     if type(textValue) ~= "string" then return nil, "nothing to import" end
     textValue = textValue:gsub("%s*\n%s*", ""):gsub("^%s+", ""):gsub("%s+$", "")
     local tag, guild, rest = textValue:match("^([^;]+);([^;]*);%d+;?(.*)$")

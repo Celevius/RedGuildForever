@@ -875,7 +875,7 @@ test("backup export and import", function()
     eq(select(2, ns.ImportText("hello")), "this is not a Red Guild EPGP backup")
     eq(select(2, ns.ImportText(backup:gsub("Redemption", "Other"))), "this backup belongs to Other-Forever")
     W.canEdit = false
-    eq(select(2, ns.ImportText(backup)), "only the guild leader and officers can import")
+    eq(select(2, ns.ImportText(backup)), "only the guild leader and editors can import")
 end)
 
 test("one time import of the old officer notes", function()
@@ -1279,7 +1279,7 @@ test("members can look at the rules but not change them", function()
     local view = settingsView()
     eq(view.ruleBoxes.tier_boss:IsEnabled(), false, "boxes locked")
     eq(view.defaults:IsEnabled(), false)
-    assert(view.status:GetText():find("Only the guild leader and officers"), view.status:GetText())
+    assert(view.status:GetText():find("Only the guild leader and editors"), view.status:GetText())
     eq(ns.SetRules({ raidEP = 500 }), nil)
     eq(ns.Setting("raidEP"), 100)
 end)
@@ -1394,6 +1394,106 @@ test("members cannot change points", function()
     eq(ns.StartAuction(W.link(20, "Wand")), false)
     W.flush()
     eq(note("Lisa Brightwater"), "1000,500")
+end)
+
+------------------------------------------------------------------------
+-- Editors picked by the guild leader
+------------------------------------------------------------------------
+local function syncFrom(sender, entries)
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DB^1", "GUILD", sender .. "-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DD^1^" .. table.concat(entries, ";"), "GUILD", sender .. "-Forever")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "DE^1", "GUILD", sender .. "-Forever")
+end
+
+test("the guild leader picks editors of any rank and the rank rule stops counting", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    eq(ns.IsEditor("Anna Frost"), true, "rank rule before the list is used")
+    eq(ns.EditorsInUse(), false)
+    W.rank = 0
+    assert(ns.SetEditor("Ben Swift", true))
+    eq(ns.EditorsInUse(), true)
+    eq(ns.IsEditor("Ben Swift"), true, "rank 3 is an editor now")
+    eq(ns.IsEditor("Anna Frost"), false, "the rank rule does not count anymore")
+    eq(ns.IsEditor("Cel Dru"), true, "the guild leader always edits")
+    eq(select(2, ns.SetEditor("Cel Dru", true)), "Cel Dru is the guild leader and can always edit")
+    eq(select(2, ns.SetEditor("Ben Swift", true)), "Ben Swift is already an editor")
+    -- an editor without officer rank can change data
+    ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
+    W.rank = 4
+    eq(ns.CanEdit(), true, "rank 4 editor")
+    assert(ns.Adjust("Lisa Brightwater", 50, 0), "editor changes points")
+    eq(ns.CanManageEditors(), false, "only the guild leader manages the list")
+    eq(select(2, ns.SetEditor("Anna Frost", true)), "only the guild leader can add or remove editors")
+    -- taking it away
+    W.rank = 0
+    assert(ns.SetEditor("Ben Swift", false))
+    eq(ns.IsEditor("Ben Swift"), false)
+    eq(ns.EditorsInUse(), true, "a removed editor keeps the list in use")
+    eq(#ns.Editors(), 1)
+    noErrors()
+end)
+
+test("starting the list from the current officer ranks", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2"
+    W.rank = 0
+    eq(ns.AddRankEditors(), 5, "every rank 1 and 2 member")
+    eq(ns.IsEditor("Anna Frost"), true)
+    eq(ns.IsEditor("Ben Swift"), false, "rank 3 stays out")
+    eq(ns.AddRankEditors(), 0, "nothing twice")
+end)
+
+test("the editor list travels with sync, only changes by the guild leader count", function()
+    setup(guild())
+    W.guildInfo = "EPGP officers 2" -- Anna counts as editor while the list is empty
+    local t = W.server + 10
+    syncFrom("Anna Frost", {
+        "@Ben Swift,1," .. t .. ",Cel Dru",    -- made by the guild leader, Anna passes it on
+        "@Tom Hammer,1," .. t .. ",Anna Frost", -- Anna made herself a list, not allowed
+        "Lisa Brightwater,1234,500," .. t,
+    })
+    eq(ns.IsEditor("Ben Swift"), true, "change by the guild leader accepted")
+    eq(ns.EditorList()["Tom Hammer-Forever"], nil, "change by an editor ignored")
+    eq(note("Lisa Brightwater"), "1234,500", "points from Anna merged")
+    eq(ns.IsEditor("Anna Frost"), false, "the list counts now")
+    -- Anna is no editor anymore, Ben is
+    syncFrom("Anna Frost", { "Max Ironhide,9999,100," .. (t + 5) })
+    eq(note("Max Ironhide"), "1000,100", "data from a former editor ignored")
+    syncFrom("Ben Swift", { "Max Ironhide,1500,100," .. (t + 5) })
+    eq(note("Max Ironhide"), "1500,100", "rank 3 editor sends data")
+    -- our own list goes out with our data and comes back from the backup
+    W.rank = 0
+    local backup = ns.ExportText()
+    assert(backup:find("@Ben Swift,1," .. t .. ",Cel Dru", 1, true), backup)
+    ns.Data().editors = {}
+    assert(ns.ImportText(backup))
+    eq(ns.IsEditor("Ben Swift"), true, "restored from the backup")
+    noErrors()
+end)
+
+test("editor commands and the editor section in the settings", function()
+    setup(guild())
+    W.rank = 0
+    ns.Command("editor add Ben")
+    assert(W.printed[#W.printed]:find("Ben Swift is now an editor"), W.printed[#W.printed])
+    ns.Command("editors")
+    assert(W.printed[#W.printed]:find("Ben Swift"), W.printed[#W.printed])
+    local view = settingsView()
+    eq(view.addEditor:IsEnabled(), true, "leader can add")
+    assert(view.editorList:GetText():find("Ben Swift"), view.editorList:GetText())
+    view.editorBox:SetText("Anna")
+    view.addEditor:Click()
+    eq(ns.IsEditor("Anna Frost"), true, "added in the settings")
+    view.editorBox:SetText("Anna")
+    view.removeEditor:Click()
+    eq(ns.IsEditor("Anna Frost"), false, "removed in the settings")
+    W.rank = 3
+    ns.Command("editor add Anna")
+    assert(W.printed[#W.printed]:find("only the guild leader"), W.printed[#W.printed])
+    ns.RefreshSettings()
+    eq(view.addEditor:IsEnabled(), false, "locked for everyone else")
+    noErrors()
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

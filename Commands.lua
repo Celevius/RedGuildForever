@@ -63,7 +63,7 @@ end
 
 local function needOfficer()
     if ns.CanEdit() then return true end
-    ns.Print("only the guild leader and officers can do that")
+    ns.Print("only the guild leader and editors can do that")
     return false
 end
 
@@ -77,7 +77,7 @@ local help = {
     "/rgf test  turn test mode on or off, try everything alone",
     "/rgf settings  open the settings",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
-    "|cffffd100Officers|r",
+    "|cffffd100Editors|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
     "/rgf raid  give raid EP to the raid and the bench",
     "/rgf ontime  give the on time bonus to the raid and the bench",
@@ -92,6 +92,10 @@ local help = {
     "/rgf sync  sync the data with everyone online",
     "/rgf export  open the Sync tab with backup export and import",
     "/rgf log  show the last changes",
+    "|cffffd100Guild leader|r",
+    "/rgf editors  show who may change data",
+    "/rgf editor add Cel Dru  let a player change data, any guild rank works",
+    "/rgf editor remove Cel Dru  take it away again",
 }
 
 local function pointsLine(name)
@@ -237,6 +241,34 @@ function ns.Command(line)
             local boss = ns.ItemPrice(link, "boss")
             local rare = ns.ItemPrice(link, "rare")
             ns.Print(string.format("%s costs %d GP (normal), %d GP (end boss), %d GP (rare)", link, normal, boss, rare))
+        end
+
+    elseif cmd == "editors" or (cmd == "editor" and not w[2]) then
+        local names = {}
+        for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
+        if ns.EditorsInUse() then
+            ns.Print("editors besides the guild leader, " .. (#names > 0 and table.concat(names, ", ") or "nobody"))
+        else
+            ns.Print("the editor list is still empty, the guild leader and rank 1 to " .. ns.OfficerRank() .. " can change data. The guild leader adds editors with /rgf editor add Name")
+        end
+
+    elseif cmd == "editor" then
+        local sub = (w[2] or ""):lower()
+        if (sub == "add" or sub == "remove") and w[3] then
+            if not ns.CanManageEditors() then
+                ns.Print("only the guild leader can add or remove editors")
+                return
+            end
+            local member = typedMember(joinWords(w, 3))
+            if not member then return end
+            local ok, result = ns.SetEditor(member, sub == "add")
+            if ok then
+                ns.Print(ns.ShortName(result) .. (sub == "add" and " is now an editor" or " is no editor anymore"))
+            else
+                ns.Print(result)
+            end
+        else
+            ns.Print("type /rgf editor add Name or /rgf editor remove Name")
         end
 
     elseif cmd == "sync" then

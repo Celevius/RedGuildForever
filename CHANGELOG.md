@@ -2,6 +2,20 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.7.0 (21 October 2026)
+
+### Added
+* **Editors.** The guild leader picks by hand who may change data, whatever their guild rank is, so raid leaders do not need an officer rank. Add and remove them in the new **Editors** section of the Settings tab, or with `/rgf editor add Name` and `/rgf editor remove Name`. `/rgf editors` shows the list
+* **Add the current officer ranks** fills the list once with everyone the old rank rule allowed
+* Every editor change is listed in the History tab
+
+### Changed
+* Editors can do everything officers could do before: change points, run the bidding, award loot, change the rules, decay and import
+* The editor list is saved with the guild data and shared with Sync and the backup. Everyone only accepts list changes made by the guild leader, an editor can pass them on but never make them
+* Once the guild leader added the first editor, only the list counts and the guild rank or `EPGP officers 2` in the guild information no longer decides. Until then the old rank rule still applies, so nobody is locked out by the update
+* Data from players who are no editors is ignored by Sync, as before with members
+* Messages and the minimap menu say editor instead of officer
+
 ## 1.6.0 (12 October 2026)
 
 ### Added

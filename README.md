@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.6.0, updated on 12 October 2026 for the Forever beta client (interface 16001).
+Version 1.7.0, updated on 21 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -32,11 +32,11 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 **Sync** shares the data. Click **Sync** in the `/rgf` window, in the **Sync** tab, or in the minimap menu. The addon also syncs a few seconds after login and after every change.
 
-* Officers send their data, members only receive it
-* The newest change of each player wins, so officers can work on different computers
-* An officer who has newer entries than the sender answers with his own data, so after one sync everyone online has the same data
+* Editors send their data, everyone else only receives it
+* The newest change of each player wins, so editors can work on different computers
+* An editor who has newer entries than the sender answers with his own data, so after one sync everyone online has the same data
 
-**Safety.** If the addon starts without data, officers cannot change anything until they click **Sync** or confirm **Start fresh**. That way an empty save file can never overwrite the real points.
+**Safety.** If the addon starts without data, editors cannot change anything until they click **Sync** or confirm **Start fresh**. That way an empty save file can never overwrite the real points.
 
 **Backup.** In the **Sync** tab, click **Show backup**, press Ctrl C and keep the text in Discord or a text file. To restore, paste it with Ctrl V and click **Import backup**. Importing merges, the newest change of each player wins.
 
@@ -44,7 +44,7 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 ## The rules in the addon
 
-All values below are the defaults from the guild rule book. The guild leader and officers can change every one of them in the **Settings** tab under **Guild rules**. The rules are saved with the guild data and shared with **Sync**, so every officer uses the same values, and the newest change wins.
+All values below are the defaults from the guild rule book. The guild leader and editors can change every one of them in the **Settings** tab under **Guild rules**. The rules are saved with the guild data and shared with **Sync**, so every editor uses the same values, and the newest change wins.
 
 | Setting | Default |
 |---|---|
@@ -55,7 +55,7 @@ All values below are the defaults from the guild rule book. The guild leader and
 | New members until | 300 EP |
 | Bidding time | 30 seconds |
 | Off spec costs | 0 percent of the price, so free |
-| Who may change data | guild leader and rank 1, see below |
+| Who may change data | the guild leader and the editors, see below |
 
 Item prices are the base price times the slot.
 
@@ -83,14 +83,14 @@ Who wins
 4. A tie is decided by `/roll`, the addon reads the rolls and shows the winner
 5. Off spec costs the off spec percent of the price, free by default. If several people want it they roll
 
-**Who may change data.** The guild leader (rank 0) and rank 1 by default. The guild leader can allow more ranks by writing for example `EPGP officers 2` into the **Guild Information** text, then ranks 0, 1 and 2 may change data. Ranks count from the top of the rank list in Guild Settings, starting at 0. Sync only accepts data from these ranks.
+**Who may change data.** The guild leader and the **editors**. The guild leader picks the editors by hand, whatever their guild rank is, so a raid leader does not need an officer rank. See [Editors](#editors) below. Sync only accepts data from the guild leader and the editors.
 
 ## Minimap button
 
 You never need to type a command. Click the coin button at the minimap.
 
 * **Left click** opens the standings
-* **Right click** opens a menu with every action, officers also get raid EP, on time EP, bench, decay, undo and the **Loot Master**. **Settings** is in the menu too, and while test mode is on there is a quick **Turn test mode off**
+* **Right click** opens a menu with every action, editors also get raid EP, on time EP, bench, decay, undo and the **Loot Master**. **Settings** is in the menu too, and while test mode is on there is a quick **Turn test mode off**
 * **Drag** moves the button around the minimap
 * The button can be hidden from the menu, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
 
@@ -123,10 +123,10 @@ Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options u
 * You are in a **simulated raid** with up to 9 guild members. Raid EP, on time EP and the bench work with it
 * Every bidding is answered by the simulated raid over a few seconds, one or two never answer, ties are rolled for them, and you can bid yourself
 * Awards, decay, the editor, alts, undo, backup and import all work on the copy
-* **Sync** is simulated, a made up officer sends one newer change so you see how merging works
+* **Sync** is simulated, a made up editor sends one newer change so you see how merging works
 * Nothing is sent to other players and no chat message goes out. Messages show up only in your own chat window, marked [Test]
 * Every window says **Test mode** in its title, and the minimap button turns orange
-* Members can use the officer tools in test mode too
+* Members can use the editor tools in test mode too, and try the editor list on the copy
 
 **Reset test data** copies the real data again, **New simulated raid** picks other guild members. The test data stays until you reset it. Test mode cannot be switched while a real bidding runs, and the addon reminds you at login if it is still on.
 
@@ -141,9 +141,20 @@ The **Settings** tab and the game's Options under AddOns have the same settings.
 
 The first three settings are only for you. The guild rules are the same for the whole guild.
 
-## For officers
+## Editors
 
-The guild leader and the officer ranks can change all data.
+The guild leader and the editors can change all data: points, bidding and awards, the rules, decay and the backup import.
+
+**Adding editors.** Only the guild leader adds or removes editors. Any guild rank works.
+
+* In the `/rgf` window, **Settings** tab, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
+* Or type `/rgf editor add Cel Dru` and `/rgf editor remove Cel Dru`. `/rgf editors` shows the list, everyone can use it
+
+The list is saved with the guild data and shared with **Sync** and the backup. Everyone only accepts list changes the guild leader made, an editor can pass them on but cannot change the list.
+
+**Coming from version 1.6 or older?** Until the guild leader adds the first editor, the old rank rule still applies: the guild leader and rank 1, or more ranks with `EPGP officers 2` in the **Guild Information** text. Once the list has one entry, only the list counts. To keep the current officers, click **Add the current officer ranks** once, it adds everyone the old rule allowed. Every editor needs version 1.7, older versions only accept data from the officer ranks.
+
+## For editors
 
 **Editing a player.** Click a player in the standings, choose **Edit target** in the minimap menu, or type `/rgf edit Cel Dru`. In the editor you can
 
@@ -175,13 +186,15 @@ Every change can be undone with **Undo last change**.
 | `/rgf test` | turn test mode on or off |
 | `/rgf settings` | open the settings |
 | `/rgf log` | last changes |
+| `/rgf editors` | who may change data |
+| `/rgf editor add Cel Dru` | guild leader only, make a player an editor, `editor remove Cel Dru` takes it away |
 | `/rgf help` | all commands |
 
 Names work with first and last name, in any letter case. The first name alone is enough when only one guild member has it, and the start of a name works too, so `/rgf ep Ang 50` finds Anglicus Boniface. If a name fits more than one player, the addon lists them and changes nothing. Between two names a comma is always safe, for example `/rgf alt Cel Rog, Cel Dru`.
 
-The `/rgf` window has five tabs at the bottom, **Standings**, **Bench**, **History**, **Sync** and **Settings**. Officers get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
+The `/rgf` window has five tabs at the bottom, **Standings**, **Bench**, **History**, **Sync** and **Settings**. Editors get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
 
-Two officers should never award or decay at the same time. Pick one loot master per raid.
+Two editors should never award or decay at the same time. Pick one loot master per raid.
 
 ## Known limits on the Forever beta
 

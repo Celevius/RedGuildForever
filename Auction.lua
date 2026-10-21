@@ -136,7 +136,7 @@ end
 function ns.StartAuction(link, tier)
     local test = ns.IsTest()
     if not ns.CanEdit() then
-        ns.Print("only the guild leader and officers can start bidding, turn on test mode in the settings to try it")
+        ns.Print("only the guild leader and editors can start bidding, turn on test mode in the settings to try it")
         return false
     end
     if ns.auction and ns.auction.open then
