@@ -1,6 +1,6 @@
 -- Minimap button and the entry in the game's addon list next to the minimap.
 --   Left click   open or close the standings
---   Right click  menu with every action, so nobody needs slash commands
+--   Right click  short menu with the raid actions
 --   Drag         move the button around the minimap
 
 local _, ns = ...
@@ -16,48 +16,25 @@ local function sound(kit)
     if PlaySound and SOUNDKIT and SOUNDKIT[kit] then pcall(PlaySound, SOUNDKIT[kit]) end
 end
 
--- Every menu entry, used by the right click menu
+-- The right click menu holds only what is needed during a raid. Everything
+-- else (bench, history, decay, backup, the editor) is in the window, which
+-- opens with a left click.
 function ns.MenuEntries()
     local entries = {
         { title = ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP" },
-        { text = "Standings", func = function() ns.ToggleStandings(1) end },
-        { text = "Bench", func = function() ns.ToggleStandings(2) end },
-        { text = "History", func = function() ns.ToggleStandings(3) end },
-        { text = "My points", func = function() ns.Command("me") end },
-        { text = "Sync with everyone online", func = function() ns.Command("sync") end },
-        { text = "Backup and sync", func = function() ns.ToggleStandings(4) end },
     }
     if ns.CanEdit() then
-        local more = {
-            { divider = true },
-            { title = "Editor" },
-            { text = "Edit target", func = function() ns.Command("edit") end },
-            { text = "Give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.Command("raid") end },
-            { text = "Give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.Command("ontime") end },
-            { text = "Add target to bench", func = function()
-                local target = UnitIsPlayer("target") and ns.UnitFullName("target")
-                if target then
-                    local ok, full = ns.BenchAdd(target)
-                    ns.Print(ok and (ns.ShortName(full) .. " is on the bench") or "already on the bench")
-                else
-                    ns.Print("target a player first")
-                end
-            end },
-            { text = "Clear bench", func = function() ns.BenchClear() ns.Print("bench cleared") end },
-            { text = "Weekly decay", func = function() ns.Command("decay") end },
-            { text = "Undo last change", func = function() ns.Command("undo") end },
-            { divider = true },
-            { title = "Loot" },
-            { text = "Loot Master", func = function() ns.OpenLootMaster() end },
-        }
-        for _, e in ipairs(more) do table.insert(entries, e) end
+        table.insert(entries, { text = "Loot Master", func = function() ns.OpenLootMaster() end })
+        table.insert(entries, { text = "Give raid EP (" .. ns.Setting("raidEP") .. ")", func = function() ns.Command("raid") end })
+        table.insert(entries, { text = "Give on time EP (" .. ns.Setting("onTimeEP") .. ")", func = function() ns.Command("ontime") end })
+        table.insert(entries, { text = "Undo last change", func = function() ns.Command("undo") end })
+        table.insert(entries, { divider = true })
     end
-    table.insert(entries, { divider = true })
+    table.insert(entries, { text = "Sync now", func = function() ns.Command("sync") end })
     table.insert(entries, { text = "Settings", func = function() ns.ToggleStandings(5) end })
     if ns.IsTest() then
         table.insert(entries, { text = "|cffff8040Turn test mode off|r", func = function() ns.SetTestMode(false) end })
     end
-    table.insert(entries, { text = "Hide minimap button", func = function() ns.SetMinimapShown(false) end })
     return entries
 end
 
@@ -100,7 +77,7 @@ function ns.ShowTooltip(owner)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("|cffffd100Left click|r open standings", 1, 1, 1)
-    GameTooltip:AddLine("|cffffd100Right click|r menu", 1, 1, 1)
+    GameTooltip:AddLine("|cffffd100Right click|r " .. (ns.CanEdit() and "loot master and raid EP" or "sync and settings"), 1, 1, 1)
     if owner == ns.minimapButton then
         GameTooltip:AddLine("|cffffd100Drag|r move this button", 1, 1, 1)
     end

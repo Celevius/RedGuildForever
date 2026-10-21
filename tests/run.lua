@@ -527,18 +527,22 @@ test("minimap button opens the standings and the menu", function()
     click(b, "RightButton")
     local texts = {}
     for _, item in ipairs(menu.items) do if item.text then texts[item.text] = item.fn end end
-    assert(texts["Standings"] and texts["Bench"] and texts["History"], "window entries")
-    assert(texts["Give raid EP (100)"], "officer entries for officers")
-    assert(texts["Hide minimap button"], "hide entry")
+    assert(texts["Give raid EP (100)"] and texts["Loot Master"], "raid entries for editors")
+    assert(texts["Sync now"] and texts["Settings"], "entries for everyone")
+    for _, gone in ipairs({ "Standings", "Bench", "History", "Weekly decay", "Edit target", "Hide minimap button" }) do
+        assert(not texts[gone], gone .. " is in the window, not in the menu")
+    end
+    local count = 0
+    for _, item in ipairs(menu.items) do if item.text then count = count + 1 end end
+    eq(count, 6, "short menu for editors")
     -- every entry runs without errors
     W.inRaid = true W.raid = { "Cel Dru", "Lisa Brightwater" }
     for _, item in ipairs(menu.items) do
-        if item.fn and item.text ~= "Hide minimap button" and item.text ~= "Undo last change" then
+        if item.fn and item.text ~= "Undo last change" then
             item.fn() W.flush()
         end
     end
     eq(note("Lisa Brightwater"), "1125,500", "raid EP and on time EP from the menu")
-    eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
     texts["Undo last change"]() W.flush()
     eq(note("Lisa Brightwater"), "1100,500", "undo from the menu takes back the on time EP")
     noErrors()
@@ -549,9 +553,13 @@ test("members see no officer entries in the menu", function()
     W.canEdit = false
     local menu = fakeMenu()
     ns.OpenMenu(ns.minimapButton)
+    local count = 0
     for _, item in ipairs(menu.items) do
-        assert(not (item.text or ""):find("raid EP"), "officer entry shown to a member")
+        assert(not (item.text or ""):find("raid EP"), "editor entry shown to a member")
+        assert(item.text ~= "Loot Master", "Loot Master shown to a member")
+        if item.text then count = count + 1 end
     end
+    eq(count, 2, "members get sync and settings")
 end)
 
 test("menu falls back to the window without a menu system", function()
@@ -563,9 +571,7 @@ end)
 
 test("minimap button can be hidden, shown and dragged", function()
     setup(guild())
-    local menu = fakeMenu()
-    ns.OpenMenu(ns.minimapButton)
-    for _, item in ipairs(menu.items) do if item.text == "Hide minimap button" then item.fn() end end
+    ns.SetMinimapShown(false) -- the checkbox in the settings
     eq(ns.minimapButton:IsShown(), false, "hidden")
     eq(RedGuildForeverDB.minimap.hide, true)
     ns.Command("minimap")
@@ -1146,9 +1152,7 @@ test("targets and party members with first and last name", function()
     ns.ToggleStandings(2)
     ns.Command("edit")
     eq(ns.editor.target, "Anna Frost-Forever", "edit target")
-    local menu = fakeMenu()
-    ns.OpenMenu(ns.minimapButton)
-    for _, item in ipairs(menu.items) do if item.text == "Add target to bench" then item.fn() end end
+    ns.BenchAdd(UnitIsPlayer("target") and ns.UnitFullName("target"))
     eq(ns.Bench()[1], "Anna Frost-Forever", "bench target")
     -- a group without raid, party members come from UnitName too
     W.inRaid = false
@@ -1493,6 +1497,24 @@ test("editor commands and the editor section in the settings", function()
     assert(W.printed[#W.printed]:find("only the guild leader"), W.printed[#W.printed])
     ns.RefreshSettings()
     eq(view.addEditor:IsEnabled(), false, "locked for everyone else")
+    noErrors()
+end)
+
+test("the Data tab has sync, decay and backup, the bottom strip only raid buttons", function()
+    setup(guild())
+    ns.ToggleStandings(4)
+    local f = ns.mainFrame
+    assert(f, "window built")
+    local page = f.pages[4]
+    eq(page.decay:IsShown(), true, "decay for editors with data")
+    eq(page.notes:IsShown(), false, "old notes import only without data")
+    eq(page.fresh:IsShown(), false)
+    page.decay:Click()
+    eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
+    W.canEdit = false
+    ns.ToggleStandings(1) ns.ToggleStandings(4)
+    eq(page.decay:IsShown(), false, "members get no decay")
+    eq(f.lootMaster:IsShown(), false)
     noErrors()
 end)
 

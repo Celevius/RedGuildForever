@@ -424,7 +424,7 @@ local function buildBenchPage(parent)
     return page
 end
 
--- Sync tab: where the data lives, sync, backup, import and start fresh
+-- Data tab: where the data lives, sync, decay, backup, import and start fresh
 local function buildSyncPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
@@ -449,6 +449,9 @@ local function buildSyncPage(parent)
         if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
     end)
     page.fresh:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
+    -- decay only works with data, start fresh and the notes import only without
+    page.decay = button(page, "Weekly decay", 120, function() ns.Command("decay") end)
+    page.decay:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
     page.notes = button(page, "Import officer notes", 150, function()
         local n = ns.ImportOfficerNotes()
         ns.Print(n > 0 and ("imported " .. n .. " players from the officer notes") or "no points found in the officer notes")
@@ -509,6 +512,9 @@ local function refreshSyncPage(page)
         local count = 0
         for _ in pairs(ns.Players()) do count = count + 1 end
         table.insert(lines, count .. " players in the data.")
+        if ns.CanEdit() then
+            table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid.")
+        end
     end
     local si = ns.syncInfo or {}
     if si.running then
@@ -520,10 +526,11 @@ local function refreshSyncPage(page)
         table.insert(lines, "Last sync at " .. date("%H:%M", si.last) .. " with " .. (#who > 0 and table.concat(who, ", ") or "nobody"))
     end
     page.state:SetText(table.concat(lines, "\n"))
-    local officer = ns.CanEdit()
-    page.fresh:SetShown(officer and not ns.HasData())
-    page.notes:SetShown(officer)
-    page.import:SetShown(officer)
+    local editor, hasData = ns.CanEdit(), ns.HasData()
+    page.fresh:SetShown(editor and not hasData)
+    page.notes:SetShown(editor and not hasData)
+    page.decay:SetShown(editor and hasData)
+    page.import:SetShown(editor)
 end
 
 ------------------------------------------------------------------------
@@ -911,24 +918,17 @@ local function buildMain()
         buildSettingsPage(f.Inset),
     }
 
-    -- bottom strip
-    f.refresh = button(f, "Sync", 90, function()
-        ns.RequestRoster()
-        ns.Sync()
-    end)
-    f.refresh:SetPoint("BOTTOMLEFT", 6, 4)
+    -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
     f.lootMaster = button(f, "Loot Master", 110, function() ns.OpenLootMaster() end)
-    f.lootMaster:SetPoint("LEFT", f.refresh, "RIGHT", 2, 0)
+    f.lootMaster:SetPoint("BOTTOMLEFT", 6, 4)
 
     f.standingsButtons = CreateFrame("Frame", nil, f)
     f.standingsButtons:SetSize(1, 22)
     f.standingsButtons:SetPoint("BOTTOMRIGHT", -6, 4)
     local undo = button(f.standingsButtons, "Undo", 70, function() ns.Command("undo") end)
     undo:SetPoint("RIGHT")
-    local decay = button(f.standingsButtons, "Decay", 80, function() ns.Command("decay") end)
-    decay:SetPoint("RIGHT", undo, "LEFT", -2, 0)
     local ontime = button(f.standingsButtons, "On time EP", 96, function() ns.Command("ontime") end)
-    ontime:SetPoint("RIGHT", decay, "LEFT", -2, 0)
+    ontime:SetPoint("RIGHT", undo, "LEFT", -2, 0)
     local raid = button(f.standingsButtons, "Raid EP", 86, function() ns.Command("raid") end)
     raid:SetPoint("RIGHT", ontime, "LEFT", -2, 0)
 
@@ -947,7 +947,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Bench", "History", "Sync", "Settings" }, showPage)
+    tabs(f, name, { "Standings", "Bench", "History", "Data", "Settings" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1048,7 +1048,7 @@ function ns.RefreshStandings()
     elseif tab == 3 then
         status = "Changes made by editors on this computer"
     elseif tab == 4 then
-        status = "Sync and backup"
+        status = "Sync, decay and backup"
     elseif tab == 5 then
         status = "Settings"
     elseif not ns.HasData() then
@@ -1063,6 +1063,7 @@ ns.RefreshBench = ns.RefreshStandings
 
 function ns.ToggleStandings(tab)
     main = main or buildMain()
+    ns.mainFrame = main
     if tab then
         main.selectedTab = tab
         if main:IsShown() then showPage(tab) return end

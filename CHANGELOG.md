@@ -2,6 +2,14 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 1.7.1 (21 October 2026)
+
+### Changed
+* **Shorter minimap menu.** Right click only shows what is needed during a raid: Loot Master, Give raid EP, Give on time EP and Undo for editors, Sync now and Settings for everyone. Standings, bench, history, decay, backup, the editor and hiding the button are in the window, a left click opens it
+* The **Sync** tab is now called **Data**, and **Weekly decay** moved there from the bottom of the standings. It is a once a week action and sat too close to Raid EP
+* The bottom of the window only has buttons for editors: Loot Master, Raid EP, On time EP and Undo. The separate Sync button is gone, sync runs by itself and Sync now is in the Data tab and in the menu
+* **Import officer notes** only shows while the addon has no data, it is only needed once when coming from version 1.3
+
 ## 1.7.0 (21 October 2026)
 
 ### Added

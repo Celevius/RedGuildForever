@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 1.7.0, updated on 21 October 2026 for the Forever beta client (interface 16001).
+Version 1.7.1, updated on 21 October 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -30,7 +30,7 @@ If you download the repository as a zip from GitHub, the folder is called `RedGu
 
 The points are saved in the addon's own save file, `WTF\Account\<your account>\SavedVariables\RedGuildForever.lua`. Every player keeps a copy, separate for each guild.
 
-**Sync** shares the data. Click **Sync** in the `/rgf` window, in the **Sync** tab, or in the minimap menu. The addon also syncs a few seconds after login and after every change.
+**Sync** shares the data. The addon syncs by itself a few seconds after login and after every change. To sync by hand, click **Sync now** in the **Data** tab of the `/rgf` window or in the minimap menu.
 
 * Editors send their data, everyone else only receives it
 * The newest change of each player wins, so editors can work on different computers
@@ -38,9 +38,9 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 **Safety.** If the addon starts without data, editors cannot change anything until they click **Sync** or confirm **Start fresh**. That way an empty save file can never overwrite the real points.
 
-**Backup.** In the **Sync** tab, click **Show backup**, press Ctrl C and keep the text in Discord or a text file. To restore, paste it with Ctrl V and click **Import backup**. Importing merges, the newest change of each player wins.
+**Backup.** In the **Data** tab, click **Show backup**, press Ctrl C and keep the text in Discord or a text file. To restore, paste it with Ctrl V and click **Import backup**. Importing merges, the newest change of each player wins.
 
-**Coming from version 1.3 or older?** Those versions saved points in the officer notes. In the **Sync** tab, click **Import officer notes** once. The notes are not changed, you can clear them yourself afterwards.
+**Coming from version 1.3 or older?** Those versions saved points in the officer notes. In the **Data** tab, click **Import officer notes** once. The button shows while the addon has no data yet. The notes are not changed, you can clear them yourself afterwards.
 
 ## The rules in the addon
 
@@ -90,9 +90,10 @@ Who wins
 You never need to type a command. Click the coin button at the minimap.
 
 * **Left click** opens the standings
-* **Right click** opens a menu with every action, editors also get raid EP, on time EP, bench, decay, undo and the **Loot Master**. **Settings** is in the menu too, and while test mode is on there is a quick **Turn test mode off**
+* **Right click** opens a short menu with what you need during a raid. Editors get **Loot Master**, **Give raid EP**, **Give on time EP** and **Undo last change**. Everyone gets **Sync now** and **Settings**, and while test mode is on there is a quick **Turn test mode off**
+* Everything else, like the bench, the history, the weekly decay and the backup, is in the window
 * **Drag** moves the button around the minimap
-* The button can be hidden from the menu, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
+* The button can be hidden in the **Settings** tab, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
 
 ## For raiders
 
@@ -102,7 +103,7 @@ You never need to type a command. Click the coin button at the minimap.
 
 ## For the loot master
 
-1. Open the **Start Bidding** window. It opens by itself when you loot a corpse with rare or better items in a group, or choose **Start bidding** in the minimap menu
+1. Open the **Start Bidding** window. It opens by itself when you loot a corpse with rare or better items in a group, or choose **Loot Master** in the minimap menu
 2. Drag the item from your bags onto the slot, or click an item that is still on the corpse. Items you saw on corpses this session stay in the list
 3. Choose where it dropped, **Normal boss**, **End boss** or **Very rare**, and click **Start bidding**
 4. The **Loot Master** window shows every answer in sections, Main Spec, Off Spec, Passed and No answer yet, and marks the winner. You get the bid popup too and can bid yourself
@@ -156,7 +157,7 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 
 ## For editors
 
-**Editing a player.** Click a player in the standings, choose **Edit target** in the minimap menu, or type `/rgf edit Cel Dru`. In the editor you can
+**Editing a player.** Click a player in the standings, or type `/rgf edit Cel Dru`, without a name for your target. In the editor you can
 
 * set exact EP and GP, or use the quick buttons like +100 EP
 * add a reason, which shows up in the History tab
@@ -192,7 +193,7 @@ Every change can be undone with **Undo last change**.
 
 Names work with first and last name, in any letter case. The first name alone is enough when only one guild member has it, and the start of a name works too, so `/rgf ep Ang 50` finds Anglicus Boniface. If a name fits more than one player, the addon lists them and changes nothing. Between two names a comma is always safe, for example `/rgf alt Cel Rog, Cel Dru`.
 
-The `/rgf` window has five tabs at the bottom, **Standings**, **Bench**, **History**, **Sync** and **Settings**. Editors get buttons for raid EP, on time EP, decay and undo, and the bench tab can add your target or clear the bench. Click a column header to sort.
+The `/rgf` window has five tabs at the bottom, **Standings**, **Bench**, **History**, **Data** and **Settings**. Editors get **Loot Master**, **Raid EP**, **On time EP** and **Undo** below the standings, the bench tab can add your target or clear the bench, and **Weekly decay** is in the **Data** tab. Click a column header to sort.
 
 Two editors should never award or decay at the same time. Pick one loot master per raid.
 

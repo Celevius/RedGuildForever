@@ -2,7 +2,7 @@
 ## Title: |cffc41e3aRed Guild|r EPGP
 ## Notes: EPGP loot system for our guild on World of Warcraft Forever. Points are saved in the addon and shared with Sync.
 ## Author: Dominik
-## Version: 1.7.0
+## Version: 1.7.1
 ## SavedVariables: RedGuildForeverDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 ## AddonCompartmentFunc: RedGuildForever_OnAddonCompartmentClick
