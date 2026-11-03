@@ -22,11 +22,11 @@ Show up and you go up the list, take loot and you go down the list.
 
 ## Install
 
-1. Download the latest `RedGuildForever.zip` from the releases, or build it with `./build.sh`
-2. Extract it so the folder sits at `World of Warcraft\_classic_beta_\Interface\AddOns\RedGuildForever`
+1. Download `RedGuildForever.zip` from CurseForge or from the [releases on GitHub](https://github.com/Celevius/RedGuildForever/releases), or build it with `./build.sh`
+2. Extract it so the folder sits at `World of Warcraft\_classic_\Interface\AddOns\RedGuildForever`
 3. Enable **Red Guild EPGP** on the character selection screen
 
-If you download the repository as a zip from GitHub, the folder is called `RedGuildForever-main`. Rename it to `RedGuildForever`, otherwise the game does not load it.
+Do not use the green **Code** button and **Download ZIP** on GitHub. That zip has the folder `RedGuildForever-main`, and the game only loads the addon when the folder is called `RedGuildForever` like the `.toc` file.
 
 **Updating from version 1.7 or older?** Version 2.0 syncs in a new way and does not talk to 1.7 and older. Everyone who changes data has to update at the same time. Your points stay, they become the starting points of the new version.
 
@@ -262,8 +262,10 @@ Run the tests from the repository root with Lua 5.1.
 lua5.1 tests/run.lua
 ```
 
-Build the zip for players.
+Build the zip for players. It lands in `dist/RedGuildForever.zip` with the folder `RedGuildForever` inside, the tests, `build.sh` and the notes for Claude stay out.
 
 ```
 ./build.sh
 ```
+
+**Releasing a version.** Push a tag with the version, for example `git tag v2.0.1` and `git push origin v2.0.1`. The GitHub workflow runs the tests, builds the zip and attaches it to a new GitHub release, with the changelog entry as release notes. Upload that zip to CurseForge. The `.pkgmeta` file is there for the CurseForge packager, in case the project gets connected to the repository later.
