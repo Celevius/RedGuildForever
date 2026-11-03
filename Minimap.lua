@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Minimap button and the entry in the game's addon list next to the minimap.
 --   Left click   open or close the standings
 --   Right click  short menu with the raid actions

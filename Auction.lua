@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Auctions: the loot master opens bidding, raiders bid main spec or off spec,
 -- the loot master awards the item.
 --

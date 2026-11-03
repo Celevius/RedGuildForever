@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Communication between addon users.
 --
 -- Messages use "^" as separator, because item links contain "|".

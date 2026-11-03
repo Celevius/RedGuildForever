@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Points: EP and GP stored in the addon's own save file, one data set per guild.
 --
 -- RedGuildForeverDB.guilds["Guild Name-Realm"] = {

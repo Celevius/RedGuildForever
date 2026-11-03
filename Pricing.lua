@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Item prices: base GP by where the item dropped, times a slot multiplier.
 -- Both are guild rules, set in the Settings tab and shared with Sync.
 

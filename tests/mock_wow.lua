@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- A small fake of the WoW API, enough to run the addon logic outside the game.
 -- Run from the repository root with: lua5.1 tests/run.lua
 
