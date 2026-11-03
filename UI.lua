@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Windows: standings (with Bench and History tabs), loot master window, bid popup.
 --
 -- Everything is built from Blizzard's own frame templates, so the windows

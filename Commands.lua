@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Slash commands. /rgf help lists them.
 
 local _, ns = ...

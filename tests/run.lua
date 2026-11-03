@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Logic tests for Red Guild EPGP. Run from the repository root:
 --   lua5.1 tests/run.lua
 

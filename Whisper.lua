@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Whisper commands, so players without the addon can look up points too.
 --   !ep          your own points and place
 --   !ep Name     the points of another player

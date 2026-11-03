@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Start Bidding window: choose the item without typing anything.
 --   * drag an item from your bags onto the slot
 --   * or click an item that is still on the corpse, or was seen on a corpse this session

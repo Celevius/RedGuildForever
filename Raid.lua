@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Raid night and loot lists.
 --   Start raid  gives the on time EP to the raid and the bench and starts the loot list
 --   End raid    gives the raid EP, and asks about players who left early

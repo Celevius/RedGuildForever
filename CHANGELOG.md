@@ -2,6 +2,11 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.0.1 (3 November 2026)
+
+### Changed
+* The addon is now free software under the MIT License. The `LICENSE` file is in the repository and in the zip, the `.toc` file names the license, and every Lua file starts with a license line
+
 ## 2.0.0 (21 October 2026)
 
 ### Added

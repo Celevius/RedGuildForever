@@ -1,10 +1,11 @@
+-- SPDX-License-Identifier: MIT, see LICENSE
 -- Red Guild EPGP for World of Warcraft Forever
 -- Core: namespace, settings, name helpers, API compatibility, events.
 
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.0.0"
+ns.version = "2.0.1"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------

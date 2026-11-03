@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.0.0, updated on 21 October 2026 for the Forever beta client (interface 16001).
+Version 2.0.1, updated on 3 November 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -249,6 +249,10 @@ Pick one loot master per raid. Two raids at the same time each have their own lo
 ## Changelog
 
 Every version and its changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Red Guild EPGP is free software under the [MIT License](LICENSE). You may use, change and share it, also in your own addons, as long as you keep the copyright notice and the license text. It comes without any warranty.
 
 ## Development
 
