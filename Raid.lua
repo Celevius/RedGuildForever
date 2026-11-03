@@ -1,0 +1,208 @@
+-- Raid night and loot lists.
+--   Start raid  gives the on time EP to the raid and the bench and starts the loot list
+--   End raid    gives the raid EP, and asks about players who left early
+-- Every item given out is a "loot" event, so the loot of a raid and of a
+-- player comes straight from the history and is shared with Sync.
+
+local _, ns = ...
+ns = ns or _G.RedGuildForever
+
+local function names(list)
+    local short = {}
+    for _, n in ipairs(list) do table.insert(short, ns.ShortName(n)) end
+    return table.concat(short, ", ")
+end
+
+-- Raid EP or on time EP for the raid and the bench. kind is "raid" or
+-- "ontime", each player gets it once per raid night.
+function ns.AwardGroup(amount, label, kind, list)
+    if not ns.CanEdit() then
+        ns.Print("only the guild leader and editors can do that")
+        return 0
+    end
+    local benched = #ns.Bench()
+    local count, skipped, already = ns.AwardEP(list or ns.RaidAndBench(), amount, label, kind)
+    if count > 0 then
+        local msg = string.format("%d players got %d EP for %s", count, amount, label:lower())
+        if benched > 0 and not list then msg = msg .. ", the bench included" end
+        ns.Announce(msg .. ".")
+    end
+    if #already > 0 then
+        ns.Print("already got " .. label:lower() .. " EP tonight, from this or another raid: " .. names(already))
+    end
+    if #skipped > 0 then
+        ns.Print("not in the guild, no EP " .. names(skipped))
+    end
+    return count
+end
+
+------------------------------------------------------------------------
+-- The raid of this loot master. Saved, so a reload keeps it.
+------------------------------------------------------------------------
+local function store()
+    local db = RedGuildForeverDB
+    if ns.IsTest() then
+        db.test = db.test or {}
+        return db.test
+    end
+    return db
+end
+
+-- The running raid, or nil
+function ns.Session()
+    local s = store().session
+    if s and not s.ended and s.guild == ns.GuildKey() then return s end
+    return nil
+end
+
+-- The running raid or the last one
+function ns.LastSession()
+    local s = store().session
+    if s and s.guild == ns.GuildKey() then return s end
+    return nil
+end
+
+local function noteRaid(s)
+    for _, n in ipairs(ns.RaidMembers()) do s.seen[n] = true end
+end
+
+function ns.StartRaid()
+    if not ns.CanChange() then return false end
+    if ns.Session() then
+        ns.Print("the raid is already running, End raid finishes it")
+        return false
+    end
+    local s = { start = ns.Now(), seen = {}, guild = ns.GuildKey(), by = ns.PlayerName() }
+    noteRaid(s)
+    store().session = s
+    ns.AwardGroup(ns.Setting("onTimeEP"), "Being on time", "ontime")
+    ns.Fire("RGF_RAID_CHANGED")
+    return true
+end
+
+-- Gives the raid EP and finishes the raid. Players who were in the raid but
+-- left before the end are offered the raid EP too.
+function ns.EndRaid()
+    if not ns.CanChange() then return false end
+    local s = ns.Session()
+    if not s then
+        ns.Print("no raid is running, Start raid begins one")
+        return false
+    end
+    noteRaid(s)
+    ns.AwardGroup(ns.Setting("raidEP"), "Raid night", "raid")
+    local present = {}
+    for _, n in ipairs(ns.RaidAndBench()) do present[n] = true end
+    local leavers = {}
+    for n in pairs(s.seen) do
+        if not present[n] and ns.members[ns.MainOf(n)] and not ns.GotTonight(ns.MainOf(n), "raid") then
+            table.insert(leavers, n)
+        end
+    end
+    table.sort(leavers)
+    s.ended = ns.Now()
+    s.leavers = leavers
+    local loot = ns.RaidLoot(s)
+    ns.Print(string.format("raid finished, %d players, %d items given out. The loot list is in the Raid tab", ns.SeenCount(s), #loot))
+    if #leavers > 0 and StaticPopup_Show then
+        StaticPopup_Show("REDGUILDFOREVER_LEAVERS", #leavers, names(leavers))
+    end
+    if ns.AutoBackup then ns.AutoBackup("raid") end
+    ns.RemindDecay()
+    ns.Fire("RGF_RAID_CHANGED")
+    return true, leavers
+end
+
+-- Raid EP for the players who left early, from the question after End raid
+function ns.AwardLeavers()
+    local s = ns.LastSession()
+    if not (s and s.leavers and #s.leavers > 0) then return 0 end
+    local count = ns.AwardGroup(ns.Setting("raidEP"), "Raid night", "raid", s.leavers)
+    s.leavers = {}
+    return count
+end
+
+function ns.SeenCount(s)
+    local n = 0
+    for _ in pairs(s and s.seen or {}) do n = n + 1 end
+    return n
+end
+
+-- a minute after login, when sync had time to bring the newest decay
+ns.On("RGF_READY", function()
+    ns.After(60, function() ns.RemindDecay() end)
+end)
+
+ns.On("GROUP_ROSTER_UPDATE", function()
+    local s = ns.Session()
+    if s then noteRaid(s) end
+end)
+
+------------------------------------------------------------------------
+-- Loot lists
+------------------------------------------------------------------------
+-- The item link in the label of a loot event, and its plain name
+local function itemOf(ev)
+    local link = ev.r and ev.r:match("(|c%x+|H.-|h|r)")
+    local name = link and link:match("%[(.-)%]") or (ev.item and ("item " .. ev.item)) or "?"
+    return link or name, name
+end
+
+local function lootEntry(ev, c, st)
+    local link, name = itemOf(ev)
+    return { time = ev.t, name = c.n, main = ns.MainOf(c.n), gp = c.gp or 0, link = link, itemName = name,
+        item = ev.item, by = ev.by, id = ev.id, label = link }
+end
+
+local function eachLoot(fn)
+    local st = ns.State()
+    for i = #st.events, 1, -1 do
+        local ev = st.events[i]
+        if ev.k == "P" and ev.kind == "loot" and not st.undone[ev.id] then
+            for _, c in ipairs(ev.ch or {}) do
+                if fn(ev, c, st) == false then return end
+            end
+        end
+    end
+end
+
+-- Items given out in a raid, newest first: by this loot master, or won by
+-- somebody who was in the raid.
+function ns.RaidLoot(s)
+    local list = {}
+    if not s then return list end
+    local last = (s.ended or ns.Now()) + 3600
+    eachLoot(function(ev, c, st)
+        if ev.t < s.start then return false end
+        if ev.t <= last and (ev.by == s.by or s.seen[c.n]) then
+            table.insert(list, lootEntry(ev, c, st))
+        end
+    end)
+    return list
+end
+
+-- Items of a player and his alts, newest first
+function ns.LootOf(name, limit)
+    local main = ns.MainOf(name)
+    local list = {}
+    eachLoot(function(ev, c, st)
+        if ns.MainOf(c.n) == main then
+            table.insert(list, lootEntry(ev, c, st))
+            if limit and #list >= limit then return false end
+        end
+    end)
+    return list
+end
+
+-- The loot of a raid as plain text, for Discord
+function ns.RaidLootText(s)
+    s = s or ns.LastSession()
+    if not s then return "No raid yet." end
+    local loot = ns.RaidLoot(s)
+    local lines = { string.format("Raid on %s, %d players, %d items", date("%d.%m.%Y", s.start), ns.SeenCount(s), #loot) }
+    for i = #loot, 1, -1 do
+        local l = loot[i]
+        table.insert(lines, string.format("%s  %s  %d GP", l.itemName, ns.ShortName(l.name), l.gp))
+    end
+    return table.concat(lines, "\n")
+end
