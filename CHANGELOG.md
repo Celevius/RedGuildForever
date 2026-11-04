@@ -2,6 +2,11 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.0.2 (4 November 2026)
+
+### Changed
+* The Start Bidding window no longer opens by itself when you loot. Open it from the minimap menu, the Loot Master button or `/rgf bid`. The items of the corpse are listed there as before. Who wants the old way turns on **Open Start Bidding when I loot good items in a group** in the Settings tab
+
 ## 2.0.1 (3 November 2026)
 
 ### Changed

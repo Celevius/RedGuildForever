@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.0.1, updated on 3 November 2026 for the Forever beta client (interface 16001).
+Version 2.0.2, updated on 4 November 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -22,11 +22,11 @@ Show up and you go up the list, take loot and you go down the list.
 
 ## Install
 
-1. Download the latest `RedGuildForever.zip` from the releases, or build it with `./build.sh`
-2. Extract it so the folder sits at `World of Warcraft\_classic_beta_\Interface\AddOns\RedGuildForever`
+1. Download `RedGuildForever.zip` from CurseForge or from the [releases on GitHub](https://github.com/Celevius/RedGuildForever/releases), or build it with `./build.sh`
+2. Extract it so the folder sits at `World of Warcraft\_classic_\Interface\AddOns\RedGuildForever`
 3. Enable **Red Guild EPGP** on the character selection screen
 
-If you download the repository as a zip from GitHub, the folder is called `RedGuildForever-main`. Rename it to `RedGuildForever`, otherwise the game does not load it.
+Do not use the green **Code** button and **Download ZIP** on GitHub. That zip has the folder `RedGuildForever-main`, and the game only loads the addon when the folder is called `RedGuildForever` like the `.toc` file.
 
 **Updating from version 1.7 or older?** Version 2.0 syncs in a new way and does not talk to 1.7 and older. Everyone who changes data has to update at the same time. Your points stay, they become the starting points of the new version.
 
@@ -138,7 +138,7 @@ Every bid gets an answer, also when bidding is closed or nothing is open. A `+` 
 
 **Loot.**
 
-1. Open the **Start Bidding** window. It opens by itself when you loot a corpse with rare or better items in a group, or choose **Loot Master** in the minimap menu
+1. Open the **Start Bidding** window: choose **Loot Master** in the minimap menu, click **Loot Master** in the `/rgf` window or type `/rgf bid`. It never opens by itself, unless you turn on **Open Start Bidding when I loot good items in a group** in the **Settings** tab
 2. Drag the item from your bags onto the slot, or click an item that is still on the corpse. Items you saw on corpses this session stay in the list
 3. Choose where it dropped, **Normal boss**, **End boss** or **Very rare**, and click **Start bidding**. **Bid on all** opens every rare and better item of the corpse at once, numbered 1, 2, 3 in one raid announcement
 4. The **Loot Master** window shows every answer in sections, Main Spec, Off Spec, Passed and No answer yet, and marks the winner. With several items, the buttons at the top switch between them. Hover a bidder to see their last items. You get the bid popup too and can bid yourself
@@ -175,7 +175,7 @@ Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options u
 * **History** with every change of every editor. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Rules** with every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
 * **Data** with sync, the weekly decay, the backups and the imports
-* **Settings** with test mode, the minimap button, **Open Start Bidding when I loot good items in a group** and the editors. These settings are only for you, except the editors
+* **Settings** with test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default) and the editors. These settings are only for you, except the editors
 
 The game's Options under AddOns show the settings and the rules on one page.
 
@@ -262,8 +262,10 @@ Run the tests from the repository root with Lua 5.1.
 lua5.1 tests/run.lua
 ```
 
-Build the zip for players.
+Build the zip for players. It lands in `dist/RedGuildForever.zip` with the folder `RedGuildForever` inside, the tests, `build.sh` and the notes for Claude stay out.
 
 ```
 ./build.sh
 ```
+
+**Releasing a version.** Push a tag with the version, for example `git tag v2.0.1` and `git push origin v2.0.1`. The GitHub workflow runs the tests, builds the zip and attaches it to a new GitHub release, with the changelog entry as release notes. Upload that zip to CurseForge. The `.pkgmeta` file is there for the CurseForge packager, in case the project gets connected to the repository later.

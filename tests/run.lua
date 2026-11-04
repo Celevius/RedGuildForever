@@ -1088,7 +1088,7 @@ test("sync tab builds and shows the backup", function()
     noErrors()
 end)
 
-test("corpse loot shows up and opens the window in a group", function()
+test("corpse loot is listed, the window opens by itself only with the setting", function()
     setup(guild())
     W.inRaid = true
     local epic, junk = W.link(60, "Epic Helm"), W.link(61, "Gray Rag")
@@ -1096,13 +1096,25 @@ test("corpse loot shows up and opens the window in a group", function()
     ns.Fire("LOOT_OPENED")
     eq(#ns.lootSeen, 1, "only good items")
     eq(ns.lootSeen[1].onCorpse, true)
+    eq(ns.picker, nil, "by default the window stays closed, you open it yourself")
+    ns.Fire("LOOT_CLOSED")
+    -- the setting in the Settings tab turns it on
+    ns.ToggleStandings(ns.TAB.settings)
+    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    eq(view.autoLoot:GetChecked(), false, "off by default")
+    view.autoLoot:SetChecked(true)
+    view.autoLoot:Click()
+    eq(ns.Setting("autoOpenLoot"), true)
+    local epic2 = W.link(64, "Epic Gloves")
+    W.loot = { { link = epic2, quality = 4 } }
+    ns.Fire("LOOT_OPENED")
     assert(ns.picker and ns.picker:IsShown(), "window opened by itself")
-    eq(ns.pickerState.link, epic, "first corpse item is chosen")
+    eq(ns.pickerState.link, epic2, "first corpse item is chosen")
     ns.Fire("LOOT_CLOSED")
     eq(ns.lootSeen[1].onCorpse, false, "still listed after closing the loot")
     -- opening the same corpse again does not add it twice
     ns.Fire("LOOT_OPENED")
-    eq(#ns.lootSeen, 1)
+    eq(#ns.lootSeen, 2)
     noErrors()
 end)
 
@@ -1995,8 +2007,9 @@ test("Start Bidding can open all items of the corpse at once", function()
     W.loot = { { link = W.link(91, "Epic One"), quality = 4 }, { link = W.link(92, "Rare Two"), quality = 3 },
         { link = W.link(93, "Green Three"), quality = 2 } }
     ns.Fire("LOOT_OPENED")
+    ns.OpenPicker()
     local p = ns.picker
-    assert(p:IsShown(), "opens by itself")
+    assert(p:IsShown(), "opened by hand")
     eq(p.startAll:GetText(), "Bid on all 2", "rare and better items")
     p.startAll:Click()
     eq(#ns.OpenAuctions(), 2)

@@ -1,0 +1,10 @@
+# For the CurseForge packager: the folder in the zip is RedGuildForever,
+# and only the files the game needs go in.
+package-as: RedGuildForever
+
+ignore:
+  - tests
+  - build.sh
+  - CLAUDE.md
+  - dist
+  - .github
