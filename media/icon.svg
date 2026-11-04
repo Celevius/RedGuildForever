@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <!-- Red Guild EPGP icon: the crimson shield of the guild, the scales of a fair
+       loot split (EP against GP) and the rising wings of redemption. Original work, MIT. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#4a0d17"/>
+      <stop offset="0.55" stop-color="#22060b"/>
+      <stop offset="1" stop-color="#0b0204"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="50%">
+      <stop offset="0" stop-color="#ffcf5a" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ff8a1f" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ff8a1f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff1b0"/>
+      <stop offset="0.35" stop-color="#f4c451"/>
+      <stop offset="0.7" stop-color="#c98a1c"/>
+      <stop offset="1" stop-color="#8a5a0f"/>
+    </linearGradient>
+    <linearGradient id="feather" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#b3120f"/>
+      <stop offset="0.45" stop-color="#ff6a12"/>
+      <stop offset="1" stop-color="#ffd35a"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2324f"/>
+      <stop offset="0.5" stop-color="#b11a33"/>
+      <stop offset="1" stop-color="#5e0a17"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <g id="wing">
+      <!-- phoenix wing: a leading edge that sweeps up to the tip, feathers with round tips below -->
+      <g stroke="#5a0a08" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M138 182 C118 128 80 82 24 40
+                 Q16 72 30 92 Q14 116 32 136 Q20 160 42 176 Q34 200 60 210 Q58 234 86 236 Q96 254 122 250 L150 236 Z"
+              fill="url(#feather)"/>
+        <!-- feather lines from the shoulder -->
+        <path d="M140 190 L30 92 M140 194 L32 136 M140 200 L42 176 M142 208 L60 210 M144 218 L86 236"
+              fill="none" stroke="#7a1608" stroke-width="2"/>
+        <!-- the bright coverts along the leading edge -->
+        <path d="M140 184 C124 142 98 108 62 76 Q66 104 84 116 Q76 136 98 146 Q96 168 120 172 Q122 190 146 200 Z"
+              fill="#ffc94a" stroke="#8a3a08" stroke-width="2"/>
+      </g>
+    </g>
+    <clipPath id="shieldClip">
+      <path d="M200 96 L292 124 L292 206 C292 270 252 310 200 334 C148 310 108 270 108 206 L108 124 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#bg)"/>
+  <circle cx="200" cy="190" r="190" fill="url(#glow)"/>
+
+  <!-- wings of redemption -->
+  <use href="#wing"/>
+  <use href="#wing" transform="translate(400 0) scale(-1 1)"/>
+
+  <!-- the guild shield -->
+  <path d="M200 84 L304 116 L304 206 C304 278 258 322 200 348 C142 322 96 278 96 206 L96 116 Z"
+        fill="url(#gold)" stroke="#4a2c05" stroke-width="3"/>
+  <path d="M200 96 L292 124 L292 206 C292 270 252 310 200 334 C148 310 108 270 108 206 L108 124 Z"
+        fill="url(#shield)" stroke="#5a3a08" stroke-width="2"/>
+  <path d="M200 104 L284 130 L284 206 C284 264 248 300 200 323 C152 300 116 264 116 206 L116 130 Z"
+        fill="none" stroke="#f4c451" stroke-width="2" stroke-opacity="0.7"/>
+  <g clip-path="url(#shieldClip)">
+    <path d="M100 90 L230 90 L120 300 Z" fill="url(#shine)"/>
+  </g>
+
+  <!-- the scales: EP against GP, a fair split of the loot -->
+  <g fill="url(#gold)" stroke="#4a2c05" stroke-width="2.5" stroke-linejoin="round">
+    <!-- post and foot -->
+    <rect x="195" y="150" width="10" height="128" rx="3"/>
+    <path d="M168 296 L232 296 L220 278 L180 278 Z"/>
+    <!-- beam -->
+    <path d="M140 168 Q200 156 260 168 L260 175 Q200 163 140 175 Z"/>
+    <circle cx="200" cy="146" r="10"/>
+    <!-- chains -->
+    <path d="M143 173 L124 234 M143 173 L162 234 M257 173 L238 234 M257 173 L276 234" fill="none" stroke="#f4c451" stroke-width="2.5"/>
+    <!-- pans -->
+    <path d="M116 232 L170 232 Q166 256 143 256 Q120 256 116 232 Z"/>
+    <path d="M230 232 L284 232 Q280 256 257 256 Q234 256 230 232 Z"/>
+  </g>
+  <!-- a coin in each pan -->
+  <g stroke="#4a2c05" stroke-width="2">
+    <ellipse cx="143" cy="226" rx="15" ry="7" fill="#ffe28a"/>
+    <ellipse cx="143" cy="222" rx="15" ry="7" fill="#f7c948"/>
+    <ellipse cx="257" cy="226" rx="15" ry="7" fill="#ffe28a"/>
+    <ellipse cx="257" cy="222" rx="15" ry="7" fill="#f7c948"/>
+  </g>
+
+  <!-- a small crown of flame on top of the shield -->
+  <path d="M200 40 C212 58 222 66 216 84 C226 78 230 66 228 56 C240 72 238 92 222 100 L178 100 C162 92 160 72 172 56 C170 66 174 78 184 84 C178 66 188 58 200 40 Z"
+        fill="url(#feather)" stroke="#5a0a08" stroke-width="2"/>
+</svg>
