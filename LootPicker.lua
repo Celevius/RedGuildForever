@@ -3,7 +3,8 @@
 --   * drag an item from your bags onto the slot
 --   * or click an item that is still on the corpse, or was seen on a corpse this session
 --   * choose where it dropped (price), tick Test mode to try it alone
--- Opens from the minimap menu, and by itself when an officer loots good items in a group.
+-- Opens from the minimap menu or /rgf bid. With the setting "Open Start Bidding when I loot
+-- good items in a group" it also opens by itself when an editor loots good items.
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever
