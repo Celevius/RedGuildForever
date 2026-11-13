@@ -1976,28 +1976,67 @@ test("ties on two items at once, each roll counts once", function()
     noErrors()
 end)
 
-test("the bid popup shows one item after the other", function()
+test("bid cards: one per item, stacked, with the priority after a win", function()
     setup(guild())
     W.canEdit = false
     W.rank = 5
+    W.player = "Lisa Brightwater" -- 1000 EP, 500 GP
+    ns.RebuildFromRoster()
     local a1 = "A^111111^30^100^1^" .. W.link(87, "First")
-    local a2 = "A^222222^30^150^2^" .. W.link(88, "Second")
+    local a2 = "A^222222^30^500^2^" .. W.link(88, "Second")
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, a1, "RAID", "Anna Frost")
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, a2, "RAID", "Anna Frost")
-    local p = ns.bidPopup
-    eq(p.inc.id, "111111", "the first item stays until it is answered")
-    assert(p.note:GetText():find("1 more item waits"), p.note:GetText())
+    local c1, c2 = ns.bidCards[1], ns.bidCards[2]
+    assert(c1:IsShown() and c2:IsShown(), "both items have a card at once")
+    eq(c1.inc.id, "111111") eq(c2.inc.id, "222222")
+    assert(c1.item:GetText():find("^1%. "), "numbered when several are open")
+    -- what a win would cost: 1000 / 500 = 2.00 now, 1000 / 600 = 1.67 after the first item
+    assert(c1.note:GetText():find("100 GP%.  Your priority |cffffd1002%.00|r, after a win |cffffd1001%.67|r"), c1.note:GetText())
+    assert(c2.note:GetText():find("after a win |cffffd1001%.00|r"), c2.note:GetText())
+    -- answering one card keeps the other
     W.comms = {}
-    p.ms:Click()
-    eq(p.inc.id, "222222", "then the second")
+    c1.ms:Click()
     eq(W.comms[1].msg, "B^111111^MS")
-    p.pass:Click()
-    eq(p:IsShown(), false, "nothing left")
+    eq(ns.bidCards[1].inc.id, "222222", "the second item moves down")
+    eq(ns.bidCards[2]:IsShown(), false)
+    ns.bidCards[1].pass:Click()
+    eq(ns.bidCards[1]:IsShown(), false, "nothing left")
+    eq(#W.comms, 1, "a pass without a bid sends nothing")
+    -- the key bindings answer the first card
+    ns.Command("rebid")
+    eq(ns.bidCards[1].inc.id, "111111")
+    assert(ns.AnswerFirstBid("OS"))
+    eq(W.comms[#W.comms].msg, "B^111111^OS")
     -- without addon messages the whisper names the item number
     W.blockAddon = true
     W.chat = {}
     ns.SendBid(ns.incoming["222222"], "OS")
     eq(W.chat[1].msg, "os 2")
+    noErrors()
+end)
+
+test("an item the character cannot use, and cards that remember their place", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    _G.C_PlayerInfo = { CanUseItem = function(id) return id ~= 90 end }
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^313131^30^100^1^" .. W.link(90, "Plate Helm"), "RAID", "Anna Frost")
+    local c = ns.bidCards[1]
+    eq(c.ms:IsEnabled(), false, "main spec is greyed out")
+    eq(c.os:IsEnabled(), true)
+    assert(c.note:GetText():find("You cannot use this item"), c.note:GetText())
+    eq(ns.AnswerFirstBid("MS"), false, "the key does nothing either")
+    -- drag the card somewhere else, the place is saved
+    c:GetScript("OnDragStart")(c)
+    local mover = c:GetParent()
+    eq(RedGuildForeverDB.positions and RedGuildForeverDB.positions.bid, nil, "default place at first")
+    mover:ClearAllPoints()
+    mover:SetPoint("CENTER", UIParent, "CENTER", 120, -40)
+    c:GetScript("OnDragStop")(c)
+    eq(table.concat(RedGuildForeverDB.positions.bid, ","), "CENTER,120,-40")
+    ns.Command("resetpos")
+    eq(next(RedGuildForeverDB.positions), nil, "back to the start")
+    eq(select(1, mover:GetPoint()), "BOTTOM")
     noErrors()
 end)
 

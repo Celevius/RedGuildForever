@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: MIT, see LICENSE
--- Popups: the bid popup for raiders and the winner popup.
+-- Popups: the bid cards for raiders and the winner popup. Both can be dragged
+-- anywhere, the place is remembered. /rgf resetpos puts them back.
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever
@@ -11,179 +12,258 @@ local setTitle, setPortrait, sound, classColor = UI.setTitle, UI.setPortrait, UI
 local ICON_UNKNOWN = UI.ICON_UNKNOWN
 
 ------------------------------------------------------------------------
--- Bid popup for raiders, inspired by the Need or Greed loot roll
+-- Where the popups sit. Dragging one saves its place.
 ------------------------------------------------------------------------
-local popup
-local nextUnanswered, showPopup
+local DEFAULTS = {
+    bid = { "BOTTOM", 0, 240 },   -- above the action bars, like the game's loot rolls
+    winner = { "TOP", 0, -70 },
+}
+local placed = {}
 
-local function buildPopup()
-    local f = window("RedGuildForeverBidFrame", 380, 214, "Loot Bid", ICON_UNKNOWN)
+local function positions()
+    RedGuildForeverDB.positions = RedGuildForeverDB.positions or {}
+    return RedGuildForeverDB.positions
+end
+
+local function place(f, key)
+    local p = positions()[key] or DEFAULTS[key]
     f:ClearAllPoints()
-    f:SetPoint("TOP", UIParent, "TOP", 0, -140)
-    f:SetFrameStrata("DIALOG")
+    f:SetPoint(p[1], UIParent, p[1], p[2], p[3])
+    placed[key] = f
+end
 
-    f.item = text(f, "GameFontNormal")
-    f.item:SetPoint("TOPLEFT", 66, -32)
-    f.item:SetWidth(290)
-    f.price = text(f, "GameFontHighlightSmall")
-    f.price:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
-    f.price:SetWidth(290)
+local function remember(f, key)
+    local point, _, _, x, y = f:GetPoint(1)
+    if type(point) == "string" and type(x) == "number" and type(y) == "number" then
+        positions()[key] = { point, math.floor(x + 0.5), math.floor(y + 0.5) }
+    end
+end
 
-    f.slot = itemButton(f.Inset, 40)
-    f.slot:SetPoint("TOPLEFT", 12, -12)
-
-    f.mine = text(f.Inset, "GameFontHighlight")
-    f.mine:SetPoint("TOPLEFT", f.slot, "TOPRIGHT", 10, -2)
-    f.mine:SetWidth(280)
-    f.note = text(f.Inset, "GameFontNormalSmall")
-    f.note:SetPoint("TOPLEFT", f.mine, "BOTTOMLEFT", 0, -4)
-    f.note:SetWidth(280)
-
-    -- timer bar like the loot roll frame
-    f.timer = CreateFrame("StatusBar", nil, f.Inset)
-    f.timer:SetPoint("BOTTOMLEFT", 12, 12)
-    f.timer:SetPoint("BOTTOMRIGHT", -12, 12)
-    f.timer:SetHeight(10)
-    f.timer:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    f.timer:SetStatusBarColor(1, 0.82, 0)
-    f.timer:SetMinMaxValues(0, 1)
-    local bg = f.timer:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.6)
-    f.timerText = text(f.Inset, "GameFontDisableSmall", "CENTER")
-    f.timerText:SetPoint("BOTTOM", f.timer, "TOP", 0, 3)
-
-    f.ms = button(f, "Main Spec", 112, function() ns.SendBid(f.inc, "MS") end)
-    f.ms:SetPoint("BOTTOMLEFT", 6, 4)
-    f.pass = button(f, "Pass", 112, function()
-        local inc = f.inc
-        if inc and inc.myBid then ns.SendBid(inc, "PASS") end
-        if inc then inc.myBid = inc.myBid or "PASS" end
-        local nextInc = nextUnanswered(inc)
-        if nextInc then showPopup(nextInc) else f:Hide() end
+-- dragging handle moves mover and saves the place under key
+local function makeMovable(handle, mover, key)
+    mover:SetMovable(true)
+    mover:SetClampedToScreen(true)
+    handle:RegisterForDrag("LeftButton")
+    handle:SetScript("OnDragStart", function() mover:StartMoving() end)
+    handle:SetScript("OnDragStop", function()
+        mover:StopMovingOrSizing()
+        remember(mover, key)
     end)
-    f.pass:SetPoint("BOTTOMRIGHT", -6, 4)
-    f.os = button(f, "Off Spec", 112, function() ns.SendBid(f.inc, "OS") end)
-    f.os:SetPoint("LEFT", f.ms, "RIGHT", 6, 0)
-    f.os:SetPoint("RIGHT", f.pass, "LEFT", -6, 0)
+end
+
+-- Put the popups back where they were at the start
+function ns.ResetPositions()
+    wipe(positions())
+    for key, f in pairs(placed) do place(f, key) end
+end
+
+local function goldFrame(f)
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.02, 0.02, 0.9)
+    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
+        { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
+        local line = f:CreateTexture(nil, "BORDER")
+        line:SetPoint(edge[1])
+        line:SetPoint(edge[2])
+        if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
+        line:SetColorTexture(1, 0.82, 0, 0.9)
+    end
+end
+
+------------------------------------------------------------------------
+-- Bid cards for raiders, small like the game's Need or Greed rolls.
+-- Every item that is up for bids gets its own card, they stack upwards.
+-- A card goes away when you answer it or when the time is over.
+------------------------------------------------------------------------
+local MAX_CARDS = 4
+local CARD_WIDTH, CARD_HEIGHT = 348, 76
+local anchor
+local cards = {}
+
+-- true or false when the game knows whether this character can use the item, nil when not
+function ns.CanUseItem(link)
+    local itemID = ns.ItemInfo(link)
+    if not itemID then return nil end
+    if C_PlayerInfo and C_PlayerInfo.CanUseItem then
+        local ok, usable = pcall(C_PlayerInfo.CanUseItem, itemID)
+        if ok and type(usable) == "boolean" then return usable end
+    end
+    return nil
+end
+
+-- The cards to show: open items that still wait for an answer, lowest number first
+local function waiting()
+    local list = {}
+    local now = GetTime()
+    for _, inc in pairs(ns.incoming) do
+        if now < inc.endsAt and (not inc.myBid or inc.reopened) then table.insert(list, inc) end
+    end
+    table.sort(list, function(a, b)
+        if (a.n or 0) ~= (b.n or 0) then return (a.n or 0) < (b.n or 0) end
+        return a.id < b.id
+    end)
+    return list
+end
+
+local layout
+
+local function answer(card, spec)
+    local inc = card.inc
+    if not inc then return end
+    inc.reopened = nil
+    if spec == "PASS" and not inc.myBid then
+        inc.myBid = "PASS" -- a pass without an earlier bid needs no message
+        layout()
+    else
+        ns.SendBid(inc, spec)
+    end
+end
+
+local function buildCard(i)
+    local c = create("Button", "RedGuildForeverBidCard" .. i, anchor)
+    c:SetSize(CARD_WIDTH, CARD_HEIGHT)
+    c:SetFrameStrata("DIALOG")
+    goldFrame(c)
+    makeMovable(c, anchor, "bid")
+
+    c.icon = itemButton(c, 40)
+    c.icon:SetPoint("TOPLEFT", 9, -9)
+    c.item = text(c, "GameFontNormal")
+    c.item:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 8, 0)
+    c.item:SetWidth(280)
+    c.note = text(c, "GameFontHighlightSmall")
+    c.note:SetPoint("TOPLEFT", c.item, "BOTTOMLEFT", 0, -3)
+    c.note:SetWidth(280)
+
+    c.ms = button(c, "Main Spec", 96, function() answer(c, "MS") end)
+    c.ms:SetHeight(20)
+    c.ms:SetPoint("BOTTOMLEFT", 57, 10)
+    c.os = button(c, "Off Spec", 96, function() answer(c, "OS") end)
+    c.os:SetHeight(20)
+    c.os:SetPoint("LEFT", c.ms, "RIGHT", 4, 0)
+    c.pass = button(c, "Pass", 76, function() answer(c, "PASS") end)
+    c.pass:SetHeight(20)
+    c.pass:SetPoint("LEFT", c.os, "RIGHT", 4, 0)
+    c.ms:SetScript("OnEnter", function(self)
+        if not c.unusable then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Your character cannot use this item", 1, 0.3, 0.3)
+        GameTooltip:Show()
+    end)
+    c.ms:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- the time left, as a thin bar at the bottom
+    c.timer = CreateFrame("StatusBar", nil, c)
+    c.timer:SetPoint("BOTTOMLEFT", 3, 3)
+    c.timer:SetPoint("BOTTOMRIGHT", -3, 3)
+    c.timer:SetHeight(4)
+    c.timer:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    c.timer:SetStatusBarColor(1, 0.82, 0)
+    c.timer:SetMinMaxValues(0, 1)
 
     local elapsed = 0
-    f:SetScript("OnUpdate", function(_, dt)
+    c:SetScript("OnUpdate", function(_, dt)
         elapsed = elapsed + dt
-        if elapsed < 0.1 or not f.inc then return end
+        if elapsed < 0.1 or not c.inc then return end
         elapsed = 0
-        local total = f.inc.duration or 30
-        local left = f.inc.endsAt - GetTime()
-        f.timer:SetValue(math.max(0, left / total))
-        if left <= 0 then
-            f.timerText:SetText("Bidding closed, waiting for the loot master")
-            f.ms:SetEnabled(false)
-            f.os:SetEnabled(false)
-        else
-            f.timerText:SetText(math.ceil(left) .. " seconds")
-        end
+        local left = c.inc.endsAt - GetTime()
+        c.timer:SetValue(math.max(0, left / (c.inc.duration or 30)))
+        if left <= 0 then layout() end -- the time is over, the card goes away
     end)
-    return f
+    c:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Loot bid")
+        GameTooltip:AddLine("Drag to move. Keys for Main Spec, Off Spec and Pass can be set in the game's key bindings under Red Guild EPGP.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    c:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    c:Hide()
+    return c
 end
 
--- The next item that is open and not answered yet, lowest number first
-nextUnanswered = function(except)
-    local best
-    local now = GetTime()
-    for _, inc in pairs(ns.incoming) do
-        if inc ~= except and not inc.myBid and now < inc.endsAt then
-            if not best or (inc.n or 0) < (best.n or 0) or ((inc.n or 0) == (best.n or 0) and inc.id < best.id) then
-                best = inc
-            end
+local function fillCard(c, inc, total)
+    c.inc = inc
+    c.icon:SetItem(inc.link)
+    c.item:SetText(((inc.n and total > 1) and (inc.n .. ". ") or "") .. inc.link)
+
+    local me = ns.PlayerName()
+    local ep, gp, pr = ns.GetPoints(me)
+    local price = inc.price or 0
+    local after = ep / math.max(gp + price, 1)
+    local note = (ns.IsTest() and ns.TEST_TAG or "") .. price .. " GP.  Your priority |cffffd100" .. ns.FormatPR(pr)
+        .. "|r, after a win |cffffd100" .. ns.FormatPR(after) .. "|r"
+    local osCost = ns.OffSpecCost(price)
+    if osCost > 0 then note = note .. ".  Off spec " .. osCost .. " GP" end
+    c.unusable = ns.CanUseItem(inc.link) == false
+    if c.unusable then note = "|cffff5555You cannot use this item.|r  " .. price .. " GP" end
+    c.note:SetText(note)
+
+    c.ms:SetEnabled(not c.unusable)
+    c.os:SetEnabled(true)
+    c.ms:SetText(inc.myBid == "MS" and "|cff40ff40Main Spec|r" or "Main Spec")
+    c.os:SetText(inc.myBid == "OS" and "|cff40ff40Off Spec|r" or "Off Spec")
+    c:Show()
+end
+
+layout = function()
+    local list = waiting()
+    if #list == 0 and not anchor then return end
+    if not anchor then
+        anchor = CreateFrame("Frame", "RedGuildForeverBidAnchor", UIParent)
+        anchor:SetSize(CARD_WIDTH, 1)
+        place(anchor, "bid")
+    end
+    local shown = math.min(#list, MAX_CARDS)
+    local fresh = false
+    for i = 1, shown do
+        local c = cards[i]
+        if not c then
+            c = buildCard(i)
+            c:SetPoint("BOTTOM", anchor, "BOTTOM", 0, (i - 1) * (CARD_HEIGHT + 4))
+            cards[i] = c
         end
+        if not list[i].seen then
+            list[i].seen = true
+            fresh = true
+        end
+        fillCard(c, list[i], #list)
     end
-    return best
-end
-
-local function waitingCount(except)
-    local n = 0
-    local now = GetTime()
-    for _, inc in pairs(ns.incoming) do
-        if inc ~= except and not inc.myBid and now < inc.endsAt then n = n + 1 end
+    for i = shown + 1, #cards do
+        cards[i].inc = nil
+        cards[i]:Hide()
     end
-    return n
+    ns.bidCards, ns.bidPopup = cards, cards[1]
+    if fresh then sound("RAID_WARNING") end
 end
 
 ns.On("RGF_INCOMING_AUCTION", function(inc)
-    popup = popup or buildPopup()
-    local current = popup:IsShown() and popup.inc
-    if current and current ~= inc and not current.myBid and GetTime() < current.endsAt then
-        -- the player still has to answer the shown item, the new one waits
-        showPopup(current)
-        return
-    end
-    if inc.myBid then
-        -- answered: the popup goes away, or goes on with the next item that waits.
-        -- A later price change does not bring it back, /rgf rebid does.
-        if current == inc then
-            local nextInc = nextUnanswered(inc)
-            if nextInc then showPopup(nextInc) else popup:Hide() end
-        end
-        return
-    end
-    showPopup(inc)
+    -- answered: the card goes away. A later price change does not bring it back, /rgf rebid does.
+    if inc.myBid then inc.reopened = nil end
+    layout()
 end)
 
--- Show the bid popup again to change a bid, as long as bidding is open.
--- Returns the shown item, or nil when nothing is open.
+ns.On("RGF_INCOMING_CLOSED", function() layout() end)
+
+-- Show the cards again to change a bid, as long as bidding is open.
+-- Returns the first shown item, or nil when nothing is open.
 function ns.ReopenBidPopup()
-    local inc = nextUnanswered(nil)
-    if not inc then
-        for _, x in pairs(ns.incoming) do
-            if GetTime() < x.endsAt and (not inc or (x.n or 0) < (inc.n or 0)) then inc = x end
-        end
+    local now = GetTime()
+    for _, inc in pairs(ns.incoming) do
+        if now < inc.endsAt then inc.reopened = true end
     end
-    if not inc then return nil end
-    popup = popup or buildPopup()
-    showPopup(inc)
-    return inc
+    layout()
+    return cards[1] and cards[1]:IsShown() and cards[1].inc or nil
 end
 
-showPopup = function(inc)
-    popup.inc = inc
-    ns.bidPopup = popup
-    setTitle(popup, ns.IsTest() and "Loot Bid  |cffff8040Test mode|r" or "Loot Bid")
-    local _, _, icon = ns.ItemInfo(inc.link)
-    setPortrait(popup, icon or ICON_UNKNOWN)
-    popup.slot:SetItem(inc.link)
-    popup.item:SetText(inc.link)
-    popup.price:SetText("Main spec |cffffffff" .. inc.price .. " GP|r, " .. ns.OffSpecText(inc.price))
-
-    local me = ns.PlayerName()
-    local ep, gp, pr, mainName = ns.GetPoints(me)
-    popup.mine:SetText("Your priority |cffffd100" .. ns.FormatPR(pr) .. "|r")
-    local note = ep .. " EP, " .. gp .. " GP"
-    if mainName and mainName ~= me then note = note .. ", points of " .. ns.ShortName(mainName) end
-    if ep < ns.Setting("minEP") then note = note .. ", |cff66c7ffnew member|r" end
-    popup.note:SetText(note)
-
-    local open = GetTime() < inc.endsAt
-    popup.ms:SetEnabled(open)
-    popup.os:SetEnabled(open)
-    popup.ms:SetText(inc.myBid == "MS" and "|cff40ff40Main Spec|r" or "Main Spec")
-    popup.os:SetText(inc.myBid == "OS" and "|cff40ff40Off Spec|r" or "Off Spec")
-    local waiting = waitingCount(inc)
-    popup.timerText:SetText("")
-    if waiting > 0 then
-        popup.note:SetText(note .. "\n|cffff8040" .. waiting .. (waiting == 1 and " more item waits" or " more items wait") .. "|r")
-    end
-    if not popup:IsShown() then
-        popup:Show()
-        sound("RAID_WARNING")
-    end
+-- Answer the first card, for the key bindings. Returns true when a card was answered.
+function ns.AnswerFirstBid(spec)
+    local c = cards[1]
+    if not (c and c:IsShown() and c.inc) then return false end
+    if spec == "MS" and c.unusable then return false end
+    answer(c, spec)
+    return true
 end
-
-ns.On("RGF_INCOMING_CLOSED", function(inc)
-    if popup and popup.inc == inc then
-        local nextInc = nextUnanswered(inc)
-        if nextInc then showPopup(nextInc) else popup:Hide() end
-    end
-end)
 
 ------------------------------------------------------------------------
 -- Winner popup. Everyone with the addon sees for a few seconds who got the
@@ -198,20 +278,10 @@ local winnerShown = 0 -- counts up, so an old timer does not close a newer popup
 local function buildWinner()
     local f = create("Button", "RedGuildForeverWinnerFrame", UIParent)
     f:SetSize(340, 64)
-    f:SetPoint("TOP", UIParent, "TOP", 0, -70)
+    place(f, "winner")
     f:SetFrameStrata("HIGH")
-    local bg = f:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.02, 0.02, 0.88)
-    -- a thin gold frame
-    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
-        { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
-        local line = f:CreateTexture(nil, "BORDER")
-        line:SetPoint(edge[1])
-        line:SetPoint(edge[2])
-        if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
-        line:SetColorTexture(1, 0.82, 0, 0.9)
-    end
+    goldFrame(f)
+    makeMovable(f, f, "winner")
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetSize(44, 44)
     f.icon:SetPoint("LEFT", 10, 0)
@@ -229,7 +299,7 @@ local function buildWinner()
         if not self.link then return end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
-        GameTooltip:AddLine("Click to close. Turn this popup off in the game's Options under AddOns, Red Guild EPGP", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine("Click to close, drag to move. Turn this popup off in the game's Options under AddOns, Red Guild EPGP", 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end)
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)

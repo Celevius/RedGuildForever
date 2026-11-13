@@ -73,7 +73,8 @@ local help = {
     "/rgf me  show your own points",
     "/rgf minimap  show or hide the minimap button",
     "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
-    "/rgf rebid  show the bid popup again to change your bid while bidding is open",
+    "/rgf rebid  show the bid cards again to change your bid while bidding is open",
+    "/rgf resetpos  put the bid cards and the winner popup back where they were",
     "|cffffd100Loot master|r",
     "/rgf bid  open the Start Bidding window, or /rgf bid [item] to start right away",
     "/rgf test  turn test mode on or off, try everything alone",
@@ -355,6 +356,10 @@ function ns.Command(line)
     elseif cmd == "sync" then
         ns.RequestRoster()
         ns.Sync()
+
+    elseif cmd == "resetpos" then
+        ns.ResetPositions()
+        ns.Print("the bid cards and the winner popup are back at their first place")
 
     elseif cmd == "rebid" then
         if not ns.ReopenBidPopup() then ns.Print("no bidding is open right now") end
