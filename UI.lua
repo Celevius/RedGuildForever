@@ -878,7 +878,7 @@ local function buildSettingsContent(holder, top, parts)
     end)
     view.minimap:SetPoint("TOPLEFT", 12, y)
     y = y - 28
-    view.autoLoot = checkbox(parent, "Open Start Bidding when I loot good items in a group", function(checked)
+    view.autoLoot = checkbox(parent, "Open the Loot Master window when I loot good items in a group", function(checked)
         ns.SetSetting("autoOpenLoot", checked and true or false)
     end)
     view.autoLoot:SetPoint("TOPLEFT", 12, y)
@@ -1746,6 +1746,52 @@ end
 ns.UIInputBox = inputBox
 ns.UI.inputBox = inputBox
 ns.UI.ICON_UNKNOWN = ICON_UNKNOWN
+
+------------------------------------------------------------------------
+-- Welcome: a few lines the first time the addon runs, and with /rgf welcome
+------------------------------------------------------------------------
+local welcome
+
+function ns.ShowWelcome()
+    if not welcome then
+        local f = window("RedGuildForeverWelcomeFrame", 440, 300, "Welcome to Red Guild EPGP", ICON_STANDINGS)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+        f:SetFrameStrata("DIALOG")
+        f.sub = text(f, "GameFontHighlightSmall")
+        f.sub:SetPoint("TOPLEFT", 66, -34)
+        f.sub:SetWidth(340)
+        f.sub:SetText("Show up and you go up the list, take loot and you go down.")
+        f.body = text(f.Inset, "GameFontHighlight")
+        f.body:SetPoint("TOPLEFT", 14, -14)
+        f.body:SetWidth(400)
+        f.body:SetWordWrap(true)
+        f.body:SetSpacing(4)
+        f.ok = button(f, "Got it", 120, function() f:Hide() end)
+        f.ok:SetPoint("BOTTOM", 0, 4)
+        welcome = f
+        ns.welcomeFrame = f
+    end
+    local lines = {
+        "|cffffd100The coin at the minimap|r opens the standings with a left click. Your own row is always at the top.",
+        "|cffffd100When loot is up for bids|r a small card shows up. Click Main Spec, Off Spec or Pass. You can drag the card anywhere.",
+        "|cffffd100Settings|r are in the game's Options under AddOns, Red Guild EPGP. There you turn the popups off, and the game's key bindings have keys for bidding.",
+    }
+    if ns.CanEdit() then
+        table.insert(lines, "|cffffd100You are an editor.|r Right click the coin for Loot Master and Start raid. Alt click an item in your bags to put it up for bids. The test mode in the Options lets you try it all alone.")
+    end
+    welcome.body:SetText(table.concat(lines, "\n\n"))
+    welcome:Show()
+    RedGuildForeverDB.welcomed = true
+end
+
+-- once, a few seconds after the first login with the addon
+ns.On("RGF_READY", function()
+    if RedGuildForeverDB.welcomed then return end
+    ns.After(6, function()
+        if not RedGuildForeverDB.welcomed then ns.ShowWelcome() end
+    end)
+end)
 
 ------------------------------------------------------------------------
 -- A window with text to copy, for Discord

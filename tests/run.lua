@@ -2492,5 +2492,56 @@ test("a calmer main window: members see the standings only, your own row, bars a
     noErrors()
 end)
 
+test("welcome on the first login only, key bindings and a quieter chat", function()
+    setup(guild())
+    -- setup ran the timers of the first login
+    assert(ns.welcomeFrame and ns.welcomeFrame:IsShown(), "welcome shown on the first login")
+    assert(ns.welcomeFrame.body:GetText():find("You are an editor"), "editors get their own line")
+    eq(RedGuildForeverDB.welcomed, true)
+    ns.welcomeFrame.ok:Click()
+    eq(ns.welcomeFrame:IsShown(), false)
+    -- the next login stays quiet
+    ns.Fire("RGF_READY") W.flush()
+    eq(ns.welcomeFrame:IsShown(), false, "only once")
+    ns.Command("welcome")
+    eq(ns.welcomeFrame:IsShown(), true, "/rgf welcome shows it again")
+    ns.welcomeFrame:Hide()
+    -- key bindings: the names exist for every binding in Bindings.xml
+    local xml = io.open("Bindings.xml"):read("*a")
+    local count = 0
+    for name in xml:gmatch('name="([A-Z_]+)"') do
+        count = count + 1
+        assert(_G["BINDING_NAME_" .. name], "a name for the key binding " .. name)
+    end
+    eq(count, 5)
+    assert(_G.BINDING_HEADER_REDGUILDFOREVER, "a heading in the key binding settings")
+    for _, file in ipairs(W.tocFiles()) do assert(file ~= "Bindings.xml", "the game loads Bindings.xml by itself") end
+    RedGuildForever_Binding("toggle")
+    eq(ns.mainFrame:IsShown(), true, "the key opens the standings")
+    RedGuildForever_Binding("toggle")
+    eq(ns.mainFrame:IsShown(), false)
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    RedGuildForever_Binding("loot")
+    eq(ns.lootFrame:IsShown(), true, "the key opens the loot window")
+    -- bidding by key, and the rebid hint only once
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^414141^30^100^1^" .. W.link(53, "Key Ring"), "RAID", "Anna Frost")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^424242^30^100^2^" .. W.link(54, "Key Helm"), "RAID", "Anna Frost")
+    W.comms, W.printed = {}, {}
+    RedGuildForever_Binding("ms")
+    eq(W.comms[1].msg, "B^414141^MS")
+    RedGuildForever_Binding("os")
+    eq(W.comms[2].msg, "B^424242^OS")
+    local hints = 0
+    for _, p in ipairs(W.printed) do if p:find("/rgf rebid") then hints = hints + 1 end end
+    eq(hints, 1, "the hint about changing a bid comes once")
+    -- a manual sync prints one line, the result
+    W.printed = {}
+    ns.Command("sync") W.flush()
+    eq(#W.printed, 1)
+    assert(W.printed[1]:find("sync done"), W.printed[1])
+    noErrors()
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -2,21 +2,20 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.2.1, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.3.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
 Show up and you go up the list, take loot and you go down the list.
 
-* Raiders get a popup when loot is up for bids and click **Main spec**, **Off spec** or **Pass**
-* The loot master sees every bid sorted by the rules and clicks **Award**. Several items can be up for bids at once
+* Raiders get a small card when loot is up for bids and click **Main spec**, **Off spec** or **Pass**
+* The loot master has one window for a boss kill: the items, every bid sorted by the rules, and one button for the next step. Several items can be up for bids at once
 * **Start raid** gives the on time bonus, **End raid** gives the EP for the raid night, to everyone in the raid and on the bench
 * Two raids on the same evening work, every change of every loot master counts and nobody gets the raid EP twice
 * Alts share points with their main
 * Weekly decay with a reminder, undo for every change, price overrides and a standings window with search
 * Players without the addon whisper `ms`, `os` or `pass`, and `!ep`, `!bid`, `!top` or `!loot` to look things up
 * Points are saved in the addon's own save file, shared with **Sync** and backed up by themselves
-* A **Start Bidding** window to drag items in or pick them from the corpse
 * A **test mode** in the settings that simulates the whole addon, so you can try everything alone
 * The windows are built from Blizzard's own frame templates, so they look like the guild and character windows of the game
 
@@ -110,10 +109,14 @@ You never need to type a command. Click the coin button at the minimap.
 
 ## For raiders
 
-* A popup shows the item, the price and your own priority. Click your choice and the popup closes. When several items are up for bids, the popup shows one after the other. To change a bid while bidding is open, type `/rgf rebid`
+* When loot is up for bids, a small card shows up above your action bars, one card for each item. It shows the item, the price, and your priority now and after a win. Click **Main Spec**, **Off Spec** or **Pass** and the card goes away. To change a bid while bidding is open, type `/rgf rebid`
+* When the game knows that your character cannot use the item, the card says so and **Main Spec** is greyed out
+* Drag a card or the winner popup anywhere you like, the place is remembered. `/rgf resetpos` puts them back
+* You can bid with keys: the game's key bindings have **Bid Main Spec**, **Bid Off Spec** and **Pass** under **Red Guild EPGP**. They answer the lowest card
 * When an item is given out, a small popup at the top of the screen shows everyone with the addon who won it, the item and the price. It goes away after five seconds, or right away with a click. You can turn it off in the game's Options under **AddOns**, **Red Guild EPGP** with **Show a popup with the winner when loot is given out**
 * When you win, the loot master's addon whispers you the item and your new priority
-* `/rgf` opens the standings and `/rgf me` shows your own points. Hover a player to see the last items they got
+* `/rgf` opens the standings and `/rgf me` shows your own points. Your own row is always at the top. Hover a player to see the last items they got
+* The first time the addon runs, a short welcome explains these things. `/rgf welcome` shows it again
 
 **No addon?** Whisper the loot master, or anyone with the addon.
 
@@ -138,20 +141,22 @@ Every bid gets an answer, also when bidding is closed or nothing is open. A `+` 
 3. Click **End raid** at the end. Everyone in the raid and on the bench gets the raid EP. When players left early, the addon asks whether they get the raid EP too
 4. The **Raid** tab shows the loot of the raid. **Loot list for Discord** opens it as text to copy
 
-**Loot.**
+**Loot.** Everything for a boss kill is in one window, the **Loot Master** window. The items are on the left, the bids for the chosen item on the right, and one big button always does the next step.
 
-1. Open the **Start Bidding** window: choose **Loot Master** in the minimap menu, click **Loot Master** in the `/rgf` window or type `/rgf bid`. It never opens by itself, unless you turn on **Open Start Bidding when I loot good items in a group** in the game's Options under **AddOns**, **Red Guild EPGP**
-2. Drag the item from your bags onto the slot, or click an item that is still on the corpse. Items you saw on corpses this session stay in the list
-3. Choose where it dropped, **Normal boss**, **End boss** or **Very rare**, and click **Start bidding**. **Bid on all** opens every rare and better item of the corpse at once, numbered 1, 2, 3 in one raid announcement
-4. The **Loot Master** window shows every answer in sections, Main Spec, Off Spec, Passed and No answer yet, and marks the winner. With several items, the buttons at the top switch between them. Hover a bidder to see their last items. You get the bid popup too and can bid yourself
+1. Open it: choose **Loot Master** in the minimap menu, click **Loot Master** in the `/rgf` window or type `/rgf bid`. Or **Alt click an item** in your bags or in the loot window, that opens the window with the item chosen
+2. The items of the corpse are listed on the left, items you saw this session stay there. You can also drag an item from your bags onto the slot
+3. Choose where it dropped, **Normal boss**, **End boss** or **Very rare**, and click the big button, **Start bidding**. **Bid on all** opens every rare and better item of the corpse at once, numbered 1, 2, 3 in one raid announcement
+4. The right side always shows the full list: Main Spec, Off Spec, Passed and No answer yet, with the winner marked. Hover a bidder to see their last items. With several items, click one on the left to see its bids. You get the bid card too and can bid yourself
 5. Change the price with the **Normal boss**, **End boss** and **Very rare** buttons, or type any price and click **Set**
-6. Bidding closes by itself after 30 seconds, or click **Close bids**
+6. Bidding closes by itself after 30 seconds, or click the big button, now **Close bids now**
 7. On a tie the addon asks the tied players to `/roll` and marks the highest roll
-8. Click **Award** next to the winner, or **Bank or Disenchant** if nobody wants it
+8. The big button now says for example **Award to Lisa (main spec, 100 GP)**. Click it, or click **Award** next to anyone else in the list. The addon asks once before it gives the item out. **Bank or Disenchant** is for an item nobody wants
+
+The window comes up when bidding starts and closes when nothing is left to do. While a bidding runs you can close it, it does not come back with every bid.
 
 Loot is announced in raid chat, so everyone can follow. The addon never writes in guild or officer chat.
 
-The **Loot Master** button in the `/rgf` window and in the minimap menu opens the running bidding, or the Start Bidding window when nothing runs.
+In the game's Options under **AddOns**, **Red Guild EPGP** you can turn off **Ask before I award an item** and **Alt click an item to choose it for bidding**, and turn on **Open the Loot Master window when I loot good items in a group**.
 
 ## Test mode
 
@@ -170,18 +175,20 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 
 ## The window
 
-`/rgf` opens the window. It has four tabs at the bottom.
+`/rgf` opens the window. Members see the standings, editors also get the tabs **Raid**, **History** and **Data** at the bottom. The buttons explain themselves when you hover them, and a small **i** next to a heading explains the rest.
 
-* **Standings** with a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **Raid EP**, **On time EP** and **Undo** at the bottom
+* **Standings** with your own row always at the top, your place, class icons and a bar that shows each priority against the best one. There is a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **+100 EP raid**, **+25 EP on time** and **Undo** at the bottom. Hover the EP buttons to see who would get the EP, and **Undo** to see what it would take back
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
 * **History** with every change of every editor. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Data** with sync, the weekly decay, the backups and the imports
+
+**Key bindings.** In the game's key binding settings, under **Red Guild EPGP**, you can set keys to open the standings, open the Loot Master window, and to bid Main Spec, Off Spec or Pass.
 
 ## Settings and rules
 
 The settings and the guild rules are not in the addon window. They are in the game's Options, where every addon has its page: press Escape, **Options**, **AddOns**, **Red Guild EPGP**. `/rgf settings` and `/rgf rules` open them directly, and so do **Settings** and **Guild rules** in the minimap menu. During a fight the game does not let addons open the Options, the addon then tells you where to click.
 
-* **Red Guild EPGP** has test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default), **Show a popup with the winner when loot is given out** (on by default) and the editors. These settings are only for you, except the editors
+* **Red Guild EPGP** has test mode, the minimap button, **Open the Loot Master window when I loot good items in a group** (off by default), **Show a popup with the winner when loot is given out**, **Ask before I award an item**, **Alt click an item to choose it for bidding** (all three on by default) and the editors. These settings are only for you, except the editors
 * **Guild rules**, the page below it, has every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
 
 ## Editors
@@ -232,11 +239,13 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf export` | open the Data tab with the backup |
 | `/rgf discord` | the standings as text for Discord |
 | `/rgf fresh` | start with empty data for a new guild |
-| `/rgf bid` | open the Start Bidding window |
+| `/rgf bid` | open the Loot Master window |
 | `/rgf test` | turn test mode on or off |
 | `/rgf settings` | open the settings in the game's Options |
 | `/rgf rules` | open the guild rules in the game's Options |
-| `/rgf rebid` | show the bid popup again to change your bid |
+| `/rgf rebid` | show the bid cards again to change your bid |
+| `/rgf resetpos` | put the bid cards and the winner popup back where they were |
+| `/rgf welcome` | show the short introduction again |
 | `/rgf log` | last changes |
 | `/rgf check` | check that your game version has everything the addon needs |
 | `/rgf editors` | who may change data |

@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.2.1"
+ns.version = "2.3.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
@@ -44,7 +44,7 @@ ns.defaults = {
     confirmAward = true, -- ask before an item is awarded
     altClickBid = true,  -- Alt click on an item chooses it for bidding
     showWinner = true,   -- a short popup with the winner when loot is given out
-    autoOpenLoot = false, -- open Start Bidding by itself when an editor loots good items in a group, off by default
+    autoOpenLoot = false, -- open the Loot Master window by itself when an editor loots good items in a group, off by default
     tierOrder = { "normal", "boss", "rare" },
     tierNames = { normal = "Normal boss", boss = "End boss", rare = "Very rare" },
 }

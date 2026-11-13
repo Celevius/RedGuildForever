@@ -528,7 +528,6 @@ function ns.Sync(quiet)
     ns.syncInfo = { at = ns.Now(), from = {}, changes = 0, running = true }
     local cutoff = ns.SyncCutoff()
     ns.SendComm(table.concat({ "Q", newNonce(), cutoff .. "=" .. ns.SyncDigest(cutoff) }, SEP), "GUILD", nil, true)
-    if not quiet then ns.Print("syncing with everyone online") end
     ns.After(15, function()
         ns.syncInfo.running = false
         if not quiet then

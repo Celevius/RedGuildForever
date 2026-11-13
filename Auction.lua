@@ -598,7 +598,9 @@ function ns.SendBid(inc, spec)
     end
     local first = inc.myBid == nil
     inc.myBid = spec
-    if first and spec ~= "PASS" then
+    -- the hint about /rgf rebid once per session is enough, the card going away shows the bid
+    if first and spec ~= "PASS" and not ns.rebidHintShown then
+        ns.rebidHintShown = true
         ns.Print("you bid " .. (spec == "MS" and "main spec" or "off spec") .. " on " .. (inc.link or "the item") .. ". To change it while bidding is open, type /rgf rebid")
     end
     ns.Fire("RGF_INCOMING_AUCTION", inc)
