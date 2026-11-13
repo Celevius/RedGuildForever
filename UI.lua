@@ -379,6 +379,23 @@ local raidLootColumns = {
     { key = "time", label = "Time", w = 50, justify = "RIGHT" },
 }
 
+local lootColumns = {
+    { key = "time", label = "Date", w = 62 },
+    { key = "item", label = "Item", w = 166 },
+    { key = "winner", label = "Winner", w = 118 },
+    { key = "spec", label = "For", w = 58 },
+    { key = "gp", label = "GP", w = 44, justify = "RIGHT" },
+    { key = "bids", label = "Bids", w = 44, justify = "RIGHT" },
+}
+
+local lootBidColumns = {
+    { key = "name", label = "Player", w = 170 },
+    { key = "spec", label = "Answer", w = 90 },
+    { key = "pr", label = "Priority", w = 70, justify = "RIGHT" },
+    { key = "roll", label = "Roll", w = 50, justify = "RIGHT" },
+    { key = "note", label = "", w = 100 },
+}
+
 local historyColumns = {
     { key = "time", label = "Time", w = 82 },
     { key = "label", label = "Change", w = 250 },
@@ -388,10 +405,10 @@ local historyColumns = {
 
 local function showPage(id)
     if not main then return end
-    -- members only need the standings, the other tabs are for editors
+    -- members get the standings and the loot history, the other tabs are for editors
     local canEdit = ns.CanEdit()
-    if not canEdit then id = ns.TAB.standings end
-    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit) end
+    if not canEdit and id ~= ns.TAB.loot then id = ns.TAB.standings end
+    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit or i <= ns.TAB.loot) end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
     main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
@@ -1191,11 +1208,34 @@ if StaticPopupDialogs then
     }
 end
 
+-- EPGP history: every change of points. Loot has its own history.
+local historyFilter = { text = "", loot = false }
+
 local function buildHistoryPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetAllPoints()
-    headerRow(page, historyColumns)
-    page.list = scrollList(page, 20, function(row)
+    local searchLabel = text(page, "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", 10, -10)
+    searchLabel:SetText("Search")
+    page.search = ns.UIInputBox(page, 130, false)
+    page.search:SetMaxLetters(30)
+    page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    page.search:SetScript("OnTextChanged", function(self)
+        historyFilter.text = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    tip(page.search, "Search the EPGP history", "Type a part of a player's name, of the editor, or of the change, for example decay or raid.")
+    page.withLoot = checkbox(page, "Also show GP from loot", function(checked)
+        historyFilter.loot = checked and true or false
+        ns.RefreshStandings()
+    end)
+    page.withLoot:SetPoint("LEFT", page.search, "RIGHT", 12, 0)
+
+    local holder = CreateFrame("Frame", nil, page)
+    holder:SetPoint("TOPLEFT", 0, -28)
+    holder:SetPoint("BOTTOMRIGHT")
+    headerRow(holder, historyColumns)
+    page.list = scrollList(holder, 20, function(row)
         rowCells(row, historyColumns)
         -- every change can be undone, also an old one or one of another editor
         row.undo = button(row, "Undo", 56, function()
@@ -1208,6 +1248,121 @@ local function buildHistoryPage(parent)
     end)
     page.list:SetPoint("TOPLEFT", 4, -30)
     page.list:SetPoint("BOTTOMRIGHT", -26, 4)
+    page.empty = text(holder, "GameFontDisable", "CENTER")
+    page.empty:SetPoint("TOP", 0, -70)
+    return page
+end
+
+-- Loot history: every item, who got it, and below the list who bid on the chosen item
+local lootFilter = { text = "", days = nil, mine = false }
+ns.lootFilter = lootFilter
+local PERIODS = { { nil, "All time" }, { 7, "Last 7 days" }, { 30, "Last 30 days" } }
+
+local function specText(l)
+    if not l.winner then return "|cff999999none|r" end
+    if l.spec == "OS" then return "|cff66c7ffOff spec|r" end
+    if l.spec == "MS" then return "|cff40ff40Main spec|r" end
+    return ""
+end
+
+local function buildLootPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+    local searchLabel = text(page, "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", 10, -10)
+    searchLabel:SetText("Search")
+    page.search = ns.UIInputBox(page, 130, false)
+    page.search:SetMaxLetters(30)
+    page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    page.search:SetScript("OnTextChanged", function(self)
+        lootFilter.text = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    tip(page.search, "Search the loot history", "Type a part of an item name or of a player's name. Players are found as winner and as bidder.")
+    page.period = button(page, "All time", 110, function()
+        local nextOne = 1
+        for i, p in ipairs(PERIODS) do if p[1] == lootFilter.days then nextOne = i % #PERIODS + 1 end end
+        lootFilter.days = PERIODS[nextOne][1]
+        ns.RefreshStandings()
+    end)
+    page.period:SetPoint("LEFT", page.search, "RIGHT", 8, 0)
+    tip(page.period, "Time", "Click to switch between all time, the last 7 days and the last 30 days.")
+    page.mine = checkbox(page, "Only mine", function(checked)
+        lootFilter.mine = checked and true or false
+        ns.RefreshStandings()
+    end)
+    page.mine:SetPoint("LEFT", page.period, "RIGHT", 8, 0)
+    tip(page.mine, "Only mine", "Only items you won or bid on, with any of your characters.")
+
+    local holder = CreateFrame("Frame", nil, page)
+    holder:SetPoint("TOPLEFT", 0, -28)
+    holder:SetPoint("BOTTOMRIGHT", 0, 156)
+    headerRow(holder, lootColumns)
+    page.list = scrollList(holder, 18, function(row)
+        rowCells(row, lootColumns)
+        row.selected = row:CreateTexture(nil, "BACKGROUND")
+        row.selected:SetAllPoints()
+        row.selected:SetColorTexture(1, 0.82, 0, 0.14)
+        row:SetScript("OnClick", function(self)
+            if not self.entry then return end
+            sound("U_CHAT_SCROLL_BUTTON")
+            page.selected = self.entry.id
+            ns.RefreshStandings()
+        end)
+        row:SetScript("OnEnter", function(self)
+            local l = self.entry
+            if not l then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if not (l.link:find("|H", 1, true) and pcall(GameTooltip.SetHyperlink, GameTooltip, l.link)) then
+                GameTooltip:SetText(l.itemName)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Click to see who bid", 0, 1, 0)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end)
+    page.list:SetPoint("TOPLEFT", 4, -30)
+    page.list:SetPoint("BOTTOMRIGHT", -26, 0)
+    page.empty = text(holder, "GameFontDisable", "CENTER")
+    page.empty:SetPoint("TOP", 0, -70)
+    page.empty:SetWidth(420)
+    page.empty:SetWordWrap(true)
+
+    -- the chosen item: who bid, and who got it
+    local detail = CreateFrame("Frame", nil, page)
+    detail:SetPoint("BOTTOMLEFT")
+    detail:SetPoint("BOTTOMRIGHT")
+    detail:SetHeight(154)
+    page.detail = detail
+    local line = detail:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", 4, 0)
+    line:SetPoint("TOPRIGHT", -4, 0)
+    line:SetHeight(1)
+    line:SetColorTexture(1, 0.82, 0, 0.35)
+    detail.title = text(detail, "GameFontNormal")
+    detail.title:SetPoint("TOPLEFT", 10, -8)
+    detail.title:SetWidth(400)
+    detail.sub = text(detail, "GameFontHighlightSmall")
+    detail.sub:SetPoint("TOPLEFT", detail.title, "BOTTOMLEFT", 0, -3)
+    detail.sub:SetWidth(480)
+    detail.undo = button(detail, "Take back", 90, function()
+        if not page.selected then return end
+        local done = ns.UndoEvent(page.selected)
+        if done then ns.Print("undone " .. done.label) end
+    end)
+    detail.undo:SetPoint("TOPRIGHT", -8, -4)
+    tip(detail.undo, "Take this award back", "The winner gets the GP back. The item stays in the loot history, marked as taken back.")
+    local bidHolder = CreateFrame("Frame", nil, detail)
+    bidHolder:SetPoint("TOPLEFT", 0, -38)
+    bidHolder:SetPoint("BOTTOMRIGHT")
+    headerRow(bidHolder, lootBidColumns)
+    detail.list = scrollList(bidHolder, 16, function(row) rowCells(row, lootBidColumns) end)
+    detail.list:SetPoint("TOPLEFT", 4, -28)
+    detail.list:SetPoint("BOTTOMRIGHT", -26, 2)
+    detail.empty = text(bidHolder, "GameFontDisableSmall", "CENTER")
+    detail.empty:SetPoint("TOP", 0, -44)
+    detail.empty:SetWidth(420)
     return page
 end
 
@@ -1231,6 +1386,7 @@ local function buildMain()
 
     f.pages = {
         buildStandingsPage(f.Inset),
+        buildLootPage(f.Inset),
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
         buildSyncPage(f.Inset),
@@ -1289,7 +1445,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Raid", "History", "Data" }, showPage)
+    tabs(f, name, { "Standings", "Loot history", "Raid", "EPGP history", "Data" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1429,32 +1585,119 @@ end
 local function refreshHistoryPage(page)
     local log = ns.Log() or {}
     local canEdit = ns.CanEdit()
+    local wanted = historyFilter.text
     local n = 0
     for i = #log, 1, -1 do
         local e = log[i]
-        n = n + 1
-        local row = page.list:Row(n)
-        row.id = e.id
-        row.cells.time:SetText(date("%d.%m. %H:%M", e.time))
-        row.cells.label:SetText(e.undone and ("|cff808080" .. e.label .. ", undone|r") or e.label)
-        row.cells.by:SetText(ns.ShortName(e.by))
-        row.undo:SetShown(canEdit and e.id ~= nil and not e.undo and not e.undone)
-        row:Show()
+        local show = historyFilter.loot or not e.loot
+        if show and wanted ~= "" then
+            show = (e.label or ""):lower():find(wanted, 1, true) ~= nil
+                or ns.ShortName(e.by):lower():find(wanted, 1, true) ~= nil
+        end
+        if show then
+            n = n + 1
+            local row = page.list:Row(n)
+            row.id = e.id
+            row.cells.time:SetText(date("%d.%m. %H:%M", e.time))
+            row.cells.label:SetText(e.undone and ("|cff808080" .. e.label .. ", undone|r") or e.label)
+            row.cells.by:SetText(ns.ShortName(e.by))
+            row.undo:SetShown(canEdit and e.id ~= nil and not e.undo and not e.undone)
+            row:Show()
+        end
     end
     page.list:SetCount(n)
+    page.shownCount = n
+    page.empty:SetShown(n == 0)
+    page.empty:SetText(#log == 0 and "No changes yet." or "Nothing matches the search.")
+end
+
+local function refreshLootPage(page)
+    local all = ns.LootHistory()
+    local list = ns.FilterLoot(all, lootFilter)
+    page.shown = list
+    for _, p in ipairs(PERIODS) do
+        if p[1] == lootFilter.days then page.period:SetText(p[2]) end
+    end
+    -- keep the chosen item when it is still in the list, otherwise take the newest
+    local chosen
+    for _, l in ipairs(list) do if l.id == page.selected then chosen = l end end
+    chosen = chosen or list[1]
+    page.selected = chosen and chosen.id or nil
+
+    for i, l in ipairs(list) do
+        local row = page.list:Row(i)
+        row.entry = l
+        local grey = l.undone and "|cff808080" or ""
+        row.cells.time:SetText(grey .. date("%d.%m.%y", l.time))
+        row.cells.item:SetText(l.undone and (grey .. l.itemName .. "|r") or l.link)
+        if l.winner then
+            row.cells.winner:SetText(grey .. ns.ShortName(l.winner))
+            local m = ns.members[l.winner]
+            row.cells.winner:SetTextColor(classColor(m and m.class))
+        else
+            row.cells.winner:SetText("|cff999999Bank or disenchant|r")
+            row.cells.winner:SetTextColor(1, 1, 1)
+        end
+        row.cells.spec:SetText(l.undone and "|cff808080taken back|r" or specText(l))
+        row.cells.gp:SetText(l.winner and (grey .. l.cost) or "")
+        local ms, os = ns.BidCounts(l.bids)
+        row.cells.bids:SetText(l.old and "|cff808080?|r" or (ms + os))
+        row.selected:SetShown(chosen == l)
+        row:Show()
+    end
+    page.list:SetCount(#list)
+    page.empty:SetShown(#list == 0)
+    page.empty:SetText(#all == 0 and "No loot given out yet. Every item the loot master gives out shows up here, with everyone who bid on it."
+        or "Nothing matches. Change the search, the time or Only mine.")
+
+    -- the bids of the chosen item
+    local d = page.detail
+    d:SetShown(chosen ~= nil)
+    if not chosen then return end
+    local l = chosen
+    d.title:SetText(l.link)
+    local sub
+    if l.winner then
+        sub = string.format("Won by |cffffffff%s|r for %s%s", ns.ShortName(l.winner), l.cost > 0 and (l.cost .. " GP") or "free",
+            l.spec and (l.spec == "OS" and ", off spec" or ", main spec") or "")
+    else
+        sub = "Nobody took it, bank or disenchant"
+    end
+    sub = sub .. "  |cff999999" .. date("%d.%m.%Y %H:%M", l.time) .. ", loot master " .. ns.ShortName(l.by) .. "|r"
+    if l.undone then sub = "|cffff8040Taken back.|r  " .. sub end
+    d.sub:SetText(sub)
+    d.undo:SetShown(ns.CanEdit() and l.winner ~= nil and not l.undone)
+    for i, b in ipairs(l.bids) do
+        local row = d.list:Row(i)
+        row.cells.name:SetText(ns.ShortName(b.n))
+        local m = ns.members[b.n]
+        row.cells.name:SetTextColor(classColor(m and m.class))
+        row.cells.spec:SetText(b.s == "MS" and "|cff40ff40Main spec|r" or (b.s == "OS" and "|cff66c7ffOff spec|r" or "|cff999999Pass|r"))
+        row.cells.pr:SetText(b.pr and ns.FormatPR(b.pr) or "")
+        row.cells.roll:SetText(b.roll or "")
+        row.cells.note:SetText(b.n == l.winner and "|cffffd100Winner|r" or "")
+        row:Show()
+    end
+    d.list:SetCount(#l.bids)
+    d.empty:SetShown(#l.bids == 0)
+    d.empty:SetText(l.old and "The bids were not kept for this item, it was given out with an older version."
+        or "Nobody bid on this item.")
 end
 
 function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
     local T = ns.TAB
-    if tab ~= T.standings and not ns.CanEdit() then
+    if tab ~= T.standings and tab ~= T.loot and not ns.CanEdit() then
         showPage(T.standings) -- no editor anymore, back to the standings
         return
     end
     local count = 0
     if tab == T.standings then
         count = refreshStandingsPage(main.pages[T.standings])
+    elseif tab == T.loot then
+        count = #ns.LootHistory()
+        refreshLootPage(main.pages[T.loot])
     elseif tab == T.raid then
         refreshRaidPage(main.pages[T.raid])
     elseif tab == T.history then
@@ -1476,8 +1719,10 @@ function ns.RefreshStandings()
         status = "You are not in a guild"
     elseif tab == T.raid then
         status = ns.Session() and "Raid running" or (#ns.Bench() .. " players on the bench")
+    elseif tab == T.loot then
+        status = count .. " items, click one to see who bid"
     elseif tab == T.history then
-        status = "Every change of every editor, shared with Sync"
+        status = "Every EP and GP change of every editor"
     elseif tab == T.data then
         status = "Sync, decay and backup"
     elseif not ns.HasData() then

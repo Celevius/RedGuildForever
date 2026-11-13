@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.3.0"
+ns.version = "2.4.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
@@ -146,7 +146,7 @@ end
 ns.TEST_TAG = "|cffff8040[Test]|r "
 
 -- the tabs of the main window
-ns.TAB = { standings = 1, raid = 2, history = 3, data = 4 }
+ns.TAB = { standings = 1, loot = 2, raid = 3, history = 4, data = 5 }
 
 -- The addon never writes in guild or officer chat, only raid, party and whispers.
 local blockedChannels = { GUILD = true, OFFICER = true }

@@ -195,6 +195,77 @@ function ns.LootOf(name, limit)
     return list
 end
 
+------------------------------------------------------------------------
+-- Loot history: every item, who bid on it and who got it
+------------------------------------------------------------------------
+-- Newest first. Items given out before version 2.4 have no bids recorded.
+function ns.LootHistory()
+    local st = ns.State()
+    local list, covered = {}, {}
+    for _, ev in ipairs(st.events) do
+        if ev.k == "L" then
+            if ev.ref then covered[ev.ref] = true end
+            local link, name = itemOf(ev)
+            table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
+                winner = ev.winner, cost = ev.cost or 0, spec = ev.spec, by = ev.by, bids = ev.bids or {},
+                undone = ev.ref ~= nil and st.undone[ev.ref] ~= nil })
+        end
+    end
+    for _, ev in ipairs(st.events) do
+        if ev.k == "P" and ev.kind == "loot" and not covered[ev.id] then
+            local link, name = itemOf(ev)
+            for _, c in ipairs(ev.ch or {}) do
+                table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
+                    winner = c.n, cost = c.gp or 0, by = ev.by, bids = {}, old = true, undone = st.undone[ev.id] ~= nil })
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.time ~= b.time then return a.time > b.time end
+        return a.id > b.id
+    end)
+    return list
+end
+
+-- filter = { text = "ring", days = 7, mine = true }, every part is optional.
+-- The text is looked for in the item, the winner, the loot master and the bidders.
+function ns.FilterLoot(list, filter)
+    filter = filter or {}
+    local textValue = (filter.text or ""):lower()
+    local since = filter.days and (ns.Now() - filter.days * 86400) or nil
+    local me = filter.mine and ns.MainOf(ns.PlayerName()) or nil
+    local out = {}
+    local function has(name)
+        return name and ns.ShortName(name):lower():find(textValue, 1, true) ~= nil
+    end
+    for _, l in ipairs(list) do
+        local ok = not since or l.time >= since
+        if ok and me then
+            ok = l.winner ~= nil and ns.MainOf(l.winner) == me
+            for _, b in ipairs(l.bids) do
+                if b.s ~= "PASS" and ns.MainOf(b.n) == me then ok = true end
+            end
+        end
+        if ok and textValue ~= "" then
+            ok = l.itemName:lower():find(textValue, 1, true) ~= nil or has(l.winner) or has(l.by)
+            for _, b in ipairs(l.bids) do
+                if has(b.n) then ok = true end
+            end
+        end
+        if ok then table.insert(out, l) end
+    end
+    return out
+end
+
+-- "2 main, 1 off, 3 pass" for a list of bids
+function ns.BidCounts(bids)
+    local ms, os, pass = 0, 0, 0
+    for _, b in ipairs(bids or {}) do
+        if b.s == "MS" then ms = ms + 1 elseif b.s == "OS" then os = os + 1 else pass = pass + 1 end
+    end
+    return ms, os, pass
+end
+
 -- The loot of a raid as plain text, for Discord
 function ns.RaidLootText(s)
     s = s or ns.LastSession()

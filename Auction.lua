@@ -346,6 +346,22 @@ local function closeOwnPopup(a, winner)
     end
 end
 
+-- Every bid of an auction as it stands now: name, answer, priority and roll
+function ns.BidSnapshot(a)
+    local list = {}
+    local all, _, _, passed = ns.SortedBids(a)
+    for _, b in ipairs(all) do table.insert(list, { n = b.name, s = b.spec, pr = b.pr, roll = b.roll }) end
+    for _, b in ipairs(passed) do table.insert(list, { n = b.name, s = "PASS", pr = b.pr }) end
+    return list
+end
+
+-- Keep who bid and who got the item, for the loot history. Test mode keeps it in the test data.
+function ns.RecordLoot(a, winner, cost, spec, awardId, bids)
+    if not ns.CanChange() then return nil end
+    return ns.AddEvent({ k = "L", item = a.itemID, winner = winner, cost = cost or 0, spec = spec, ref = awardId,
+        bids = bids or ns.BidSnapshot(a), r = a.link })
+end
+
 -- What a player would pay for the item, and whether as main spec or off spec.
 function ns.AwardCost(a, name)
     local bid = a.bids[ns.Resolve(name)]
@@ -362,6 +378,7 @@ function ns.Award(name, auction)
     local channel = groupChannel(a)
     if not name then
         say(a, a.link .. " goes to the guild bank or gets disenchanted. It costs 0 GP.")
+        ns.RecordLoot(a, nil, 0, nil, nil)
         if channel then ns.SendComm(table.concat({ "C", a.id, "" }, SEP), channel) end
         closeOwnPopup(a)
         removeAuction(a)
@@ -373,10 +390,12 @@ function ns.Award(name, auction)
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
     local cost = spec == "MS" and a.price or ns.OffSpecCost(a.price)
+    local bidsThen = ns.BidSnapshot(a) -- the priorities before the price is paid
     ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP", { kind = "loot", item = a.itemID })
     local main = ns.Adjust(full, 0, cost)
-    ns.EndAction()
+    local action = ns.EndAction()
     if not main then return false end
+    ns.RecordLoot(a, full, cost, spec, action and action.id, bidsThen)
     local who = ns.ShortName(full)
     if main ~= full then who = who .. " (alt of " .. ns.ShortName(main) .. ")" end
     if spec == "MS" then

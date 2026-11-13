@@ -202,6 +202,9 @@ end)
 --   !D,id,time,by,percent,label
 --   !A,id,time,by,alt,main,label    an empty main makes the alt a main again
 --   !U,id,time,by,undone id,label
+--   !L,id,time,by,item,winner,gp,MS or OS,award id,Name:MS:2.00:57/Name:PASS::,item link
+--      a loot record: who bid what with which priority and roll, and who got
+--      the item. An empty winner means bank or disenchant
 ------------------------------------------------------------------------
 local function clean(textValue)
     return ((textValue or ""):gsub("[;%^\r\n]", " "))
@@ -225,6 +228,14 @@ function ns.EncodeEvent(ev)
         return head .. string.format("%s,%s,%s", short(ev.alt), short(ev.main), clean(ev.r))
     elseif ev.k == "U" then
         return head .. string.format("%s,%s", ev.ref or "", clean(ev.r))
+    elseif ev.k == "L" then
+        local bids = {}
+        for _, b in ipairs(ev.bids or {}) do
+            table.insert(bids, string.format("%s:%s:%s:%s", short(b.n), b.s or "PASS",
+                b.pr and string.format("%.2f", b.pr) or "", b.roll or ""))
+        end
+        return head .. string.format("%s,%s,%d,%s,%s,%s,%s", ev.item or "", short(ev.winner), ev.cost or 0,
+            ev.spec or "", ev.ref or "", table.concat(bids, "/"), clean(ev.r))
     end
 end
 
@@ -256,6 +267,19 @@ local function decodeEvent(entryText)
         local ref, label = rest:match("^(%x+),(.*)$")
         if not ref then return nil end
         ev.ref, ev.r = ref, label
+    elseif k == "L" then
+        local item, winner, cost, spec, ref, bids, label = rest:match("^(%d*),([^,]*),(%-?%d+),(%a*),(%x*),([^,]*),(.*)$")
+        if not item then return nil end
+        ev.item = tonumber(item)
+        ev.winner = winner ~= "" and ns.FullName(winner) or nil
+        ev.cost = tonumber(cost)
+        ev.spec = spec ~= "" and spec or nil
+        ev.ref = ref ~= "" and ref or nil
+        ev.r = label
+        ev.bids = {}
+        for name, s, pr, roll in bids:gmatch("([^/:]+):(%a+):([%d%.]*):(%d*)") do
+            table.insert(ev.bids, { n = ns.FullName(name), s = s, pr = tonumber(pr), roll = tonumber(roll) })
+        end
     else
         return nil
     end
@@ -326,9 +350,17 @@ function ns.SyncCutoff(now)
     return (math.floor((now or ns.Now()) / MONTH) - 2) * MONTH
 end
 
+-- Loot records (who bid, who got it) have their own buckets, LO and L680.
+-- Version 2.3 and older does not know them, so their month buckets stay the
+-- same as ours and they are not sent loot records they cannot keep.
 local function bucketKey(ev, cutoff)
-    if (ev.t or 0) < cutoff then return "O" end
-    return "M" .. math.floor(ev.t / MONTH)
+    local loot = ev.k == "L"
+    if (ev.t or 0) < cutoff then return loot and "LO" or "O" end
+    return (loot and "L" or "M") .. math.floor(ev.t / MONTH)
+end
+
+local function isLootKey(key)
+    return key:sub(1, 1) == "L"
 end
 
 -- every bucket with its entries, count and checksum
@@ -379,6 +411,8 @@ local function digestOf(buckets)
         local b = buckets[key]
         table.insert(parts, key .. ":" .. b.count .. ":" .. b.sum)
     end
+    -- the mark of a version that knows loot records, older versions skip an empty bucket
+    table.insert(parts, "V3:0:0")
     return table.concat(parts, ",")
 end
 
@@ -602,7 +636,9 @@ ns.OnComm("Q", function(text, sender)
     local seen = {}
     for key, b in pairs(mine) do
         seen[key] = true
-        if not same(b, theirs[key]) then table.insert(keys, key) end
+        -- an older version cannot keep loot records, so it gets none
+        local skip = isLootKey(key) and not theirs.V3
+        if not skip and not same(b, theirs[key]) then table.insert(keys, key) end
     end
     for key, d in pairs(theirs) do
         if not seen[key] and d ~= "0:0" then table.insert(keys, key) end
@@ -677,7 +713,8 @@ ns.OnComm("E", function(text, sender)
         local mine = buildBuckets(inc.cutoff)
         local keys = {}
         for _, key in ipairs(inc.parts) do
-            if mine[key] and not same(mine[key], his[key]) then table.insert(keys, key) end
+            local skip = isLootKey(key) and not his.V3 -- the sender is an older version
+            if mine[key] and not skip and not same(mine[key], his[key]) then table.insert(keys, key) end
         end
         if #keys > 0 then
             ns.After(2 + math.random() * 3, function() sendBuckets("R", "-", inc.cutoff, keys) end)
