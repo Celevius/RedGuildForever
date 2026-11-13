@@ -139,6 +139,32 @@ local function button(parent, label, width, onClick)
     return b
 end
 
+-- A tooltip for a button. title and body can be functions, so the tooltip
+-- always shows what the click would do right now.
+local function tip(widget, title, body)
+    widget:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(type(title) == "function" and title() or title)
+        local lines = type(body) == "function" and body() or body
+        if type(lines) == "string" then lines = { lines } end
+        for _, line in ipairs(lines or {}) do GameTooltip:AddLine(line, 1, 1, 1, true) end
+        GameTooltip:Show()
+    end)
+    widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return widget
+end
+
+-- A small round "i" that explains something on mouse over, instead of a paragraph of text
+local function helpIcon(parent, title, body)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(16, 16)
+    local tex = b:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    tex:SetTexture("Interface\\common\\help-i")
+    b.body = body
+    return tip(b, title, body)
+end
+
 -- Column header like "Lvl Class Name Zone Rank Note" in the guild window
 local function columnHeader(parent, label, width, onClick)
     local h, native = create("Button", nil, parent, "WhoFrameColumnHeaderTemplate")
@@ -322,6 +348,7 @@ ns.UI = {
     setPortrait = setPortrait, setTitle = setTitle, window = window, button = button,
     columnHeader = columnHeader, headerRow = headerRow, scrollList = scrollList,
     rowCells = rowCells, checkbox = checkbox, itemButton = itemButton, itemName = itemName,
+    tip = tip, helpIcon = helpIcon,
 }
 
 ------------------------------------------------------------------------
@@ -332,7 +359,8 @@ local showAll = false
 local sortKey, sortDesc = "pr", true
 
 local standingsColumns = {
-    { key = "name", label = "Name", w = 170, sort = "name" },
+    { key = "place", label = "#", w = 34, justify = "RIGHT" },
+    { key = "name", label = "Name", w = 156, sort = "name" },
     { key = "ep", label = "EP", w = 74, justify = "RIGHT", sort = "ep" },
     { key = "gp", label = "GP", w = 74, justify = "RIGHT", sort = "gp" },
     { key = "pr", label = "Priority", w = 84, justify = "RIGHT", sort = "pr" },
@@ -360,6 +388,10 @@ local historyColumns = {
 
 local function showPage(id)
     if not main then return end
+    -- members only need the standings, the other tabs are for editors
+    local canEdit = ns.CanEdit()
+    if not canEdit then id = ns.TAB.standings end
+    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit) end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
     main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
@@ -459,8 +491,34 @@ local function buildStandingsPage(parent)
         end
         ns.RefreshStandings()
     end)
-    page.list = scrollList(holder, 18, function(row)
+    -- class icon in front of the name, and a bar in the class color for the priority
+    local function decorate(row)
         rowCells(row, standingsColumns)
+        row.classIcon = row:CreateTexture(nil, "ARTWORK")
+        row.classIcon:SetSize(14, 14)
+        row.classIcon:SetPoint("LEFT", 40, 0)
+        row.cells.name:ClearAllPoints()
+        row.cells.name:SetPoint("LEFT", 58, 0)
+        row.cells.name:SetWidth(128)
+        row.bar = row:CreateTexture(nil, "BORDER")
+        row.bar:SetPoint("LEFT", 36, 0)
+        row.bar:SetHeight(14)
+    end
+    page.decorate = decorate
+
+    -- your own row, always in view above the list
+    page.mine = CreateFrame("Button", nil, holder)
+    page.mine:SetHeight(20)
+    page.mine:SetPoint("TOPLEFT", 4, -30)
+    page.mine:SetPoint("RIGHT", holder, "RIGHT", -26, 0)
+    local mineBg = page.mine:CreateTexture(nil, "BACKGROUND")
+    mineBg:SetAllPoints()
+    mineBg:SetColorTexture(1, 0.82, 0, 0.12)
+    decorate(page.mine)
+    tip(page.mine, "Your place", "This row is always you, also when you scroll, search or filter the list.")
+
+    page.list = scrollList(holder, 18, function(row)
+        decorate(row)
         row:SetScript("OnEnter", function(self)
             if not self.entry then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -491,7 +549,7 @@ local function buildStandingsPage(parent)
             if self.entry and ns.CanEdit() then ns.OpenEditor(self.entry.name) end
         end)
     end)
-    page.list:SetPoint("TOPLEFT", 4, -30)
+    page.list:SetPoint("TOPLEFT", 4, -52)
     page.list:SetPoint("BOTTOMRIGHT", -26, 4)
     return page
 end
@@ -569,19 +627,21 @@ local function buildSyncPage(parent)
     local title = text(page, "GameFontNormal")
     title:SetPoint("TOPLEFT", 12, -12)
     title:SetText("Where the points are saved")
-    local info = text(page, "GameFontHighlightSmall")
-    info:SetPoint("TOPLEFT", 12, -32)
-    info:SetWidth(470)
-    info:SetWordWrap(true)
-    info:SetText("Every player keeps a copy of the points in the addon's save file. Every change is kept, and Sync hands the changes to everyone online, so changes made at the same time in two raids all count. Editors send, everyone else only receives.")
+    page.help = helpIcon(page, "Where the points are saved", {
+        "Every player keeps a copy of the points in the addon's save file.",
+        "Every change is kept, and Sync hands the changes to everyone online. Changes made at the same time in two raids all count.",
+        "Editors send, everyone else only receives. The addon syncs by itself, Sync now is only for when you do not want to wait.",
+    })
+    page.help:SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     page.state = text(page, "GameFontHighlight")
-    page.state:SetPoint("TOPLEFT", 12, -72)
+    page.state:SetPoint("TOPLEFT", 12, -34)
     page.state:SetWidth(470)
     page.state:SetWordWrap(true)
 
     page.sync = button(page, "Sync now", 110, function() ns.Sync() end)
     page.sync:SetPoint("TOPLEFT", 10, -106)
+    tip(page.sync, "Sync now", "Asks everyone online for changes you do not have yet. The addon does this by itself after login and every 15 minutes.")
     page.fresh = button(page, "Start fresh", 110, function()
         if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
     end)
@@ -589,6 +649,10 @@ local function buildSyncPage(parent)
     -- decay only works with data, start fresh and the notes import only without
     page.decay = button(page, "Weekly decay", 120, function() ns.AskDecay() end)
     page.decay:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
+    tip(page.decay, "Weekly decay", function()
+        return { "Lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent. Run it once a week, after the last raid.",
+            "It asks first, and Undo takes it back." }
+    end)
     page.notes = button(page, "Import officer notes", 150, function()
         local n = ns.ImportOfficerNotes()
         ns.Print(n > 0 and ("imported " .. n .. " players from the officer notes") or "no points found in the officer notes")
@@ -598,14 +662,15 @@ local function buildSyncPage(parent)
     local backupTitle = text(page, "GameFontNormal")
     backupTitle:SetPoint("TOPLEFT", 12, -144)
     backupTitle:SetText("Backup")
-    local backupInfo = text(page, "GameFontHighlightSmall")
-    backupInfo:SetPoint("TOPLEFT", 12, -164)
-    backupInfo:SetWidth(470)
-    backupInfo:SetWordWrap(true)
-    backupInfo:SetText("Show backup, then press Ctrl C and keep the text in Discord or a file. To restore, paste a backup here with Ctrl V and click Import backup.")
+    page.backupHelp = helpIcon(page, "Backup", {
+        "Show backup, then press Ctrl C and keep the text in Discord or a file.",
+        "To restore, paste a backup into the box with Ctrl V and click Import backup. Nothing is counted twice.",
+        "The addon also keeps the newest three backups by itself, in a second save file of this character.",
+    })
+    page.backupHelp:SetPoint("LEFT", backupTitle, "RIGHT", 6, 0)
 
     local holder = create("Frame", nil, page, "InsetFrameTemplate")
-    holder:SetPoint("TOPLEFT", 10, -196)
+    holder:SetPoint("TOPLEFT", 10, -166)
     holder:SetPoint("BOTTOMRIGHT", -10, 40)
     local scroll = create("ScrollFrame", nil, holder, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 6, -6)
@@ -659,15 +724,14 @@ local function refreshSyncPage(page)
         table.insert(lines, count .. " players and " .. changes .. " changes in the data.")
         local auto = ns.LatestAutoBackup and ns.LatestAutoBackup()
         if auto then
-            table.insert(lines, "Automatic backup from " .. date("%d.%m. %H:%M", auto.time) .. ", kept in a second save file of this character.")
+            table.insert(lines, "Automatic backup from " .. date("%d.%m. %H:%M", auto.time) .. ".")
         end
         local waiting = ns.QueuedMessages and ns.QueuedMessages() or 0
         if waiting > 0 then table.insert(lines, waiting .. " sync messages are still waiting to go out.") end
         if ns.CanEdit() then
             local last = ns.LastDecay()
             local due = ns.DecayDue()
-            table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid. "
-                .. (last and ("Last one on " .. date("%d.%m.", last.t) .. " by " .. ns.ShortName(last.by) .. ".") or "There was none yet.")
+            table.insert(lines, (last and ("Last decay on " .. date("%d.%m.", last.t) .. " by " .. ns.ShortName(last.by) .. ".") or "No weekly decay yet.")
                 .. (due and " |cffff8040It is due.|r" or ""))
         end
     end
@@ -788,8 +852,11 @@ local function buildSettingsContent(holder, top, parts)
     end)
     view.test:SetPoint("TOPLEFT", 12, y)
     y = y - 30
-    local info = paragraph(nil, 4)
-    info:SetText("Try every function alone. The addon works on a copy of your data and rules with a simulated raid. Raid EP, bench, decay, the editor, alts, sync, bidding, rolls, awards and the rules below all work, but nothing is sent to other players and your real data stays as it is.")
+    local testHelp = helpIcon(parent, "Test mode", {
+        "Try every function alone. The addon works on a copy of your data and rules, with a simulated raid that bids and rolls.",
+        "Nothing is sent to other players and your real data stays as it is.",
+    })
+    testHelp:SetPoint("LEFT", view.test, "RIGHT", 90, 0)
     view.raid = paragraph(nil, 3)
     view.reset = button(parent, "Reset test data", 130, function()
         ns.ResetTestData()
@@ -834,8 +901,11 @@ local function buildSettingsContent(holder, top, parts)
 
     -- Editors
     heading("Editors", "GameFontNormalLarge")
-    local editorInfo = paragraph(nil, 3)
-    editorInfo:SetText("Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is. Only the guild leader adds or removes them. Sync shares the list with everyone.")
+    local editorHelp = helpIcon(parent, "Editors", {
+        "Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is.",
+        "Only the guild leader adds or removes them. Sync shares the list with everyone.",
+    })
+    editorHelp:SetPoint("TOPLEFT", 90, y + 22)
     view.editorList = paragraph("GameFontHighlight", 3)
     view.editorBox = ns.UIInputBox(parent, 180, false)
     view.editorBox:SetMaxLetters(48)
@@ -884,8 +954,11 @@ local function buildSettingsContent(holder, top, parts)
     if parts.rules then
     -- Guild rules
     heading("Guild rules", "GameFontNormalLarge")
-    view.rulesInfo = paragraph(nil, 3)
-    view.rulesInfo:SetText("These rules are the same for the whole guild. Sync shares them with every editor, the newest change wins. The guild leader and editors can change them, everyone else can look.")
+    view.rulesInfo = helpIcon(parent, "Guild rules", {
+        "These rules are the same for the whole guild. Sync shares them, the newest change wins.",
+        "The guild leader and editors can change them, everyone else can look.",
+    })
+    view.rulesInfo:SetPoint("TOPLEFT", 110, y + 22)
 
     for _, def in ipairs(ns.RULES) do
         if def.section then
@@ -1166,16 +1239,40 @@ local function buildMain()
     -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
     f.lootMaster = button(f, "Loot Master", 110, function() ns.OpenLootMaster() end)
     f.lootMaster:SetPoint("BOTTOMLEFT", 6, 4)
+    tip(f.lootMaster, "Loot Master", "Opens the loot window: choose an item, start bidding and give it out.")
+
+    -- who would get EP of this kind right now, for the tooltips
+    local function whoGets(kind, amount)
+        local get, already = {}, {}
+        local seen = {}
+        for _, n in ipairs(ns.RaidAndBench()) do
+            local m = ns.MainOf(n)
+            if m and ns.members[m] and not seen[m] then
+                seen[m] = true
+                table.insert(ns.GotTonight(m, kind) and already or get, ns.ShortName(n))
+            end
+        end
+        local lines = { #get .. " players get " .. amount .. " EP: " .. (#get > 0 and table.concat(get, ", ") or "nobody") }
+        if #already > 0 then table.insert(lines, "Already got it tonight: " .. table.concat(already, ", ")) end
+        table.insert(lines, "|cff999999The raid and the bench, once per night. Undo takes it back.|r")
+        return lines
+    end
 
     f.standingsButtons = CreateFrame("Frame", nil, f)
     f.standingsButtons:SetSize(1, 22)
     f.standingsButtons:SetPoint("BOTTOMRIGHT", -6, 4)
     local undo = button(f.standingsButtons, "Undo", 70, function() ns.Command("undo") end)
     undo:SetPoint("RIGHT")
-    local ontime = button(f.standingsButtons, "On time EP", 96, function() ns.Command("ontime") end)
-    ontime:SetPoint("RIGHT", undo, "LEFT", -2, 0)
-    local raid = button(f.standingsButtons, "Raid EP", 86, function() ns.Command("raid") end)
-    raid:SetPoint("RIGHT", ontime, "LEFT", -2, 0)
+    tip(undo, "Undo your last change", function()
+        local ev = ns.LastOwnEvent()
+        return ev and ("Takes back: " .. (ev.r ~= "" and ev.r or "points changed")) or "You have no change to take back."
+    end)
+    f.ontime = button(f.standingsButtons, "On time", 110, function() ns.Command("ontime") end)
+    f.ontime:SetPoint("RIGHT", undo, "LEFT", -2, 0)
+    tip(f.ontime, "On time bonus", function() return whoGets("ontime", ns.Setting("onTimeEP")) end)
+    f.raidEP = button(f.standingsButtons, "Raid", 110, function() ns.Command("raid") end)
+    f.raidEP:SetPoint("RIGHT", f.ontime, "LEFT", -2, 0)
+    tip(f.raidEP, "EP for the raid night", function() return whoGets("raid", ns.Setting("raidEP")) end)
 
     f.benchButtons = CreateFrame("Frame", nil, f)
     f.benchButtons:SetSize(1, 22)
@@ -1215,28 +1312,71 @@ local function sortedStandings()
     return list
 end
 
+local CLASS_ICONS = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
+local BAR_WIDTH = 440
+
+-- Fill one standings row. best is the highest priority, it gets the full bar.
+local function fillStandingsRow(row, e, best, minEP)
+    row.entry = e
+    row.cells.place:SetText(e.place or "")
+    row.cells.name:SetText(ns.ShortName(e.name))
+    local r, g, b = classColor(e.class)
+    row.cells.name:SetTextColor(r, g, b)
+    local coords = e.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[e.class]
+    if coords then
+        row.classIcon:SetTexture(CLASS_ICONS)
+        row.classIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        row.classIcon:Show()
+    else
+        row.classIcon:Hide()
+    end
+    row.cells.ep:SetText(e.ep)
+    row.cells.gp:SetText(e.gp)
+    row.cells.pr:SetText(ns.FormatPR(e.pr))
+    if e.ep < minEP then
+        row.cells.pr:SetTextColor(0.4, 0.78, 1)
+    else
+        row.cells.pr:SetTextColor(1, 0.82, 0)
+    end
+    row.cells.alts:SetText(e.alts > 0 and e.alts or "")
+    local share = best > 0 and math.max(0, math.min(1, e.pr / best)) or 0
+    row.barShare = share
+    row.bar:SetWidth(math.max(1, share * BAR_WIDTH))
+    row.bar:SetColorTexture(r, g, b, 0.22)
+    row.bar:SetShown(share > 0)
+    row:Show()
+end
+
 local function refreshStandingsPage(page)
+    -- the place of everyone by priority, whatever the list is sorted or filtered by
+    local ranking = ns.Standings(false)
+    local places, best = {}, 0
+    for i, e in ipairs(ranking) do
+        places[e.name] = i
+        if e.pr > best then best = e.pr end
+    end
     local list = sortedStandings()
     page.shown = list
     page.class:SetText(filter.class and className(filter.class) or "All classes")
     local minEP = ns.Setting("minEP")
     for i, e in ipairs(list) do
-        local row = page.list:Row(i)
-        row.entry = e
-        row.cells.name:SetText(ns.ShortName(e.name))
-        row.cells.name:SetTextColor(classColor(e.class))
-        row.cells.ep:SetText(e.ep)
-        row.cells.gp:SetText(e.gp)
-        row.cells.pr:SetText(ns.FormatPR(e.pr))
-        if e.ep < minEP then
-            row.cells.pr:SetTextColor(0.4, 0.78, 1)
-        else
-            row.cells.pr:SetTextColor(1, 0.82, 0)
-        end
-        row.cells.alts:SetText(e.alts > 0 and e.alts or "")
-        row:Show()
+        e.place = places[e.name]
+        fillStandingsRow(page.list:Row(i), e, best, minEP)
     end
     page.list:SetCount(#list)
+
+    -- your own row
+    local me = ns.MainOf(ns.PlayerName())
+    local mine
+    for _, e in ipairs(ranking) do if e.name == me then mine = e end end
+    if not mine then
+        local ep, gp, pr = ns.GetPoints(me)
+        local m = ns.members[me]
+        mine = { name = me, ep = ep, gp = gp, pr = pr, class = m and m.class, alts = #ns.AltsOf(me) }
+    end
+    mine.place = places[me]
+    fillStandingsRow(page.mine, mine, best, minEP)
+    page.mine.cells.name:SetText(ns.ShortName(me) .. "  |cffffd100(you)|r")
     return #list
 end
 
@@ -1307,8 +1447,12 @@ end
 function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
-    local count = 0
     local T = ns.TAB
+    if tab ~= T.standings and not ns.CanEdit() then
+        showPage(T.standings) -- no editor anymore, back to the standings
+        return
+    end
+    local count = 0
     if tab == T.standings then
         count = refreshStandingsPage(main.pages[T.standings])
     elseif tab == T.raid then
@@ -1320,6 +1464,8 @@ function ns.RefreshStandings()
     end
     setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
     main.lootMaster:SetShown(ns.CanEdit())
+    main.raidEP:SetText("+" .. ns.Setting("raidEP") .. " EP raid")
+    main.ontime:SetText("+" .. ns.Setting("onTimeEP") .. " EP on time")
 
     local me = ns.PlayerName()
     local ep, gp, pr = ns.GetPoints(me)

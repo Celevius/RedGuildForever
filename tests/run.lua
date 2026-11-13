@@ -1706,7 +1706,8 @@ test("the Data tab has sync, decay and backup, the bottom strip only raid button
     eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
     W.canEdit = false
     ns.ToggleStandings(1) ns.ToggleStandings(ns.TAB.data)
-    eq(page.decay:IsShown(), false, "members get no decay")
+    eq(page:IsShown(), false, "members do not get the Data tab")
+    eq(f.selectedTab, ns.TAB.standings, "they stay on the standings")
     eq(f.lootMaster:IsShown(), false)
     noErrors()
 end)
@@ -2137,7 +2138,7 @@ test("the weekly decay reminds when it is due and warns before a second one", fu
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY_AGAIN", "warns, the last one was two days ago")
     ns.ToggleStandings(ns.TAB.data)
-    assert(ns.mainFrame.pages[ns.TAB.data].state:GetText():find("Last one on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[ns.TAB.data].state:GetText())
+    assert(ns.mainFrame.pages[ns.TAB.data].state:GetText():find("Last decay on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[ns.TAB.data].state:GetText())
     W.server = W.server + 6 * 86400
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY", "a week later it asks normally")
@@ -2438,6 +2439,56 @@ test("one loot window: next step button, full list, confirmation, Alt click", fu
     -- members and solo players get no Alt click
     W.canEdit = false
     eq(ns.AltClickItem(ring), false)
+    noErrors()
+end)
+
+test("a calmer main window: members see the standings only, your own row, bars and tooltips", function()
+    setup(guild())
+    ns.ToggleStandings(ns.TAB.standings)
+    local f = ns.mainFrame
+    local page = f.pages[ns.TAB.standings]
+    -- editors have all four tabs
+    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), true, "tab " .. i .. " for editors") end
+    -- your own row, also when the list is filtered to something else
+    eq(page.mine.entry.name, "Cel Dru-Forever")
+    assert(page.mine.cells.name:GetText():find("Cel Dru  |cffffd100%(you%)"), page.mine.cells.name:GetText())
+    ns.Adjust("Cel Dru", 400, 0)
+    eq(page.mine.cells.ep:GetText(), 400)
+    eq(page.mine.cells.place:GetText(), 2, "second place: 4.00, behind Max with 10.00")
+    ns.SetStandingsClass("MAGE")
+    eq(#page.shown, 1)
+    eq(page.mine.entry.name, "Cel Dru-Forever", "still there with a class filter")
+    eq(page.list:Row(1).cells.place:GetText(), 3, "Anna keeps her real place in a filtered list")
+    ns.SetStandingsClass(nil)
+    -- the bar: the best priority is full, the others a part of it
+    eq(page.list:Row(1).entry.name, "Max Ironhide-Forever")
+    eq(page.list:Row(1).barShare, 1)
+    near(page.list:Row(2).barShare, 0.4, "Cel Dru has 4.00 of 10.00")
+    -- the buttons say what they do
+    eq(f.raidEP:GetText(), "+100 EP raid")
+    eq(f.ontime:GetText(), "+25 EP on time")
+    assert(ns.SetRules({ raidEP = 120 }))
+    eq(f.raidEP:GetText(), "+120 EP raid", "follows the guild rules")
+    -- and their tooltips say who gets it
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.BenchAdd("Max Ironhide")
+    local lines = {}
+    _G.GameTooltip.AddLine = function(_, line) table.insert(lines, line) end
+    f.raidEP:GetScript("OnEnter")(f.raidEP)
+    eq(lines[1], "3 players get 120 EP: Cel Dru, Lisa Brightwater, Max Ironhide")
+    ns.Command("raid")
+    lines = {}
+    f.raidEP:GetScript("OnEnter")(f.raidEP)
+    eq(lines[1], "0 players get 120 EP: nobody")
+    eq(lines[2], "Already got it tonight: Cel Dru, Lisa Brightwater, Max Ironhide")
+    -- members: no tabs, always the standings
+    W.canEdit = false
+    ns.ToggleStandings(ns.TAB.history)
+    eq(f.selectedTab, ns.TAB.standings)
+    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
+    eq(f.pages[ns.TAB.history]:IsShown(), false)
+    eq(f.standingsButtons:IsShown(), false)
     noErrors()
 end)
 
