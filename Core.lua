@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.0.2"
+ns.version = "2.1.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
@@ -41,6 +41,7 @@ for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end
 -- Personal settings of this player, not shared.
 ns.defaults = {
     officerRank = 1,     -- rank index 0 (guild leader) up to this index may change data
+    showWinner = true,   -- a short popup with the winner when loot is given out
     autoOpenLoot = false, -- open Start Bidding by itself when an editor loots good items in a group, off by default
     tierOrder = { "normal", "boss", "rare" },
     tierNames = { normal = "Normal boss", boss = "End boss", rare = "Very rare" },

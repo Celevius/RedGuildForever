@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.0.2, updated on 4 November 2026 for the Forever beta client (interface 16001).
+Version 2.1.0, updated on 13 November 2026 for the Forever beta client (interface 16001).
 
 ## What it does
 
@@ -110,6 +110,7 @@ You never need to type a command. Click the coin button at the minimap.
 ## For raiders
 
 * A popup shows the item, the price and your own priority. Click your choice. When several items are up for bids, the popup shows one after the other
+* When an item is given out, a small popup at the top of the screen shows everyone with the addon who won it, the item and the price. It goes away after five seconds, or right away with a click. You can turn it off in the **Settings** tab with **Show a popup with the winner when loot is given out**
 * When you win, the loot master's addon whispers you the item and your new priority
 * `/rgf` opens the standings and `/rgf me` shows your own points. Hover a player to see the last items they got
 
@@ -175,7 +176,7 @@ Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options u
 * **History** with every change of every editor. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Rules** with every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
 * **Data** with sync, the weekly decay, the backups and the imports
-* **Settings** with test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default) and the editors. These settings are only for you, except the editors
+* **Settings** with test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default), **Show a popup with the winner when loot is given out** (on by default) and the editors. These settings are only for you, except the editors
 
 The game's Options under AddOns show the settings and the rules on one page.
 

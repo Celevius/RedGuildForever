@@ -2,6 +2,15 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.1.0 (13 November 2026)
+
+### Added
+* **Winner popup.** When the loot master awards an item, everyone in the raid with the addon sees a small popup at the top of the screen with the winner, the item, main spec or off spec and the price. It goes away after five seconds or with a click, several awards in a row are shown one after the other
+* **Show a popup with the winner when loot is given out** in the Settings tab turns it off for you. It is on by default
+
+### Changed
+* The message that ends an auction now carries the price, the spec and the item. Players on 2.0 still work with a loot master on 2.1, they only do not get the popup
+
 ## 2.0.2 (4 November 2026)
 
 ### Changed

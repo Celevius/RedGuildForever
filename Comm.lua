@@ -9,7 +9,7 @@
 --   A^id^seconds^gp^link                  an auction starts (RAID)
 --   P^id^gp                               the price of an auction changed (RAID)
 --   B^id^MS|OS|PASS                       a bid (WHISPER to the loot master)
---   C^id^winner                           an auction ends (RAID)
+--   C^id^winner^gp^MS|OS^link             an auction ends, without a winner only C^id^ (RAID)
 -- Version 2.0 uses its own prefix, so it never mixes with 1.7 and older.
 
 local _, ns = ...

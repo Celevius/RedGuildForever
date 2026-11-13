@@ -2134,5 +2134,57 @@ test("standings search, class filter and the Discord text", function()
     noErrors()
 end)
 
+test("a popup shows the winner for a few seconds and can be turned off", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide" }
+    -- another loot master awards two items, the raid gets the popup
+    local ring, helm = W.link(96, "Winner Ring"), W.link(97, "Winner Helm")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^333333^30^75^1^" .. ring, "RAID", "Anna Frost")
+    W.timers = {}
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^333333^Lisa Brightwater-Forever^75^MS^" .. ring, "RAID", "Anna Frost")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^444444^Cel Dru-Forever^0^OS^" .. helm, "RAID", "Anna Frost")
+    local f = ns.winnerFrame
+    assert(f and f:IsShown(), "popup shown")
+    eq(f.title:GetText(), "Lisa Brightwater wins")
+    eq(f.item:GetText(), ring)
+    eq(f.detail:GetText(), "Main spec, 75 GP")
+    -- after five seconds the next winner, also for an item we had no bid popup for
+    eq(#W.timers, 1)
+    eq(W.timers[1].due - W.now, 5, "stays five seconds")
+    local t = table.remove(W.timers, 1)
+    t.fn()
+    eq(f.title:GetText(), "You win")
+    eq(f.detail:GetText(), "Off spec, free")
+    f:Click()
+    eq(f:IsShown(), false, "a click closes it")
+    -- the loot master sees it for his own award, once
+    ns.StartAuction(W.link(98, "Own Item"))
+    ns.RecordBid("Max Ironhide", "MS")
+    W.comms = {}
+    ns.Award("Max Ironhide")
+    eq(f:IsShown(), true)
+    eq(f.title:GetText(), "Max Ironhide wins")
+    local sent
+    for _, c in ipairs(W.comms) do if c.msg:match("^C%^%d+%^Max Ironhide%-Forever%^100%^MS%^|c") then sent = true end end
+    assert(sent, "the raid is told the winner, the price and the item")
+    W.deliver(ns)
+    W.flush()
+    eq(f:IsShown(), false, "gone by itself, and not shown twice")
+    -- nothing for the bank
+    ns.StartAuction(W.link(99, "Bank Item"))
+    ns.Award(nil)
+    eq(f:IsShown(), false)
+    -- turned off in the settings
+    ns.ToggleStandings(ns.TAB.settings)
+    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    eq(view.showWinner:GetChecked(), true, "on by default")
+    view.showWinner:SetChecked(false)
+    view.showWinner:Click()
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^555555^Lisa Brightwater-Forever^75^MS^" .. ring, "RAID", "Anna Frost")
+    eq(f:IsShown(), false, "no popup when it is turned off")
+    noErrors()
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

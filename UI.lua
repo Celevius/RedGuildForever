@@ -815,6 +815,11 @@ local function buildSettingsContent(holder, top, parts)
         ns.SetSetting("autoOpenLoot", checked and true or false)
     end)
     view.autoLoot:SetPoint("TOPLEFT", 12, y)
+    y = y - 28
+    view.showWinner = checkbox(parent, "Show a popup with the winner when loot is given out", function(checked)
+        ns.SetSetting("showWinner", checked and true or false)
+    end)
+    view.showWinner:SetPoint("TOPLEFT", 12, y)
     y = y - 40
 
     -- Editors
@@ -977,6 +982,7 @@ function ns.RefreshSettings()
             local mm = RedGuildForeverDB and RedGuildForeverDB.minimap
             view.minimap:SetChecked(not (mm and mm.hide))
             view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
+            view.showWinner:SetChecked(ns.Setting("showWinner") and true or false)
 
             view.editorList:SetText(editorText)
             view.editorBox:SetEnabled(canManage)
@@ -1980,6 +1986,97 @@ ns.On("RGF_INCOMING_CLOSED", function(inc)
         local nextInc = nextUnanswered(inc)
         if nextInc then showPopup(nextInc) else popup:Hide() end
     end
+end)
+
+------------------------------------------------------------------------
+-- Winner popup. Everyone with the addon sees for a few seconds who got the
+-- item. It closes by itself or with a click, and can be turned off in the
+-- settings. Several awards in a row are shown one after the other.
+------------------------------------------------------------------------
+local WINNER_SECONDS = 5
+local winnerFrame
+local winnerQueue = {}
+local winnerShown = 0 -- counts up, so an old timer does not close a newer popup
+
+local function buildWinner()
+    local f = create("Button", "RedGuildForeverWinnerFrame", UIParent)
+    f:SetSize(340, 64)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -70)
+    f:SetFrameStrata("HIGH")
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.02, 0.02, 0.88)
+    -- a thin gold frame
+    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
+        { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
+        local line = f:CreateTexture(nil, "BORDER")
+        line:SetPoint(edge[1])
+        line:SetPoint(edge[2])
+        if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
+        line:SetColorTexture(1, 0.82, 0, 0.9)
+    end
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetSize(44, 44)
+    f.icon:SetPoint("LEFT", 10, 0)
+    f.title = text(f, "GameFontNormalLarge")
+    f.title:SetPoint("TOPLEFT", f.icon, "TOPRIGHT", 10, 0)
+    f.title:SetWidth(266)
+    f.item = text(f, "GameFontHighlight")
+    f.item:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -3)
+    f.item:SetWidth(266)
+    f.detail = text(f, "GameFontDisableSmall")
+    f.detail:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
+    f.detail:SetWidth(266)
+    f:SetScript("OnClick", function() ns.CloseWinner() end)
+    f:SetScript("OnEnter", function(self)
+        if not self.link then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+        GameTooltip:AddLine("Click to close. Turn this popup off in the settings of Red Guild EPGP", 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f:Hide()
+    return f
+end
+
+local function showNextWinner()
+    local w = table.remove(winnerQueue, 1)
+    if not w then
+        if winnerFrame then winnerFrame:Hide() end
+        return
+    end
+    winnerFrame = winnerFrame or buildWinner()
+    ns.winnerFrame = winnerFrame
+    local f = winnerFrame
+    f.link = w.link
+    local _, _, icon = ns.ItemInfo(w.link)
+    f.icon:SetTexture(icon or ICON_UNKNOWN)
+    local m = ns.members[w.name]
+    local me = w.name == ns.PlayerName()
+    f.title:SetText((me and "You win" or (ns.ShortName(w.name) .. " wins")) .. (w.test and "  |cffff8040Test|r" or ""))
+    f.title:SetTextColor(classColor(m and m.class))
+    f.item:SetText(w.link)
+    f.detail:SetText((w.spec == "OS" and "Off spec" or "Main spec") .. ", " .. (w.cost > 0 and (w.cost .. " GP") or "free"))
+    f:Show()
+    if me then sound("UI_EPICLOOT_TOAST") end
+    winnerShown = winnerShown + 1
+    local shown = winnerShown
+    ns.After(WINNER_SECONDS, function()
+        if shown == winnerShown then showNextWinner() end
+    end)
+end
+
+-- Close the shown popup now, the next winner follows if one waits
+function ns.CloseWinner()
+    winnerShown = winnerShown + 1
+    showNextWinner()
+end
+
+ns.On("RGF_WINNER", function(w)
+    if not ns.Setting("showWinner") or not (w and w.name and w.link) then return end
+    table.insert(winnerQueue, w)
+    if not (winnerFrame and winnerFrame:IsShown()) then showNextWinner() end
 end)
 
 ------------------------------------------------------------------------

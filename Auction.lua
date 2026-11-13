@@ -380,8 +380,10 @@ function ns.Award(name, auction)
             say(a, string.format("%s gets %s for off spec. It is free.", who, a.link))
         end
     end
-    if channel then ns.SendComm(table.concat({ "C", a.id, full }, SEP), channel) end
+    -- the cost, the spec and the link travel along, for the winner popup of everyone
+    if channel then ns.SendComm(table.concat({ "C", a.id, full, cost, spec, a.link }, SEP), channel) end
     closeOwnPopup(a, full)
+    ns.Fire("RGF_WINNER", { name = full, link = a.link, cost = cost, spec = spec, test = a.test })
     -- tell the winner, also players without the addon, and the new priority
     if full ~= ns.PlayerName() and not a.test then
         local ep, gp, pr = ns.GetPoints(full)
@@ -560,12 +562,19 @@ ns.OnComm("B", function(text, sender)
     end
 end)
 
-ns.OnComm("C", function(text)
-    local p = ns.Split(text)
+ns.OnComm("C", function(text, sender)
+    local p = ns.SplitWithTail(text, 6)
+    local winner = p[3] ~= "" and p[3] or nil
     local inc = ns.incoming[p[2]]
     if inc then
         ns.incoming[p[2]] = nil
-        ns.Fire("RGF_INCOMING_CLOSED", inc, p[3] ~= "" and p[3] or nil)
+        ns.Fire("RGF_INCOMING_CLOSED", inc, winner)
+    end
+    -- the loot master shows his own popup when he awards
+    local link = p[6] or (inc and inc.link)
+    if winner and link and sender ~= ns.PlayerName() then
+        ns.Fire("RGF_WINNER", { name = ns.Resolve(winner), link = link, cost = tonumber(p[4]) or (inc and inc.price) or 0,
+            spec = p[5] == "OS" and "OS" or "MS" })
     end
 end)
 
