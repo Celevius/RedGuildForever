@@ -544,7 +544,7 @@ test("minimap button opens the standings and the menu", function()
     end
     local count = 0
     for _, item in ipairs(menu.items) do if item.text then count = count + 1 end end
-    eq(count, 5, "short menu for editors")
+    eq(count, 6, "short menu for editors")
     -- every entry runs without errors
     W.inRaid = true W.raid = { "Cel Dru", "Lisa Brightwater" }
     for _, item in ipairs(menu.items) do
@@ -575,7 +575,7 @@ test("members see no officer entries in the menu", function()
         assert(item.text ~= "Loot Master", "Loot Master shown to a member")
         if item.text then count = count + 1 end
     end
-    eq(count, 2, "members get sync and settings")
+    eq(count, 3, "members get sync, the rules and the settings")
 end)
 
 test("menu falls back to the window without a menu system", function()
@@ -1100,8 +1100,7 @@ test("corpse loot is listed, the window opens by itself only with the setting", 
     eq(ns.picker, nil, "by default the window stays closed, you open it yourself")
     ns.Fire("LOOT_CLOSED")
     -- the setting in the Settings tab turns it on
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.autoLoot:GetChecked(), false, "off by default")
     view.autoLoot:SetChecked(true)
     view.autoLoot:Click()
@@ -1167,8 +1166,7 @@ test("test mode is a sandbox for the whole addon", function()
     setup(guild())
     local before = realSnapshot()
     -- turn it on with the checkbox in the Settings tab
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     view.test:SetChecked(true)
     view.test:Click()
     eq(ns.IsTest(), true)
@@ -1393,8 +1391,7 @@ end
 
 -- the view with the guild rules, in the Rules tab
 local function settingsView()
-    ns.ToggleStandings(ns.TAB.rules)
-    return ns.mainFrame.pages[ns.TAB.rules].view
+    return ns.OpenSettings("rules")
 end
 
 test("rules start with the rule book values", function()
@@ -1676,8 +1673,7 @@ test("editor commands and the editor section in the settings", function()
     assert(W.printed[#W.printed]:find("Ben Swift is now an editor"), W.printed[#W.printed])
     ns.Command("editors")
     assert(W.printed[#W.printed]:find("Ben Swift"), W.printed[#W.printed])
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.addEditor:IsEnabled(), true, "leader can add")
     assert(view.editorList:GetText():find("Ben Swift"), view.editorList:GetText())
     view.editorBox:SetText("Anna")
@@ -2125,13 +2121,6 @@ test("standings search, class filter and the Discord text", function()
     ns.SetStandingsClass(nil)
     ns.Command("discord")
     assert(ns.copyFrame.box:GetText():find("4%. Tom Hammer  2%.00  %(200 EP, 100 GP%) new"), ns.copyFrame.box:GetText())
-    -- the Rules tab has the guild rules, the Settings tab the rest
-    ns.ToggleStandings(ns.TAB.rules)
-    assert(ns.mainFrame.pages[ns.TAB.rules].view.ruleBoxes.raidEP, "rules in the Rules tab")
-    eq(ns.mainFrame.pages[ns.TAB.rules].view.test, nil)
-    ns.ToggleStandings(ns.TAB.settings)
-    assert(ns.mainFrame.pages[ns.TAB.settings].view.test, "test mode in the Settings tab")
-    eq(next(ns.mainFrame.pages[ns.TAB.settings].view.ruleBoxes), nil)
     noErrors()
 end)
 
@@ -2177,8 +2166,7 @@ test("a popup shows the winner for a few seconds and can be turned off", functio
     ns.Award(nil)
     eq(f:IsShown(), false)
     -- turned off in the settings
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.showWinner:GetChecked(), true, "on by default")
     view.showWinner:SetChecked(false)
     view.showWinner:Click()
@@ -2250,6 +2238,60 @@ test("/rgf check reports the game version and missing functions", function()
     _G.GetLootSlotLink = keep
     ns.Command("check")
     assert(W.printed[#W.printed]:find("guild Redemption%-Forever, you can edit, 5 players, 0 changes"), W.printed[#W.printed])
+end)
+
+test("settings and rules are in the game's Options, not in the addon window", function()
+    setup(guild())
+    -- two pages under AddOns: the settings, and the guild rules below them
+    eq(W.categories[1].name, "Red Guild EPGP")
+    eq(W.categories[1].addon, true, "listed under AddOns")
+    eq(W.categories[2].name, "Guild rules")
+    eq(W.categories[2].parent, W.categories[1], "a page below the settings")
+    local view = ns.OpenSettings("settings")
+    eq(W.openedCategory, W.categories[1], "the game's Options open on our page")
+    assert(view.test and view.showWinner and view.editorBox, "test mode, interface and editors")
+    eq(next(view.ruleBoxes), nil, "no rules on the settings page")
+    local rules = ns.OpenSettings("rules")
+    eq(W.openedCategory, W.categories[2])
+    assert(rules.ruleBoxes.raidEP, "the rules page has the rules")
+    eq(rules.test, nil)
+    -- commands and the minimap menu lead there
+    W.openedCategory = nil
+    ns.Command("settings")
+    eq(W.openedCategory, W.categories[1])
+    ns.Command("rules")
+    eq(W.openedCategory, W.categories[2])
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    W.openedCategory = nil
+    for _, item in ipairs(menu.items) do if item.text == "Settings" then item.fn() end end
+    eq(W.openedCategory, W.categories[1])
+    for _, item in ipairs(menu.items) do if item.text == "Guild rules" then item.fn() end end
+    eq(W.openedCategory, W.categories[2])
+    -- the addon window only has the four tabs for the game itself
+    ns.ToggleStandings(ns.TAB.data)
+    eq(#ns.mainFrame.pages, 4)
+    eq(ns.TAB.settings, nil) eq(ns.TAB.rules, nil)
+    -- during a fight the game refuses to open the Options, the addon says where to click
+    _G.Settings.OpenToCategory = function() error("blocked in combat") end
+    ns.Command("rules")
+    assert(W.printed[#W.printed]:find("open the game's Options, then AddOns, then Red Guild EPGP, Guild rules"), W.printed[#W.printed])
+end)
+
+test("a game without the Options API gets a small settings window", function()
+    setup(guild())
+    _G.Settings = nil
+    ns.optionViews.settings, ns.optionViews.rules = nil, nil
+    local fresh = {}
+    W.install() W.reset()
+    W.player = "Cel Dru"
+    W.roster = guild()
+    _G.Settings = nil
+    W.load(fresh)
+    fresh.RebuildFromRoster()
+    local view = fresh.OpenSettings("rules")
+    assert(view and view.ruleBoxes.raidEP, "rules in an own window")
+    assert(fresh.OpenSettings("settings").test, "settings in an own window")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

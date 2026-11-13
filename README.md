@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.1.1, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.2.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -55,7 +55,7 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 ## The rules in the addon
 
-All values below are the defaults from the guild rule book. The guild leader and editors can change every one of them in the **Rules** tab. The rules are saved with the guild data and shared with **Sync**, so every editor uses the same values, and the newest change wins.
+All values below are the defaults from the guild rule book. The guild leader and editors can change every one of them in the game's Options under **AddOns**, **Red Guild EPGP**, **Guild rules**, or with `/rgf rules`. The rules are saved with the guild data and shared with **Sync**, so every editor uses the same values, and the newest change wins.
 
 | Setting | Default |
 |---|---|
@@ -103,15 +103,15 @@ Who wins
 You never need to type a command. Click the coin button at the minimap.
 
 * **Left click** opens the standings
-* **Right click** opens a short menu with what you need during a raid. Editors get **Loot Master**, **Start raid** or **End raid** and **Undo last change**. Everyone gets **Sync now** and **Settings**, and while test mode is on there is a quick **Turn test mode off**
+* **Right click** opens a short menu with what you need during a raid. Editors get **Loot Master**, **Start raid** or **End raid** and **Undo last change**. Everyone gets **Sync now**, **Guild rules** and **Settings**, which open the game's Options, and while test mode is on there is a quick **Turn test mode off**
 * Everything else, like the bench, the history, the weekly decay and the backup, is in the window
 * **Drag** moves the button around the minimap
-* The button can be hidden in the **Settings** tab, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
+* The button can be hidden in the game's Options under **AddOns**, **Red Guild EPGP**, `/rgf minimap` brings it back. The addon is also listed in the game's addon list next to the minimap
 
 ## For raiders
 
 * A popup shows the item, the price and your own priority. Click your choice. When several items are up for bids, the popup shows one after the other
-* When an item is given out, a small popup at the top of the screen shows everyone with the addon who won it, the item and the price. It goes away after five seconds, or right away with a click. You can turn it off in the **Settings** tab with **Show a popup with the winner when loot is given out**
+* When an item is given out, a small popup at the top of the screen shows everyone with the addon who won it, the item and the price. It goes away after five seconds, or right away with a click. You can turn it off in the game's Options under **AddOns**, **Red Guild EPGP** with **Show a popup with the winner when loot is given out**
 * When you win, the loot master's addon whispers you the item and your new priority
 * `/rgf` opens the standings and `/rgf me` shows your own points. Hover a player to see the last items they got
 
@@ -140,7 +140,7 @@ Every bid gets an answer, also when bidding is closed or nothing is open. A `+` 
 
 **Loot.**
 
-1. Open the **Start Bidding** window: choose **Loot Master** in the minimap menu, click **Loot Master** in the `/rgf` window or type `/rgf bid`. It never opens by itself, unless you turn on **Open Start Bidding when I loot good items in a group** in the **Settings** tab
+1. Open the **Start Bidding** window: choose **Loot Master** in the minimap menu, click **Loot Master** in the `/rgf` window or type `/rgf bid`. It never opens by itself, unless you turn on **Open Start Bidding when I loot good items in a group** in the game's Options under **AddOns**, **Red Guild EPGP**
 2. Drag the item from your bags onto the slot, or click an item that is still on the corpse. Items you saw on corpses this session stay in the list
 3. Choose where it dropped, **Normal boss**, **End boss** or **Very rare**, and click **Start bidding**. **Bid on all** opens every rare and better item of the corpse at once, numbered 1, 2, 3 in one raid announcement
 4. The **Loot Master** window shows every answer in sections, Main Spec, Off Spec, Passed and No answer yet, and marks the winner. With several items, the buttons at the top switch between them. Hover a bidder to see their last items. You get the bid popup too and can bid yourself
@@ -155,7 +155,7 @@ The **Loot Master** button in the `/rgf` window and in the minimap menu opens th
 
 ## Test mode
 
-Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options under AddOns, or with `/rgf test`. It simulates the whole addon, so you can try everything alone without a group.
+Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `/rgf test`. It simulates the whole addon, so you can try everything alone without a group.
 
 * The addon works on a **copy of your data**. Your real points, bench and history stay exactly as they are
 * You are in a **simulated raid** with up to 9 guild members. Start raid, End raid, raid EP, on time EP and the bench work with it
@@ -170,16 +170,19 @@ Turn it on in the **Settings** tab of the `/rgf` window, in the game's Options u
 
 ## The window
 
-`/rgf` opens the window. It has six tabs at the bottom.
+`/rgf` opens the window. It has four tabs at the bottom.
 
 * **Standings** with a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **Raid EP**, **On time EP** and **Undo** at the bottom
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
 * **History** with every change of every editor. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
-* **Rules** with every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
 * **Data** with sync, the weekly decay, the backups and the imports
-* **Settings** with test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default), **Show a popup with the winner when loot is given out** (on by default) and the editors. These settings are only for you, except the editors
 
-The game's Options under AddOns show the settings and the rules on one page.
+## Settings and rules
+
+The settings and the guild rules are not in the addon window. They are in the game's Options, where every addon has its page: press Escape, **Options**, **AddOns**, **Red Guild EPGP**. `/rgf settings` and `/rgf rules` open them directly, and so do **Settings** and **Guild rules** in the minimap menu. During a fight the game does not let addons open the Options, the addon then tells you where to click.
+
+* **Red Guild EPGP** has test mode, the minimap button, **Open Start Bidding when I loot good items in a group** (off by default), **Show a popup with the winner when loot is given out** (on by default) and the editors. These settings are only for you, except the editors
+* **Guild rules**, the page below it, has every price, multiplier, EP amount, the decay, the new member limit and the bidding time. Type the new values and click **Save rules**, or press Enter. An example line shows right away what a two handed weapon from the end boss and a ring would cost. **Discard changes** shows the saved values again, **Reset to defaults** goes back to the rule book after asking. Wrong values like a starting GP of 0 are refused. Members can look at the rules but not change them. In test mode changed rules stay in the test data
 
 ## Editors
 
@@ -187,7 +190,7 @@ The guild leader and the editors can change all data: points, bidding and awards
 
 **Adding editors.** Only the guild leader adds or removes editors. Any guild rank works.
 
-* In the `/rgf` window, **Settings** tab, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
+* In the game's Options under **AddOns**, **Red Guild EPGP**, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
 * Or type `/rgf editor add Cel Dru` and `/rgf editor remove Cel Dru`. `/rgf editors` shows the list, everyone can use it
 
 The list is saved with the guild data and shared with **Sync** and the backup. Everyone only accepts list changes the guild leader made, an editor can pass them on but cannot change the list.
@@ -231,7 +234,8 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf fresh` | start with empty data for a new guild |
 | `/rgf bid` | open the Start Bidding window |
 | `/rgf test` | turn test mode on or off |
-| `/rgf settings` | open the settings |
+| `/rgf settings` | open the settings in the game's Options |
+| `/rgf rules` | open the guild rules in the game's Options |
 | `/rgf log` | last changes |
 | `/rgf check` | check that your game version has everything the addon needs |
 | `/rgf editors` | who may change data |

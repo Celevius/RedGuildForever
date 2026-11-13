@@ -76,7 +76,8 @@ local help = {
     "|cffffd100Loot master|r",
     "/rgf bid  open the Start Bidding window, or /rgf bid [item] to start right away",
     "/rgf test  turn test mode on or off, try everything alone",
-    "/rgf settings  open the settings",
+    "/rgf settings  open the settings in the game's Options",
+    "/rgf rules  open the guild rules in the game's Options",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Editors|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
@@ -372,7 +373,10 @@ function ns.Command(line)
         ns.SetTestMode(not ns.IsTest())
 
     elseif cmd == "settings" or cmd == "options" then
-        ns.ToggleStandings(ns.TAB.settings)
+        ns.OpenSettings("settings")
+
+    elseif cmd == "rules" then
+        ns.OpenSettings("rules")
 
     elseif cmd == "edit" then
         if not needOfficer() then return end

@@ -233,6 +233,20 @@ function M.install()
     _G.Minimap = frameStub()
     _G.GetCursorPosition = function() return 0, 0 end
     _G.MenuUtil = M.menuUtil
+    -- the game's Options window: categories are remembered, opening one too
+    M.categories, M.openedCategory = {}, nil
+    local function category(name, frame, parent)
+        local c = { ID = #M.categories + 1, name = name, frame = frame, parent = parent }
+        function c:GetID() return self.ID end
+        table.insert(M.categories, c)
+        return c
+    end
+    _G.Settings = {
+        RegisterCanvasLayoutCategory = function(frame, name) return category(name, frame) end,
+        RegisterCanvasLayoutSubcategory = function(parent, frame, name) return category(name, frame, parent) end,
+        RegisterAddOnCategory = function(c) c.addon = true end,
+        OpenToCategory = function(id) M.openedCategory = M.categories[id] end,
+    }
     _G.UISpecialFrames = {}
     _G.GameTooltip = frameStub()
     _G.StaticPopupDialogs = {}

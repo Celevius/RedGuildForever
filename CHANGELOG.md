@@ -2,6 +2,16 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.2.0 (13 November 2026)
+
+### Changed
+* **Settings and rules moved to the game's Options.** They are under Options, AddOns, **Red Guild EPGP**: the settings on the first page, the **Guild rules** on a page below it. The addon window no longer has the Rules and Settings tabs, it keeps Standings, Raid, History and Data
+* `/rgf settings` and **Settings** in the minimap menu open the game's Options on the addon's page
+
+### Added
+* `/rgf rules` and **Guild rules** in the minimap menu open the rules page
+* During a fight the game does not let addons open the Options. The addon then says where to click instead of failing
+
 ## 2.1.1 (13 November 2026)
 
 ### Added

@@ -1004,36 +1004,79 @@ function ns.RefreshSettings()
     end
 end
 
-local function buildSettingsPage(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints()
-    page.view = buildSettingsContent(page, nil, { settings = true })
-    return page
-end
+-- The settings and the guild rules live in the game's Options window under
+-- AddOns: "Red Guild EPGP" has the settings, "Guild rules" below it the rules.
+local optionViews = {}
+ns.optionViews = optionViews
+local optionCategories = {}
+local fallbackWindows = {}
 
--- Rules tab: every price, multiplier and EP amount of the guild
-local function buildRulesPage(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints()
-    page.view = buildSettingsContent(page, nil, { rules = true })
-    return page
-end
-
--- the same settings in the game's Options window, under AddOns
-local function registerOptions()
-    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return end
+local function optionsPanel(title, parts)
     local panel = CreateFrame("Frame")
-    local title = text(panel, "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Red Guild EPGP")
-    buildSettingsContent(panel, -40)
+    local heading = text(panel, "GameFontNormalLarge")
+    heading:SetPoint("TOPLEFT", 12, -12)
+    heading:SetText(title)
+    local view = buildSettingsContent(panel, -40, parts)
     panel:SetScript("OnShow", function() ns.RefreshSettings() end)
-    local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
-    if ok and category then
-        pcall(Settings.RegisterAddOnCategory, category)
-        ns.optionsCategory = category
-    end
+    return panel, view
 end
+
+local function registerOptions()
+    if optionCategories.settings then return true end
+    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return false end
+    local panel, view = optionsPanel("Red Guild EPGP", { settings = true })
+    local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
+    if not (ok and category) then return false end
+    pcall(Settings.RegisterAddOnCategory, category)
+    optionCategories.settings, optionViews.settings = category, view
+    ns.optionsCategory = category
+    -- the rules as their own page below it, or on the same page when the game has no sub pages
+    if Settings.RegisterCanvasLayoutSubcategory then
+        local rulesPanel, rulesView = optionsPanel("Guild rules", { rules = true })
+        local ok2, sub = pcall(Settings.RegisterCanvasLayoutSubcategory, category, rulesPanel, "Guild rules")
+        if ok2 and sub then
+            optionCategories.rules, optionViews.rules = sub, rulesView
+        end
+    end
+    return true
+end
+
+local function categoryId(category)
+    if type(category) == "table" and category.GetID then
+        local ok, id = pcall(category.GetID, category)
+        if ok then return id end
+    end
+    return category and category.ID
+end
+
+-- Open the settings ("settings") or the guild rules ("rules") in the game's
+-- Options. Returns the view, tests use it.
+function ns.OpenSettings(which)
+    which = which == "rules" and "rules" or "settings"
+    if registerOptions() and optionCategories[which] then
+        local id = categoryId(optionCategories[which])
+        local opened = Settings.OpenToCategory and id ~= nil and pcall(Settings.OpenToCategory, id)
+        if not opened then
+            ns.Print("open the game's Options, then AddOns, then Red Guild EPGP" .. (which == "rules" and ", Guild rules" or "")
+                .. ". The game does not let addons open it during a fight")
+        end
+        ns.RefreshSettings()
+        return optionViews[which]
+    end
+    -- a game without the Options API: our own small window
+    local f = fallbackWindows[which]
+    if not f then
+        f = window("RedGuildForeverOptions" .. which, 520, 520, which == "rules" and "Guild rules" or "Red Guild EPGP settings", ICON_STANDINGS)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+        optionViews[which] = optionViews[which] or buildSettingsContent(f.Inset, nil, { [which] = true })
+        fallbackWindows[which] = f
+    end
+    f:Show()
+    ns.RefreshSettings()
+    return optionViews[which]
+end
+
 ns.On("RGF_READY", registerOptions)
 ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
 ns.On("RGF_RULES_CHANGED", function() ns.RefreshSettings() end)
@@ -1105,9 +1148,7 @@ local function buildMain()
         buildStandingsPage(f.Inset),
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
-        buildRulesPage(f.Inset),
         buildSyncPage(f.Inset),
-        buildSettingsPage(f.Inset),
     }
 
     -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
@@ -1139,7 +1180,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Raid", "History", "Rules", "Data", "Settings" }, showPage)
+    tabs(f, name, { "Standings", "Raid", "History", "Data" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1264,8 +1305,6 @@ function ns.RefreshStandings()
         refreshHistoryPage(main.pages[T.history])
     elseif tab == T.data then
         refreshSyncPage(main.pages[T.data])
-    else
-        ns.RefreshSettings()
     end
     setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
     main.lootMaster:SetShown(ns.CanEdit())
@@ -1281,12 +1320,8 @@ function ns.RefreshStandings()
         status = ns.Session() and "Raid running" or (#ns.Bench() .. " players on the bench")
     elseif tab == T.history then
         status = "Every change of every editor, shared with Sync"
-    elseif tab == T.rules then
-        status = "The guild rules, the same for everyone"
     elseif tab == T.data then
         status = "Sync, decay and backup"
-    elseif tab == T.settings then
-        status = "Settings"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
     else
@@ -2032,7 +2067,7 @@ local function buildWinner()
         if not self.link then return end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
-        GameTooltip:AddLine("Click to close. Turn this popup off in the settings of Red Guild EPGP", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine("Click to close. Turn this popup off in the game's Options under AddOns, Red Guild EPGP", 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end)
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)

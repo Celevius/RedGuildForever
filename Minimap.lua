@@ -35,7 +35,8 @@ function ns.MenuEntries()
         table.insert(entries, { divider = true })
     end
     table.insert(entries, { text = "Sync now", func = function() ns.Command("sync") end })
-    table.insert(entries, { text = "Settings", func = function() ns.ToggleStandings(ns.TAB.settings) end })
+    table.insert(entries, { text = "Guild rules", func = function() ns.OpenSettings("rules") end })
+    table.insert(entries, { text = "Settings", func = function() ns.OpenSettings("settings") end })
     if ns.IsTest() then
         table.insert(entries, { text = "|cffff8040Turn test mode off|r", func = function() ns.SetTestMode(false) end })
     end
