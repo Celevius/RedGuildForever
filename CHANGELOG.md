@@ -2,6 +2,14 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.2.1 (13 November 2026)
+
+### Changed
+* The bid popup closes as soon as you click **Main Spec** or **Off Spec**, before it stayed open until the item was given out. With several items it goes on with the next one. A chat line confirms your bid
+
+### Added
+* `/rgf rebid` shows the bid popup again, to change a bid while bidding is open
+
 ## 2.2.0 (13 November 2026)
 
 ### Changed

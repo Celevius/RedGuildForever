@@ -1974,13 +1974,32 @@ ns.On("RGF_INCOMING_AUCTION", function(inc)
         showPopup(current)
         return
     end
-    if current == inc and inc.myBid then
-        -- answered, go on with the next item that waits
-        local nextInc = nextUnanswered(inc)
-        if nextInc then inc = nextInc end
+    if inc.myBid then
+        -- answered: the popup goes away, or goes on with the next item that waits.
+        -- A later price change does not bring it back, /rgf rebid does.
+        if current == inc then
+            local nextInc = nextUnanswered(inc)
+            if nextInc then showPopup(nextInc) else popup:Hide() end
+        end
+        return
     end
     showPopup(inc)
 end)
+
+-- Show the bid popup again to change a bid, as long as bidding is open.
+-- Returns the shown item, or nil when nothing is open.
+function ns.ReopenBidPopup()
+    local inc = nextUnanswered(nil)
+    if not inc then
+        for _, x in pairs(ns.incoming) do
+            if GetTime() < x.endsAt and (not inc or (x.n or 0) < (inc.n or 0)) then inc = x end
+        end
+    end
+    if not inc then return nil end
+    popup = popup or buildPopup()
+    showPopup(inc)
+    return inc
+end
 
 showPopup = function(inc)
     popup.inc = inc

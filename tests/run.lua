@@ -2294,5 +2294,38 @@ test("a game without the Options API gets a small settings window", function()
     assert(fresh.OpenSettings("settings").test, "settings in an own window")
 end)
 
+test("the bid popup closes after Main Spec or Off Spec, /rgf rebid brings it back", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    local ring = W.link(89, "Closing Ring")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^121212^30^100^1^" .. ring, "RAID", "Anna Frost")
+    local p = ns.bidPopup
+    eq(p:IsShown(), true)
+    W.comms, W.printed = {}, {}
+    p.ms:Click()
+    eq(p:IsShown(), false, "gone after the bid")
+    eq(W.comms[1].msg, "B^121212^MS", "the bid was sent")
+    assert(W.printed[#W.printed]:find("you bid main spec on .-Closing Ring.-/rgf rebid"), W.printed[#W.printed])
+    -- a price change does not bring it back
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "P^121212^150", "RAID", "Anna Frost")
+    eq(p:IsShown(), false)
+    -- changing the bid
+    ns.Command("rebid")
+    eq(p:IsShown(), true, "shown again")
+    eq(p.inc.id, "121212")
+    eq(p.inc.price, 150, "with the new price")
+    W.comms = {}
+    p.os:Click()
+    eq(W.comms[1].msg, "B^121212^OS")
+    eq(p:IsShown(), false, "and gone again")
+    -- nothing open anymore
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^121212^", "RAID", "Anna Frost")
+    ns.Command("rebid")
+    assert(W.printed[#W.printed]:find("no bidding is open right now"), W.printed[#W.printed])
+    eq(p:IsShown(), false)
+    noErrors()
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

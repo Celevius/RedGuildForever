@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.2.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.2.1, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -110,7 +110,7 @@ You never need to type a command. Click the coin button at the minimap.
 
 ## For raiders
 
-* A popup shows the item, the price and your own priority. Click your choice. When several items are up for bids, the popup shows one after the other
+* A popup shows the item, the price and your own priority. Click your choice and the popup closes. When several items are up for bids, the popup shows one after the other. To change a bid while bidding is open, type `/rgf rebid`
 * When an item is given out, a small popup at the top of the screen shows everyone with the addon who won it, the item and the price. It goes away after five seconds, or right away with a click. You can turn it off in the game's Options under **AddOns**, **Red Guild EPGP** with **Show a popup with the winner when loot is given out**
 * When you win, the loot master's addon whispers you the item and your new priority
 * `/rgf` opens the standings and `/rgf me` shows your own points. Hover a player to see the last items they got
@@ -236,6 +236,7 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf test` | turn test mode on or off |
 | `/rgf settings` | open the settings in the game's Options |
 | `/rgf rules` | open the guild rules in the game's Options |
+| `/rgf rebid` | show the bid popup again to change your bid |
 | `/rgf log` | last changes |
 | `/rgf check` | check that your game version has everything the addon needs |
 | `/rgf editors` | who may change data |

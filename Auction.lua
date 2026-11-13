@@ -588,7 +588,11 @@ function ns.SendBid(inc, spec)
         local word = spec == "MS" and "ms" or (spec == "OS" and "os" or "pass")
         ns.SendChat(word .. (inc.n and (" " .. inc.n) or ""), "WHISPER", inc.ownerRaw or inc.owner)
     end
+    local first = inc.myBid == nil
     inc.myBid = spec
+    if first and spec ~= "PASS" then
+        ns.Print("you bid " .. (spec == "MS" and "main spec" or "off spec") .. " on " .. (inc.link or "the item") .. ". To change it while bidding is open, type /rgf rebid")
+    end
     ns.Fire("RGF_INCOMING_AUCTION", inc)
 end
 
