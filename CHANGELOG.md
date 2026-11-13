@@ -2,6 +2,48 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.3.0 (13 November 2026)
+
+### Added
+* **One Loot Master window.** The Start Bidding window and the Loot Master window are one window now: the items of the corpse and the running biddings on the left, the full list of bids for the chosen item on the right
+* **One button for the next step.** A big button always does what comes next: Start bidding, Close bids now, then for example "Award to Lisa (main spec, 100 GP)". Everyone else in the list still has an Award button
+* **Alt click an item** in your bags or in the loot window to choose it for bidding
+* The addon **asks before it awards** an item. Both can be turned off in the game's Options
+* **Bid cards.** Raiders get a small card above the action bars for each item, instead of a window in the middle of the screen. Several items stack, each with its own timer bar
+* The card shows **your priority now and after a win**
+* When the game knows that your character **cannot use the item**, the card says so and Main Spec is greyed out
+* The bid cards and the winner popup **can be dragged anywhere**, the place is remembered. `/rgf resetpos` puts them back
+* **Key bindings** for Main Spec, Off Spec, Pass, the standings and the Loot Master window, in the game's key binding settings under Red Guild EPGP
+* **Your own row** is always at the top of the standings, with your place
+* **Class icons** in the standings, a place number, and a bar that shows each priority against the best one
+* **Tooltips on the buttons.** The EP buttons list who would get the EP and who already got it, Undo shows what it would take back
+* A short **welcome** the first time the addon runs, `/rgf welcome` shows it again
+
+### Changed
+* **Members only see the standings.** The Raid, History and Data tabs are for editors
+* The EP buttons say what they give, for example **+100 EP raid**, and follow the guild rules
+* Paragraphs of explanation became a small **i** next to the heading, with the text in a tooltip
+* The Loot Master window no longer comes back with every bid after you closed it. It comes up when bidding starts and closes when nothing is left to do
+* Less chat: a manual sync prints one line instead of two, and the hint about changing a bid comes once per session
+
+## 2.2.1 (13 November 2026)
+
+### Changed
+* The bid popup closes as soon as you click **Main Spec** or **Off Spec**, before it stayed open until the item was given out. With several items it goes on with the next one. A chat line confirms your bid
+
+### Added
+* `/rgf rebid` shows the bid popup again, to change a bid while bidding is open
+
+## 2.2.0 (13 November 2026)
+
+### Changed
+* **Settings and rules moved to the game's Options.** They are under Options, AddOns, **Red Guild EPGP**: the settings on the first page, the **Guild rules** on a page below it. The addon window no longer has the Rules and Settings tabs, it keeps Standings, Raid, History and Data
+* `/rgf settings` and **Settings** in the minimap menu open the game's Options on the addon's page
+
+### Added
+* `/rgf rules` and **Guild rules** in the minimap menu open the rules page
+* During a fight the game does not let addons open the Options. The addon then says where to click instead of failing
+
 ## 2.1.1 (13 November 2026)
 
 ### Added

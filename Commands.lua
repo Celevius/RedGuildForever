@@ -73,10 +73,13 @@ local help = {
     "/rgf me  show your own points",
     "/rgf minimap  show or hide the minimap button",
     "/rgf check Cel Dru  show the points of a player, the first name is enough if it is clear",
+    "/rgf rebid  show the bid cards again to change your bid while bidding is open",
+    "/rgf resetpos  put the bid cards and the winner popup back where they were",
     "|cffffd100Loot master|r",
-    "/rgf bid  open the Start Bidding window, or /rgf bid [item] to start right away",
+    "/rgf bid  open the Loot Master window, or /rgf bid [item] to start right away",
     "/rgf test  turn test mode on or off, try everything alone",
-    "/rgf settings  open the settings",
+    "/rgf settings  open the settings in the game's Options",
+    "/rgf rules  open the guild rules in the game's Options",
     "/rgf bid [item] boss  same, priced as an end boss item (or rare)",
     "|cffffd100Editors|r",
     "/rgf edit Cel Dru  open the editor for a player, or your target without a name",
@@ -97,6 +100,7 @@ local help = {
     "/rgf export  open the Sync tab with backup export and import",
     "/rgf log  show the last changes",
     "/rgf check  check that this game version has everything the addon needs",
+    "/rgf welcome  show the short introduction again",
     "/rgf discord  the standings as text for Discord, with the search and class of the window",
     "|cffffd100Guild leader|r",
     "/rgf editors  show who may change data",
@@ -354,6 +358,16 @@ function ns.Command(line)
         ns.RequestRoster()
         ns.Sync()
 
+    elseif cmd == "welcome" then
+        ns.ShowWelcome()
+
+    elseif cmd == "resetpos" then
+        ns.ResetPositions()
+        ns.Print("the bid cards and the winner popup are back at their first place")
+
+    elseif cmd == "rebid" then
+        if not ns.ReopenBidPopup() then ns.Print("no bidding is open right now") end
+
     elseif cmd == "check" then
         ns.SelfCheck()
 
@@ -372,7 +386,10 @@ function ns.Command(line)
         ns.SetTestMode(not ns.IsTest())
 
     elseif cmd == "settings" or cmd == "options" then
-        ns.ToggleStandings(ns.TAB.settings)
+        ns.OpenSettings("settings")
+
+    elseif cmd == "rules" then
+        ns.OpenSettings("rules")
 
     elseif cmd == "edit" then
         if not needOfficer() then return end
@@ -405,6 +422,27 @@ function ns.Command(line)
 
     else
         ns.Print("unknown command, type /rgf help")
+    end
+end
+
+------------------------------------------------------------------------
+-- Key bindings, see Bindings.xml. The names show up in the game's key
+-- binding settings.
+------------------------------------------------------------------------
+BINDING_HEADER_REDGUILDFOREVER = "Red Guild EPGP"
+BINDING_NAME_REDGUILDFOREVER_TOGGLE = "Open or close the standings"
+BINDING_NAME_REDGUILDFOREVER_LOOT = "Open the Loot Master window"
+BINDING_NAME_REDGUILDFOREVER_MS = "Bid Main Spec on the first item"
+BINDING_NAME_REDGUILDFOREVER_OS = "Bid Off Spec on the first item"
+BINDING_NAME_REDGUILDFOREVER_PASS = "Pass on the first item"
+
+function RedGuildForever_Binding(action)
+    if action == "toggle" then
+        ns.ToggleStandings()
+    elseif action == "loot" then
+        if ns.CanEdit() then ns.OpenLootMaster() else ns.Print("only the guild leader and editors use the Loot Master window") end
+    elseif action == "ms" or action == "os" or action == "pass" then
+        ns.AnswerFirstBid(action:upper())
     end
 end
 

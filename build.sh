@@ -7,6 +7,6 @@ lua5.1 tests/run.lua
 
 rm -rf dist
 mkdir -p dist/RedGuildForever
-cp RedGuildForever.toc ./*.lua README.md CHANGELOG.md LICENSE dist/RedGuildForever/
+cp RedGuildForever.toc Bindings.xml ./*.lua README.md CHANGELOG.md LICENSE dist/RedGuildForever/
 (cd dist && zip -qr RedGuildForever.zip RedGuildForever)
 echo "built dist/RedGuildForever.zip"

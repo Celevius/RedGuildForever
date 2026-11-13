@@ -1,0 +1,20 @@
+<!-- Key bindings of Red Guild EPGP. The game shows them in its key binding
+     settings under AddOns, nothing is bound until the player chooses keys.
+     The game loads this file by itself, it must not be listed in the .toc file. -->
+<Bindings>
+    <Binding name="REDGUILDFOREVER_TOGGLE" header="REDGUILDFOREVER" category="ADDONS">
+        RedGuildForever_Binding("toggle")
+    </Binding>
+    <Binding name="REDGUILDFOREVER_LOOT" category="ADDONS">
+        RedGuildForever_Binding("loot")
+    </Binding>
+    <Binding name="REDGUILDFOREVER_MS" category="ADDONS">
+        RedGuildForever_Binding("ms")
+    </Binding>
+    <Binding name="REDGUILDFOREVER_OS" category="ADDONS">
+        RedGuildForever_Binding("os")
+    </Binding>
+    <Binding name="REDGUILDFOREVER_PASS" category="ADDONS">
+        RedGuildForever_Binding("pass")
+    </Binding>
+</Bindings>

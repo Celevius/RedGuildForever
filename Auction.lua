@@ -346,6 +346,14 @@ local function closeOwnPopup(a, winner)
     end
 end
 
+-- What a player would pay for the item, and whether as main spec or off spec.
+function ns.AwardCost(a, name)
+    local bid = a.bids[ns.Resolve(name)]
+    local spec = bid and bid.spec or "MS"
+    if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
+    return spec == "MS" and a.price or ns.OffSpecCost(a.price), spec
+end
+
 -- Award to a bidder or to the guild bank (name nil).
 function ns.Award(name, auction)
     local a = auction or ns.auction
@@ -588,7 +596,13 @@ function ns.SendBid(inc, spec)
         local word = spec == "MS" and "ms" or (spec == "OS" and "os" or "pass")
         ns.SendChat(word .. (inc.n and (" " .. inc.n) or ""), "WHISPER", inc.ownerRaw or inc.owner)
     end
+    local first = inc.myBid == nil
     inc.myBid = spec
+    -- the hint about /rgf rebid once per session is enough, the card going away shows the bid
+    if first and spec ~= "PASS" and not ns.rebidHintShown then
+        ns.rebidHintShown = true
+        ns.Print("you bid " .. (spec == "MS" and "main spec" or "off spec") .. " on " .. (inc.link or "the item") .. ". To change it while bidding is open, type /rgf rebid")
+    end
     ns.Fire("RGF_INCOMING_AUCTION", inc)
 end
 

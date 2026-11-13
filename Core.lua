@@ -5,12 +5,12 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.1.1"
+ns.version = "2.3.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
 -- Guild rules. The defaults match the guild loot rule book. The guild
--- leader and officers change them in the Settings tab, they are saved
+-- leader and officers change them in the game's Options, they are saved
 -- with the guild data and shared with Sync, so every officer uses the
 -- same values. Each rule has its own time stamp, the newest change wins.
 ------------------------------------------------------------------------
@@ -41,8 +41,10 @@ for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end
 -- Personal settings of this player, not shared.
 ns.defaults = {
     officerRank = 1,     -- rank index 0 (guild leader) up to this index may change data
+    confirmAward = true, -- ask before an item is awarded
+    altClickBid = true,  -- Alt click on an item chooses it for bidding
     showWinner = true,   -- a short popup with the winner when loot is given out
-    autoOpenLoot = false, -- open Start Bidding by itself when an editor loots good items in a group, off by default
+    autoOpenLoot = false, -- open the Loot Master window by itself when an editor loots good items in a group, off by default
     tierOrder = { "normal", "boss", "rare" },
     tierNames = { normal = "Normal boss", boss = "End boss", rare = "Very rare" },
 }
@@ -144,7 +146,7 @@ end
 ns.TEST_TAG = "|cffff8040[Test]|r "
 
 -- the tabs of the main window
-ns.TAB = { standings = 1, raid = 2, history = 3, rules = 4, data = 5, settings = 6 }
+ns.TAB = { standings = 1, raid = 2, history = 3, data = 4 }
 
 -- The addon never writes in guild or officer chat, only raid, party and whispers.
 local blockedChannels = { GUILD = true, OFFICER = true }

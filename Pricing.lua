@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: MIT, see LICENSE
 -- Item prices: base GP by where the item dropped, times a slot multiplier.
--- Both are guild rules, set in the Settings tab and shared with Sync.
+-- Both are guild rules, set in the game's Options and shared with Sync.
 
 local _, ns = ...
 ns = ns or _G.RedGuildForever

@@ -113,6 +113,22 @@ function methods.Click(t) run(t, "OnClick") end
 function methods.HasFocus(t) return rawget(t, "_focus") or false end
 function methods.SetFocus(t) rawset(t, "_focus", true) end
 function methods.ClearFocus(t) rawset(t, "_focus", false) end
+-- the first anchor point of a frame, enough to test saved positions
+function methods.ClearAllPoints(t) rawset(t, "_point", nil) end
+function methods.SetPoint(t, point, a, b, c, d)
+    if rawget(t, "_point") then return end
+    if type(a) == "number" then
+        rawset(t, "_point", { point, nil, point, a, b })
+    else
+        rawset(t, "_point", { point, a, b or point, c or 0, d or 0 })
+    end
+end
+function methods.GetPoint(t)
+    local p = rawget(t, "_point")
+    if not p then return nil end
+    return p[1], p[2], p[3], p[4], p[5]
+end
+function methods.GetParent(t) return rawget(t, "_parent") end
 function methods.IsEnabled(t) return rawget(t, "_enabled") ~= false end
 function methods.SetEnabled(t, v) rawset(t, "_enabled", v and true or false) end
 
@@ -228,11 +244,29 @@ function M.install()
     }
     _G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) table.insert(M.printed, msg) end }
-    _G.CreateFrame = function() return frameStub() end
+    _G.CreateFrame = function(_, _, parent)
+        local f = frameStub()
+        rawset(f, "_parent", parent)
+        return f
+    end
     _G.UIParent = frameStub()
     _G.Minimap = frameStub()
     _G.GetCursorPosition = function() return 0, 0 end
     _G.MenuUtil = M.menuUtil
+    -- the game's Options window: categories are remembered, opening one too
+    M.categories, M.openedCategory = {}, nil
+    local function category(name, frame, parent)
+        local c = { ID = #M.categories + 1, name = name, frame = frame, parent = parent }
+        function c:GetID() return self.ID end
+        table.insert(M.categories, c)
+        return c
+    end
+    _G.Settings = {
+        RegisterCanvasLayoutCategory = function(frame, name) return category(name, frame) end,
+        RegisterCanvasLayoutSubcategory = function(parent, frame, name) return category(name, frame, parent) end,
+        RegisterAddOnCategory = function(c) c.addon = true end,
+        OpenToCategory = function(id) M.openedCategory = M.categories[id] end,
+    }
     _G.UISpecialFrames = {}
     _G.GameTooltip = frameStub()
     _G.StaticPopupDialogs = {}

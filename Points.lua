@@ -210,7 +210,7 @@ end
 
 ------------------------------------------------------------------------
 -- Who may change data: the guild leader and the editors.
--- The guild leader picks the editors by hand in the Settings tab or with
+-- The guild leader picks the editors by hand in the game's Options or with
 -- /rgf editor add Name. The list is saved with the guild data and shared
 -- with Sync, everyone only accepts list changes made by the guild leader.
 --

@@ -139,6 +139,32 @@ local function button(parent, label, width, onClick)
     return b
 end
 
+-- A tooltip for a button. title and body can be functions, so the tooltip
+-- always shows what the click would do right now.
+local function tip(widget, title, body)
+    widget:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(type(title) == "function" and title() or title)
+        local lines = type(body) == "function" and body() or body
+        if type(lines) == "string" then lines = { lines } end
+        for _, line in ipairs(lines or {}) do GameTooltip:AddLine(line, 1, 1, 1, true) end
+        GameTooltip:Show()
+    end)
+    widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return widget
+end
+
+-- A small round "i" that explains something on mouse over, instead of a paragraph of text
+local function helpIcon(parent, title, body)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(16, 16)
+    local tex = b:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    tex:SetTexture("Interface\\common\\help-i")
+    b.body = body
+    return tip(b, title, body)
+end
+
 -- Column header like "Lvl Class Name Zone Rank Note" in the guild window
 local function columnHeader(parent, label, width, onClick)
     local h, native = create("Button", nil, parent, "WhoFrameColumnHeaderTemplate")
@@ -322,6 +348,7 @@ ns.UI = {
     setPortrait = setPortrait, setTitle = setTitle, window = window, button = button,
     columnHeader = columnHeader, headerRow = headerRow, scrollList = scrollList,
     rowCells = rowCells, checkbox = checkbox, itemButton = itemButton, itemName = itemName,
+    tip = tip, helpIcon = helpIcon,
 }
 
 ------------------------------------------------------------------------
@@ -332,7 +359,8 @@ local showAll = false
 local sortKey, sortDesc = "pr", true
 
 local standingsColumns = {
-    { key = "name", label = "Name", w = 170, sort = "name" },
+    { key = "place", label = "#", w = 34, justify = "RIGHT" },
+    { key = "name", label = "Name", w = 156, sort = "name" },
     { key = "ep", label = "EP", w = 74, justify = "RIGHT", sort = "ep" },
     { key = "gp", label = "GP", w = 74, justify = "RIGHT", sort = "gp" },
     { key = "pr", label = "Priority", w = 84, justify = "RIGHT", sort = "pr" },
@@ -360,6 +388,10 @@ local historyColumns = {
 
 local function showPage(id)
     if not main then return end
+    -- members only need the standings, the other tabs are for editors
+    local canEdit = ns.CanEdit()
+    if not canEdit then id = ns.TAB.standings end
+    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit) end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
     main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
@@ -459,8 +491,34 @@ local function buildStandingsPage(parent)
         end
         ns.RefreshStandings()
     end)
-    page.list = scrollList(holder, 18, function(row)
+    -- class icon in front of the name, and a bar in the class color for the priority
+    local function decorate(row)
         rowCells(row, standingsColumns)
+        row.classIcon = row:CreateTexture(nil, "ARTWORK")
+        row.classIcon:SetSize(14, 14)
+        row.classIcon:SetPoint("LEFT", 40, 0)
+        row.cells.name:ClearAllPoints()
+        row.cells.name:SetPoint("LEFT", 58, 0)
+        row.cells.name:SetWidth(128)
+        row.bar = row:CreateTexture(nil, "BORDER")
+        row.bar:SetPoint("LEFT", 36, 0)
+        row.bar:SetHeight(14)
+    end
+    page.decorate = decorate
+
+    -- your own row, always in view above the list
+    page.mine = CreateFrame("Button", nil, holder)
+    page.mine:SetHeight(20)
+    page.mine:SetPoint("TOPLEFT", 4, -30)
+    page.mine:SetPoint("RIGHT", holder, "RIGHT", -26, 0)
+    local mineBg = page.mine:CreateTexture(nil, "BACKGROUND")
+    mineBg:SetAllPoints()
+    mineBg:SetColorTexture(1, 0.82, 0, 0.12)
+    decorate(page.mine)
+    tip(page.mine, "Your place", "This row is always you, also when you scroll, search or filter the list.")
+
+    page.list = scrollList(holder, 18, function(row)
+        decorate(row)
         row:SetScript("OnEnter", function(self)
             if not self.entry then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -491,7 +549,7 @@ local function buildStandingsPage(parent)
             if self.entry and ns.CanEdit() then ns.OpenEditor(self.entry.name) end
         end)
     end)
-    page.list:SetPoint("TOPLEFT", 4, -30)
+    page.list:SetPoint("TOPLEFT", 4, -52)
     page.list:SetPoint("BOTTOMRIGHT", -26, 4)
     return page
 end
@@ -569,19 +627,21 @@ local function buildSyncPage(parent)
     local title = text(page, "GameFontNormal")
     title:SetPoint("TOPLEFT", 12, -12)
     title:SetText("Where the points are saved")
-    local info = text(page, "GameFontHighlightSmall")
-    info:SetPoint("TOPLEFT", 12, -32)
-    info:SetWidth(470)
-    info:SetWordWrap(true)
-    info:SetText("Every player keeps a copy of the points in the addon's save file. Every change is kept, and Sync hands the changes to everyone online, so changes made at the same time in two raids all count. Editors send, everyone else only receives.")
+    page.help = helpIcon(page, "Where the points are saved", {
+        "Every player keeps a copy of the points in the addon's save file.",
+        "Every change is kept, and Sync hands the changes to everyone online. Changes made at the same time in two raids all count.",
+        "Editors send, everyone else only receives. The addon syncs by itself, Sync now is only for when you do not want to wait.",
+    })
+    page.help:SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     page.state = text(page, "GameFontHighlight")
-    page.state:SetPoint("TOPLEFT", 12, -72)
+    page.state:SetPoint("TOPLEFT", 12, -34)
     page.state:SetWidth(470)
     page.state:SetWordWrap(true)
 
     page.sync = button(page, "Sync now", 110, function() ns.Sync() end)
     page.sync:SetPoint("TOPLEFT", 10, -106)
+    tip(page.sync, "Sync now", "Asks everyone online for changes you do not have yet. The addon does this by itself after login and every 15 minutes.")
     page.fresh = button(page, "Start fresh", 110, function()
         if StaticPopup_Show then StaticPopup_Show("REDGUILDFOREVER_FRESH") end
     end)
@@ -589,6 +649,10 @@ local function buildSyncPage(parent)
     -- decay only works with data, start fresh and the notes import only without
     page.decay = button(page, "Weekly decay", 120, function() ns.AskDecay() end)
     page.decay:SetPoint("LEFT", page.sync, "RIGHT", 4, 0)
+    tip(page.decay, "Weekly decay", function()
+        return { "Lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent. Run it once a week, after the last raid.",
+            "It asks first, and Undo takes it back." }
+    end)
     page.notes = button(page, "Import officer notes", 150, function()
         local n = ns.ImportOfficerNotes()
         ns.Print(n > 0 and ("imported " .. n .. " players from the officer notes") or "no points found in the officer notes")
@@ -598,14 +662,15 @@ local function buildSyncPage(parent)
     local backupTitle = text(page, "GameFontNormal")
     backupTitle:SetPoint("TOPLEFT", 12, -144)
     backupTitle:SetText("Backup")
-    local backupInfo = text(page, "GameFontHighlightSmall")
-    backupInfo:SetPoint("TOPLEFT", 12, -164)
-    backupInfo:SetWidth(470)
-    backupInfo:SetWordWrap(true)
-    backupInfo:SetText("Show backup, then press Ctrl C and keep the text in Discord or a file. To restore, paste a backup here with Ctrl V and click Import backup.")
+    page.backupHelp = helpIcon(page, "Backup", {
+        "Show backup, then press Ctrl C and keep the text in Discord or a file.",
+        "To restore, paste a backup into the box with Ctrl V and click Import backup. Nothing is counted twice.",
+        "The addon also keeps the newest three backups by itself, in a second save file of this character.",
+    })
+    page.backupHelp:SetPoint("LEFT", backupTitle, "RIGHT", 6, 0)
 
     local holder = create("Frame", nil, page, "InsetFrameTemplate")
-    holder:SetPoint("TOPLEFT", 10, -196)
+    holder:SetPoint("TOPLEFT", 10, -166)
     holder:SetPoint("BOTTOMRIGHT", -10, 40)
     local scroll = create("ScrollFrame", nil, holder, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 6, -6)
@@ -659,15 +724,14 @@ local function refreshSyncPage(page)
         table.insert(lines, count .. " players and " .. changes .. " changes in the data.")
         local auto = ns.LatestAutoBackup and ns.LatestAutoBackup()
         if auto then
-            table.insert(lines, "Automatic backup from " .. date("%d.%m. %H:%M", auto.time) .. ", kept in a second save file of this character.")
+            table.insert(lines, "Automatic backup from " .. date("%d.%m. %H:%M", auto.time) .. ".")
         end
         local waiting = ns.QueuedMessages and ns.QueuedMessages() or 0
         if waiting > 0 then table.insert(lines, waiting .. " sync messages are still waiting to go out.") end
         if ns.CanEdit() then
             local last = ns.LastDecay()
             local due = ns.DecayDue()
-            table.insert(lines, "Weekly decay lowers the EP and GP of everyone by " .. ns.Setting("decayPercent") .. " percent, once a week after the last raid. "
-                .. (last and ("Last one on " .. date("%d.%m.", last.t) .. " by " .. ns.ShortName(last.by) .. ".") or "There was none yet.")
+            table.insert(lines, (last and ("Last decay on " .. date("%d.%m.", last.t) .. " by " .. ns.ShortName(last.by) .. ".") or "No weekly decay yet.")
                 .. (due and " |cffff8040It is due.|r" or ""))
         end
     end
@@ -690,7 +754,7 @@ local function refreshSyncPage(page)
 end
 
 ------------------------------------------------------------------------
--- Settings, shown in the Settings tab and in the game's Options under AddOns
+-- Settings and guild rules, shown in the game's Options under AddOns
 ------------------------------------------------------------------------
 local settingsViews = {}
 ns.settingsViews = settingsViews
@@ -788,8 +852,11 @@ local function buildSettingsContent(holder, top, parts)
     end)
     view.test:SetPoint("TOPLEFT", 12, y)
     y = y - 30
-    local info = paragraph(nil, 4)
-    info:SetText("Try every function alone. The addon works on a copy of your data and rules with a simulated raid. Raid EP, bench, decay, the editor, alts, sync, bidding, rolls, awards and the rules below all work, but nothing is sent to other players and your real data stays as it is.")
+    local testHelp = helpIcon(parent, "Test mode", {
+        "Try every function alone. The addon works on a copy of your data and rules, with a simulated raid that bids and rolls.",
+        "Nothing is sent to other players and your real data stays as it is.",
+    })
+    testHelp:SetPoint("LEFT", view.test, "RIGHT", 90, 0)
     view.raid = paragraph(nil, 3)
     view.reset = button(parent, "Reset test data", 130, function()
         ns.ResetTestData()
@@ -811,7 +878,7 @@ local function buildSettingsContent(holder, top, parts)
     end)
     view.minimap:SetPoint("TOPLEFT", 12, y)
     y = y - 28
-    view.autoLoot = checkbox(parent, "Open Start Bidding when I loot good items in a group", function(checked)
+    view.autoLoot = checkbox(parent, "Open the Loot Master window when I loot good items in a group", function(checked)
         ns.SetSetting("autoOpenLoot", checked and true or false)
     end)
     view.autoLoot:SetPoint("TOPLEFT", 12, y)
@@ -820,12 +887,25 @@ local function buildSettingsContent(holder, top, parts)
         ns.SetSetting("showWinner", checked and true or false)
     end)
     view.showWinner:SetPoint("TOPLEFT", 12, y)
+    y = y - 28
+    view.confirmAward = checkbox(parent, "Ask before I award an item", function(checked)
+        ns.SetSetting("confirmAward", checked and true or false)
+    end)
+    view.confirmAward:SetPoint("TOPLEFT", 12, y)
+    y = y - 28
+    view.altClickBid = checkbox(parent, "Alt click an item in my bags or the loot window to choose it for bidding", function(checked)
+        ns.SetSetting("altClickBid", checked and true or false)
+    end)
+    view.altClickBid:SetPoint("TOPLEFT", 12, y)
     y = y - 40
 
     -- Editors
     heading("Editors", "GameFontNormalLarge")
-    local editorInfo = paragraph(nil, 3)
-    editorInfo:SetText("Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is. Only the guild leader adds or removes them. Sync shares the list with everyone.")
+    local editorHelp = helpIcon(parent, "Editors", {
+        "Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is.",
+        "Only the guild leader adds or removes them. Sync shares the list with everyone.",
+    })
+    editorHelp:SetPoint("TOPLEFT", 90, y + 22)
     view.editorList = paragraph("GameFontHighlight", 3)
     view.editorBox = ns.UIInputBox(parent, 180, false)
     view.editorBox:SetMaxLetters(48)
@@ -874,8 +954,11 @@ local function buildSettingsContent(holder, top, parts)
     if parts.rules then
     -- Guild rules
     heading("Guild rules", "GameFontNormalLarge")
-    view.rulesInfo = paragraph(nil, 3)
-    view.rulesInfo:SetText("These rules are the same for the whole guild. Sync shares them with every editor, the newest change wins. The guild leader and editors can change them, everyone else can look.")
+    view.rulesInfo = helpIcon(parent, "Guild rules", {
+        "These rules are the same for the whole guild. Sync shares them, the newest change wins.",
+        "The guild leader and editors can change them, everyone else can look.",
+    })
+    view.rulesInfo:SetPoint("TOPLEFT", 110, y + 22)
 
     for _, def in ipairs(ns.RULES) do
         if def.section then
@@ -983,6 +1066,8 @@ function ns.RefreshSettings()
             view.minimap:SetChecked(not (mm and mm.hide))
             view.autoLoot:SetChecked(ns.Setting("autoOpenLoot") and true or false)
             view.showWinner:SetChecked(ns.Setting("showWinner") and true or false)
+            view.confirmAward:SetChecked(ns.Setting("confirmAward") and true or false)
+            view.altClickBid:SetChecked(ns.Setting("altClickBid") and true or false)
 
             view.editorList:SetText(editorText)
             view.editorBox:SetEnabled(canManage)
@@ -1004,36 +1089,79 @@ function ns.RefreshSettings()
     end
 end
 
-local function buildSettingsPage(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints()
-    page.view = buildSettingsContent(page, nil, { settings = true })
-    return page
-end
+-- The settings and the guild rules live in the game's Options window under
+-- AddOns: "Red Guild EPGP" has the settings, "Guild rules" below it the rules.
+local optionViews = {}
+ns.optionViews = optionViews
+local optionCategories = {}
+local fallbackWindows = {}
 
--- Rules tab: every price, multiplier and EP amount of the guild
-local function buildRulesPage(parent)
-    local page = CreateFrame("Frame", nil, parent)
-    page:SetAllPoints()
-    page.view = buildSettingsContent(page, nil, { rules = true })
-    return page
-end
-
--- the same settings in the game's Options window, under AddOns
-local function registerOptions()
-    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return end
+local function optionsPanel(title, parts)
     local panel = CreateFrame("Frame")
-    local title = text(panel, "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Red Guild EPGP")
-    buildSettingsContent(panel, -40)
+    local heading = text(panel, "GameFontNormalLarge")
+    heading:SetPoint("TOPLEFT", 12, -12)
+    heading:SetText(title)
+    local view = buildSettingsContent(panel, -40, parts)
     panel:SetScript("OnShow", function() ns.RefreshSettings() end)
-    local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
-    if ok and category then
-        pcall(Settings.RegisterAddOnCategory, category)
-        ns.optionsCategory = category
-    end
+    return panel, view
 end
+
+local function registerOptions()
+    if optionCategories.settings then return true end
+    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return false end
+    local panel, view = optionsPanel("Red Guild EPGP", { settings = true })
+    local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Red Guild EPGP")
+    if not (ok and category) then return false end
+    pcall(Settings.RegisterAddOnCategory, category)
+    optionCategories.settings, optionViews.settings = category, view
+    ns.optionsCategory = category
+    -- the rules as their own page below it, or on the same page when the game has no sub pages
+    if Settings.RegisterCanvasLayoutSubcategory then
+        local rulesPanel, rulesView = optionsPanel("Guild rules", { rules = true })
+        local ok2, sub = pcall(Settings.RegisterCanvasLayoutSubcategory, category, rulesPanel, "Guild rules")
+        if ok2 and sub then
+            optionCategories.rules, optionViews.rules = sub, rulesView
+        end
+    end
+    return true
+end
+
+local function categoryId(category)
+    if type(category) == "table" and category.GetID then
+        local ok, id = pcall(category.GetID, category)
+        if ok then return id end
+    end
+    return category and category.ID
+end
+
+-- Open the settings ("settings") or the guild rules ("rules") in the game's
+-- Options. Returns the view, tests use it.
+function ns.OpenSettings(which)
+    which = which == "rules" and "rules" or "settings"
+    if registerOptions() and optionCategories[which] then
+        local id = categoryId(optionCategories[which])
+        local opened = Settings.OpenToCategory and id ~= nil and pcall(Settings.OpenToCategory, id)
+        if not opened then
+            ns.Print("open the game's Options, then AddOns, then Red Guild EPGP" .. (which == "rules" and ", Guild rules" or "")
+                .. ". The game does not let addons open it during a fight")
+        end
+        ns.RefreshSettings()
+        return optionViews[which]
+    end
+    -- a game without the Options API: our own small window
+    local f = fallbackWindows[which]
+    if not f then
+        f = window("RedGuildForeverOptions" .. which, 520, 520, which == "rules" and "Guild rules" or "Red Guild EPGP settings", ICON_STANDINGS)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+        optionViews[which] = optionViews[which] or buildSettingsContent(f.Inset, nil, { [which] = true })
+        fallbackWindows[which] = f
+    end
+    f:Show()
+    ns.RefreshSettings()
+    return optionViews[which]
+end
+
 ns.On("RGF_READY", registerOptions)
 ns.On("RGF_TEST_MODE", function() ns.RefreshSettings() end)
 ns.On("RGF_RULES_CHANGED", function() ns.RefreshSettings() end)
@@ -1105,24 +1233,46 @@ local function buildMain()
         buildStandingsPage(f.Inset),
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
-        buildRulesPage(f.Inset),
         buildSyncPage(f.Inset),
-        buildSettingsPage(f.Inset),
     }
 
     -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
     f.lootMaster = button(f, "Loot Master", 110, function() ns.OpenLootMaster() end)
     f.lootMaster:SetPoint("BOTTOMLEFT", 6, 4)
+    tip(f.lootMaster, "Loot Master", "Opens the loot window: choose an item, start bidding and give it out.")
+
+    -- who would get EP of this kind right now, for the tooltips
+    local function whoGets(kind, amount)
+        local get, already = {}, {}
+        local seen = {}
+        for _, n in ipairs(ns.RaidAndBench()) do
+            local m = ns.MainOf(n)
+            if m and ns.members[m] and not seen[m] then
+                seen[m] = true
+                table.insert(ns.GotTonight(m, kind) and already or get, ns.ShortName(n))
+            end
+        end
+        local lines = { #get .. " players get " .. amount .. " EP: " .. (#get > 0 and table.concat(get, ", ") or "nobody") }
+        if #already > 0 then table.insert(lines, "Already got it tonight: " .. table.concat(already, ", ")) end
+        table.insert(lines, "|cff999999The raid and the bench, once per night. Undo takes it back.|r")
+        return lines
+    end
 
     f.standingsButtons = CreateFrame("Frame", nil, f)
     f.standingsButtons:SetSize(1, 22)
     f.standingsButtons:SetPoint("BOTTOMRIGHT", -6, 4)
     local undo = button(f.standingsButtons, "Undo", 70, function() ns.Command("undo") end)
     undo:SetPoint("RIGHT")
-    local ontime = button(f.standingsButtons, "On time EP", 96, function() ns.Command("ontime") end)
-    ontime:SetPoint("RIGHT", undo, "LEFT", -2, 0)
-    local raid = button(f.standingsButtons, "Raid EP", 86, function() ns.Command("raid") end)
-    raid:SetPoint("RIGHT", ontime, "LEFT", -2, 0)
+    tip(undo, "Undo your last change", function()
+        local ev = ns.LastOwnEvent()
+        return ev and ("Takes back: " .. (ev.r ~= "" and ev.r or "points changed")) or "You have no change to take back."
+    end)
+    f.ontime = button(f.standingsButtons, "On time", 110, function() ns.Command("ontime") end)
+    f.ontime:SetPoint("RIGHT", undo, "LEFT", -2, 0)
+    tip(f.ontime, "On time bonus", function() return whoGets("ontime", ns.Setting("onTimeEP")) end)
+    f.raidEP = button(f.standingsButtons, "Raid", 110, function() ns.Command("raid") end)
+    f.raidEP:SetPoint("RIGHT", f.ontime, "LEFT", -2, 0)
+    tip(f.raidEP, "EP for the raid night", function() return whoGets("raid", ns.Setting("raidEP")) end)
 
     f.benchButtons = CreateFrame("Frame", nil, f)
     f.benchButtons:SetSize(1, 22)
@@ -1139,7 +1289,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Raid", "History", "Rules", "Data", "Settings" }, showPage)
+    tabs(f, name, { "Standings", "Raid", "History", "Data" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1162,28 +1312,71 @@ local function sortedStandings()
     return list
 end
 
+local CLASS_ICONS = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
+local BAR_WIDTH = 440
+
+-- Fill one standings row. best is the highest priority, it gets the full bar.
+local function fillStandingsRow(row, e, best, minEP)
+    row.entry = e
+    row.cells.place:SetText(e.place or "")
+    row.cells.name:SetText(ns.ShortName(e.name))
+    local r, g, b = classColor(e.class)
+    row.cells.name:SetTextColor(r, g, b)
+    local coords = e.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[e.class]
+    if coords then
+        row.classIcon:SetTexture(CLASS_ICONS)
+        row.classIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        row.classIcon:Show()
+    else
+        row.classIcon:Hide()
+    end
+    row.cells.ep:SetText(e.ep)
+    row.cells.gp:SetText(e.gp)
+    row.cells.pr:SetText(ns.FormatPR(e.pr))
+    if e.ep < minEP then
+        row.cells.pr:SetTextColor(0.4, 0.78, 1)
+    else
+        row.cells.pr:SetTextColor(1, 0.82, 0)
+    end
+    row.cells.alts:SetText(e.alts > 0 and e.alts or "")
+    local share = best > 0 and math.max(0, math.min(1, e.pr / best)) or 0
+    row.barShare = share
+    row.bar:SetWidth(math.max(1, share * BAR_WIDTH))
+    row.bar:SetColorTexture(r, g, b, 0.22)
+    row.bar:SetShown(share > 0)
+    row:Show()
+end
+
 local function refreshStandingsPage(page)
+    -- the place of everyone by priority, whatever the list is sorted or filtered by
+    local ranking = ns.Standings(false)
+    local places, best = {}, 0
+    for i, e in ipairs(ranking) do
+        places[e.name] = i
+        if e.pr > best then best = e.pr end
+    end
     local list = sortedStandings()
     page.shown = list
     page.class:SetText(filter.class and className(filter.class) or "All classes")
     local minEP = ns.Setting("minEP")
     for i, e in ipairs(list) do
-        local row = page.list:Row(i)
-        row.entry = e
-        row.cells.name:SetText(ns.ShortName(e.name))
-        row.cells.name:SetTextColor(classColor(e.class))
-        row.cells.ep:SetText(e.ep)
-        row.cells.gp:SetText(e.gp)
-        row.cells.pr:SetText(ns.FormatPR(e.pr))
-        if e.ep < minEP then
-            row.cells.pr:SetTextColor(0.4, 0.78, 1)
-        else
-            row.cells.pr:SetTextColor(1, 0.82, 0)
-        end
-        row.cells.alts:SetText(e.alts > 0 and e.alts or "")
-        row:Show()
+        e.place = places[e.name]
+        fillStandingsRow(page.list:Row(i), e, best, minEP)
     end
     page.list:SetCount(#list)
+
+    -- your own row
+    local me = ns.MainOf(ns.PlayerName())
+    local mine
+    for _, e in ipairs(ranking) do if e.name == me then mine = e end end
+    if not mine then
+        local ep, gp, pr = ns.GetPoints(me)
+        local m = ns.members[me]
+        mine = { name = me, ep = ep, gp = gp, pr = pr, class = m and m.class, alts = #ns.AltsOf(me) }
+    end
+    mine.place = places[me]
+    fillStandingsRow(page.mine, mine, best, minEP)
+    page.mine.cells.name:SetText(ns.ShortName(me) .. "  |cffffd100(you)|r")
     return #list
 end
 
@@ -1254,8 +1447,12 @@ end
 function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
-    local count = 0
     local T = ns.TAB
+    if tab ~= T.standings and not ns.CanEdit() then
+        showPage(T.standings) -- no editor anymore, back to the standings
+        return
+    end
+    local count = 0
     if tab == T.standings then
         count = refreshStandingsPage(main.pages[T.standings])
     elseif tab == T.raid then
@@ -1264,11 +1461,11 @@ function ns.RefreshStandings()
         refreshHistoryPage(main.pages[T.history])
     elseif tab == T.data then
         refreshSyncPage(main.pages[T.data])
-    else
-        ns.RefreshSettings()
     end
     setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
     main.lootMaster:SetShown(ns.CanEdit())
+    main.raidEP:SetText("+" .. ns.Setting("raidEP") .. " EP raid")
+    main.ontime:SetText("+" .. ns.Setting("onTimeEP") .. " EP on time")
 
     local me = ns.PlayerName()
     local ep, gp, pr = ns.GetPoints(me)
@@ -1281,12 +1478,8 @@ function ns.RefreshStandings()
         status = ns.Session() and "Raid running" or (#ns.Bench() .. " players on the bench")
     elseif tab == T.history then
         status = "Every change of every editor, shared with Sync"
-    elseif tab == T.rules then
-        status = "The guild rules, the same for everyone"
     elseif tab == T.data then
         status = "Sync, decay and backup"
-    elseif tab == T.settings then
-        status = "Settings"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
     else
@@ -1539,29 +1732,8 @@ ns.On("RGF_SYNC_DONE", function() ns.RefreshStandings() end)
 ns.On("RGF_TEST_MODE", function() ns.RefreshStandings() end)
 
 ------------------------------------------------------------------------
--- Loot master window
--- Shows at a glance who wants the item for main spec, who for off spec,
--- who passed and who has not answered yet. The winner is marked.
+-- A small text box, used by the settings, the editor and the loot window
 ------------------------------------------------------------------------
-local lm
-
-local bidColumns = {
-    { key = "name", label = "Name", w = 168 },
-    { key = "spec", label = "Answer", w = 76 },
-    { key = "ep", label = "EP", w = 56, justify = "RIGHT" },
-    { key = "gp", label = "GP", w = 56, justify = "RIGHT" },
-    { key = "pr", label = "Priority", w = 70, justify = "RIGHT" },
-    { key = "roll", label = "Roll", w = 44, justify = "RIGHT" },
-    { key = "action", label = "", w = 86 },
-}
-
-local SECTION_COLORS = {
-    MS = { 0.25, 1, 0.25 },
-    OS = { 0.4, 0.78, 1 },
-    PASS = { 0.6, 0.6, 0.6 },
-    WAIT = { 1, 0.5, 0.25 },
-}
-
 local function inputBox(parent, width, numeric)
     local box = create("EditBox", nil, parent, "InputBoxTemplate")
     box:SetSize(width, 20)
@@ -1572,511 +1744,53 @@ local function inputBox(parent, width, numeric)
     return box
 end
 ns.UIInputBox = inputBox
+ns.UI.inputBox = inputBox
+ns.UI.ICON_UNKNOWN = ICON_UNKNOWN
 
-local function buildLootMaster()
-    local f = window("RedGuildForeverLootFrame", 580, 520, "Loot Master", ICON_UNKNOWN)
-    f:ClearAllPoints()
-    f:SetPoint("RIGHT", UIParent, "RIGHT", -80, 20)
+------------------------------------------------------------------------
+-- Welcome: a few lines the first time the addon runs, and with /rgf welcome
+------------------------------------------------------------------------
+local welcome
 
-    f.item = text(f, "GameFontNormalLarge")
-    f.item:SetPoint("TOPLEFT", 66, -30)
-    f.item:SetWidth(420)
-    f.price = text(f, "GameFontHighlightSmall")
-    f.price:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
-    f.price:SetWidth(420)
-
-    f.slot = itemButton(f, 37)
-    f.slot:SetPoint("TOPRIGHT", -14, -27)
-
-    -- one button per item when several are up for bids
-    f.itemTabs = {}
-    f.switchHint = text(f.Inset, "GameFontDisableSmall")
-    f.switchHint:SetPoint("TOPLEFT", 12, -14)
-    f.switchHint:SetText("One item is up for bids.")
-
-    -- price row
-    local tierLabel = text(f.Inset, "GameFontNormalSmall")
-    tierLabel:SetPoint("TOPLEFT", 10, -40)
-    tierLabel:SetText("Drops from")
-    f.tierButtons = {}
-    local prev = tierLabel
-    for _, tier in ipairs(ns.defaults.tierOrder) do
-        local b = button(f.Inset, ns.defaults.tierNames[tier], 100, function() ns.SetAuctionTier(tier) end)
-        b:SetPoint("LEFT", prev, "RIGHT", prev == tierLabel and 8 or 2, 0)
-        f.tierButtons[tier] = b
-        prev = b
+function ns.ShowWelcome()
+    if not welcome then
+        local f = window("RedGuildForeverWelcomeFrame", 440, 300, "Welcome to Red Guild EPGP", ICON_STANDINGS)
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+        f:SetFrameStrata("DIALOG")
+        f.sub = text(f, "GameFontHighlightSmall")
+        f.sub:SetPoint("TOPLEFT", 66, -34)
+        f.sub:SetWidth(340)
+        f.sub:SetText("Show up and you go up the list, take loot and you go down.")
+        f.body = text(f.Inset, "GameFontHighlight")
+        f.body:SetPoint("TOPLEFT", 14, -14)
+        f.body:SetWidth(400)
+        f.body:SetWordWrap(true)
+        f.body:SetSpacing(4)
+        f.ok = button(f, "Got it", 120, function() f:Hide() end)
+        f.ok:SetPoint("BOTTOM", 0, 4)
+        welcome = f
+        ns.welcomeFrame = f
     end
-    local priceLabel = text(f.Inset, "GameFontNormalSmall")
-    priceLabel:SetPoint("LEFT", prev, "RIGHT", 12, 0)
-    priceLabel:SetText("Price")
-    f.priceBox = inputBox(f.Inset, 46, true)
-    f.priceBox:SetPoint("LEFT", priceLabel, "RIGHT", 8, 0)
-    local function setPrice()
-        if ns.SetAuctionPrice(f.priceBox:GetText()) then f.priceBox:ClearFocus() end
-    end
-    f.priceBox:SetScript("OnEnterPressed", setPrice)
-    f.priceSet = button(f.Inset, "Set", 44, setPrice)
-    f.priceSet:SetPoint("LEFT", f.priceBox, "RIGHT", 4, 0)
-
-    f.state = text(f.Inset, "GameFontNormal")
-    f.state:SetPoint("TOPLEFT", 10, -70)
-    f.state:SetWidth(540)
-    f.counts = text(f.Inset, "GameFontHighlightSmall")
-    f.counts:SetPoint("TOPLEFT", 10, -88)
-    f.counts:SetWidth(540)
-
-    local listHolder = CreateFrame("Frame", nil, f.Inset)
-    listHolder:SetPoint("TOPLEFT", 0, -102)
-    listHolder:SetPoint("BOTTOMRIGHT")
-    headerRow(listHolder, bidColumns)
-    f.list = scrollList(listHolder, 22, function(row)
-        rowCells(row, bidColumns)
-        row.section = text(row, "GameFontNormal")
-        row.section:SetPoint("LEFT", 6, 0)
-        row.section:SetWidth(400)
-        row.sectionLine = row:CreateTexture(nil, "BACKGROUND")
-        row.sectionLine:SetPoint("BOTTOMLEFT", 2, 1)
-        row.sectionLine:SetPoint("BOTTOMRIGHT", -2, 1)
-        row.sectionLine:SetHeight(1)
-        row.sectionLine:SetColorTexture(1, 0.82, 0, 0.35)
-        row.winner = text(row, "GameFontNormalSmall", "RIGHT")
-        row.winner:SetPoint("RIGHT", -74, 0)
-        row.winner:SetText("|cff40ff40Winner|r")
-        row.award = button(row, "Award", 66, function()
-            if row.bid then ns.Award(row.bid.name) end
-        end)
-        row.award:SetHeight(20)
-        row.award:SetPoint("RIGHT", -2, 0)
-        -- what the bidder got lately, helps with close calls
-        row:SetScript("OnEnter", function(self)
-            if not self.bid then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(ns.ShortName(self.bid.name))
-            local items = ns.LootOf(self.bid.name, 3)
-            if #items == 0 then GameTooltip:AddLine("No items yet", 1, 1, 1) end
-            ns.AddLootLines(GameTooltip, self.bid.name)
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end)
-    f.list:SetPoint("TOPLEFT", 4, -30)
-    f.list:SetPoint("BOTTOMRIGHT", -26, 4)
-
-    f.closeBids = button(f, "Close bids", 100, function() ns.CloseBidding() end)
-    f.closeBids:SetPoint("BOTTOMLEFT", 6, 4)
-    f.rolls = button(f, "Ask for rolls", 110, function() ns.RequestRolls() end)
-    f.rolls:SetPoint("LEFT", f.closeBids, "RIGHT", 2, 0)
-    f.cancel = button(f, "Cancel", 80, function() ns.CancelAuction() end)
-    f.cancel:SetPoint("BOTTOMRIGHT", -6, 4)
-    f.bank = button(f, "Bank or Disenchant", 140, function() ns.Award(nil) end)
-    f.bank:SetPoint("RIGHT", f.cancel, "LEFT", -2, 0)
-
-    local elapsed = 0
-    f:SetScript("OnUpdate", function(_, dt)
-        elapsed = elapsed + dt
-        if elapsed < 0.25 then return end
-        elapsed = 0
-        local a = ns.auction
-        if a and a.open then
-            local left = math.max(0, math.ceil(a.endsAt - GetTime()))
-            f.state:SetText("Bidding is open, |cffffffff" .. left .. "|r seconds left")
-        end
-    end)
-    return f
-end
-
-local function showSection(row, label, count, key)
-    row.bid = nil
-    for _, cell in pairs(row.cells) do cell:SetText("") end
-    local c = SECTION_COLORS[key]
-    row.section:SetText(label .. "  |cffffffff" .. count .. "|r")
-    row.section:SetTextColor(c[1], c[2], c[3])
-    row.section:Show()
-    row.sectionLine:Show()
-    row.winner:Hide()
-    row.award:Hide()
-    row:Show()
-end
-
-local function showBid(row, b, isWinner, canAward)
-    row.bid = b
-    row.section:Hide()
-    row.sectionLine:Hide()
-    local label = ns.ShortName(b.name)
-    if b.main and b.main ~= b.name then label = label .. " |cff999999(" .. ns.ShortName(b.main) .. ")|r" end
-    row.cells.name:SetText(label)
-    local m = ns.members[b.name]
-    row.cells.name:SetTextColor(classColor(m and m.class))
-    local c = SECTION_COLORS[b.spec] or SECTION_COLORS.PASS
-    row.cells.spec:SetText(b.spec == "MS" and "Main Spec" or (b.spec == "OS" and "Off Spec" or "Pass"))
-    row.cells.spec:SetTextColor(c[1], c[2], c[3])
-    row.cells.ep:SetText(b.ep)
-    row.cells.gp:SetText(b.gp)
-    if b.spec == "MS" then
-        row.cells.pr:SetText(ns.FormatPR(b.pr))
-        if b.newcomer then row.cells.pr:SetTextColor(0.4, 0.78, 1) else row.cells.pr:SetTextColor(1, 0.82, 0) end
-    elseif b.spec == "OS" then
-        local osCost = ns.OffSpecCost(ns.auction and ns.auction.price or 0)
-        row.cells.pr:SetText(osCost > 0 and (osCost .. " GP") or "free")
-        row.cells.pr:SetTextColor(0.7, 0.7, 0.7)
-    else
-        row.cells.pr:SetText("")
-    end
-    row.cells.roll:SetText(b.roll or (b.wantsRoll and "..." or ""))
-    row.winner:SetShown(isWinner)
-    row.award:SetShown(canAward)
-    row:Show()
-end
-
-local function showWaiting(row, name)
-    row.bid = nil
-    row.section:Hide()
-    row.sectionLine:Hide()
-    row.cells.name:SetText(ns.ShortName(name))
-    local m = ns.members[name]
-    local r, g, b = classColor(m and m.class)
-    row.cells.name:SetTextColor(r * 0.6, g * 0.6, b * 0.6)
-    row.cells.spec:SetText("No answer")
-    row.cells.spec:SetTextColor(SECTION_COLORS.WAIT[1], SECTION_COLORS.WAIT[2], SECTION_COLORS.WAIT[3])
-    row.cells.ep:SetText("")
-    row.cells.gp:SetText("")
-    row.cells.pr:SetText("")
-    row.cells.roll:SetText("")
-    row.winner:Hide()
-    row.award:Hide()
-    row:Show()
-end
-
-function ns.RefreshLootMaster()
-    local a = ns.auction
-    if not a then
-        if lm then lm:Hide() end
-        return
-    end
-    lm = lm or buildLootMaster()
-    if not lm:IsShown() then lm:Show() end
-    ns.lootMasterFrame = lm
-    -- the item buttons
-    local multi = #ns.auctions > 1
-    lm.switchHint:SetShown(not multi)
-    for i, x in ipairs(ns.auctions) do
-        local b = lm.itemTabs[i]
-        if not b then
-            b = button(lm.Inset, "", 88, function(self) if self.auction then ns.SelectAuction(self.auction) end end)
-            b:SetHeight(22)
-            b:SetPoint("TOPLEFT", 8 + (i - 1) * 90, -8)
-            lm.itemTabs[i] = b
-        end
-        b.auction = x
-        local name = x.link:match("%[(.-)%]") or "?"
-        if #name > 9 then name = name:sub(1, 8) .. "." end
-        b:SetText((x.open and "|cff40ff40" or "") .. x.n .. ". " .. name .. (x.open and "|r" or ""))
-        b:SetEnabled(x ~= a)
-        b:SetShown(multi and i <= 6)
-    end
-    for i = #ns.auctions + 1, #lm.itemTabs do lm.itemTabs[i]:Hide() end
-    local title = "Loot Master" .. (#ns.auctions > 1 and ("  " .. a.n .. " of " .. #ns.auctions) or "")
-    setTitle(lm, a.test and (title .. "  |cffff8040Test mode|r") or title)
-    local _, _, icon = ns.ItemInfo(a.link)
-    setPortrait(lm, icon or ICON_UNKNOWN)
-    lm.item:SetText(a.link)
-    lm.price:SetText("Main spec costs |cffffffff" .. a.price .. " GP|r, " .. ns.OffSpecText(a.price) .. (a.fixed and ", fixed price" or ""))
-    lm.slot:SetItem(a.link)
-    for tier, b in pairs(lm.tierButtons) do
-        b:SetEnabled(not a.fixed and tier ~= a.tier)
-    end
-    if not lm.priceBox:HasFocus() then lm.priceBox:SetText(tostring(a.price)) end
-
-    local o = ns.AuctionOverview(a)
-    local tied = ns.TiedForFirst(a)
-    if not a.open then
-        if #o.all == 0 then
-            lm.state:SetText("Bidding is closed. Nobody wants it, give it to the bank or disenchant it.")
-        elseif #tied > 0 then
-            lm.state:SetText("Bidding is closed. |cffff8040Tie for first place|r, waiting for /roll.")
-        else
-            lm.state:SetText("Bidding is closed. Award the item to the winner.")
-        end
-    end
-    lm.counts:SetText(string.format(
-        "|cff40ff40Main Spec %d|r     |cff66c7ffOff Spec %d|r     |cff999999Pass %d|r     |cffff8040No answer %d|r",
-        #o.ms, #o.os, #o.passed, #o.waiting))
-
-    local n = 0
-    local function nextRow()
-        n = n + 1
-        return lm.list:Row(n)
-    end
-    local winner = (#tied == 0) and o.winner or nil
-    local sections = {
-        { key = "MS", label = "Main Spec", list = o.ms },
-        { key = "OS", label = "Off Spec", list = o.os },
-        { key = "PASS", label = "Passed", list = o.passed },
+    local lines = {
+        "|cffffd100The coin at the minimap|r opens the standings with a left click. Your own row is always at the top.",
+        "|cffffd100When loot is up for bids|r a small card shows up. Click Main Spec, Off Spec or Pass. You can drag the card anywhere.",
+        "|cffffd100Settings|r are in the game's Options under AddOns, Red Guild EPGP. There you turn the popups off, and the game's key bindings have keys for bidding.",
     }
-    for _, sec in ipairs(sections) do
-        if #sec.list > 0 then
-            showSection(nextRow(), sec.label, #sec.list, sec.key)
-            for _, b in ipairs(sec.list) do
-                showBid(nextRow(), b, b == winner, sec.key ~= "PASS")
-            end
-        end
+    if ns.CanEdit() then
+        table.insert(lines, "|cffffd100You are an editor.|r Right click the coin for Loot Master and Start raid. Alt click an item in your bags to put it up for bids. The test mode in the Options lets you try it all alone.")
     end
-    if #o.waiting > 0 then
-        showSection(nextRow(), "No answer yet", #o.waiting, "WAIT")
-        for _, name in ipairs(o.waiting) do showWaiting(nextRow(), name) end
-    end
-    lm.list:SetCount(n)
-    lm.closeBids:SetEnabled(a.open)
-    lm.rolls:SetEnabled(not a.open and #tied > 0)
+    welcome.body:SetText(table.concat(lines, "\n\n"))
+    welcome:Show()
+    RedGuildForeverDB.welcomed = true
 end
 
-ns.On("RGF_AUCTION_CHANGED", function() ns.RefreshLootMaster() end)
-
-------------------------------------------------------------------------
--- Bid popup for raiders, inspired by the Need or Greed loot roll
-------------------------------------------------------------------------
-local popup
-local nextUnanswered, showPopup
-
-local function buildPopup()
-    local f = window("RedGuildForeverBidFrame", 380, 214, "Loot Bid", ICON_UNKNOWN)
-    f:ClearAllPoints()
-    f:SetPoint("TOP", UIParent, "TOP", 0, -140)
-    f:SetFrameStrata("DIALOG")
-
-    f.item = text(f, "GameFontNormal")
-    f.item:SetPoint("TOPLEFT", 66, -32)
-    f.item:SetWidth(290)
-    f.price = text(f, "GameFontHighlightSmall")
-    f.price:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
-    f.price:SetWidth(290)
-
-    f.slot = itemButton(f.Inset, 40)
-    f.slot:SetPoint("TOPLEFT", 12, -12)
-
-    f.mine = text(f.Inset, "GameFontHighlight")
-    f.mine:SetPoint("TOPLEFT", f.slot, "TOPRIGHT", 10, -2)
-    f.mine:SetWidth(280)
-    f.note = text(f.Inset, "GameFontNormalSmall")
-    f.note:SetPoint("TOPLEFT", f.mine, "BOTTOMLEFT", 0, -4)
-    f.note:SetWidth(280)
-
-    -- timer bar like the loot roll frame
-    f.timer = CreateFrame("StatusBar", nil, f.Inset)
-    f.timer:SetPoint("BOTTOMLEFT", 12, 12)
-    f.timer:SetPoint("BOTTOMRIGHT", -12, 12)
-    f.timer:SetHeight(10)
-    f.timer:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    f.timer:SetStatusBarColor(1, 0.82, 0)
-    f.timer:SetMinMaxValues(0, 1)
-    local bg = f.timer:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.6)
-    f.timerText = text(f.Inset, "GameFontDisableSmall", "CENTER")
-    f.timerText:SetPoint("BOTTOM", f.timer, "TOP", 0, 3)
-
-    f.ms = button(f, "Main Spec", 112, function() ns.SendBid(f.inc, "MS") end)
-    f.ms:SetPoint("BOTTOMLEFT", 6, 4)
-    f.pass = button(f, "Pass", 112, function()
-        local inc = f.inc
-        if inc and inc.myBid then ns.SendBid(inc, "PASS") end
-        if inc then inc.myBid = inc.myBid or "PASS" end
-        local nextInc = nextUnanswered(inc)
-        if nextInc then showPopup(nextInc) else f:Hide() end
+-- once, a few seconds after the first login with the addon
+ns.On("RGF_READY", function()
+    if RedGuildForeverDB.welcomed then return end
+    ns.After(6, function()
+        if not RedGuildForeverDB.welcomed then ns.ShowWelcome() end
     end)
-    f.pass:SetPoint("BOTTOMRIGHT", -6, 4)
-    f.os = button(f, "Off Spec", 112, function() ns.SendBid(f.inc, "OS") end)
-    f.os:SetPoint("LEFT", f.ms, "RIGHT", 6, 0)
-    f.os:SetPoint("RIGHT", f.pass, "LEFT", -6, 0)
-
-    local elapsed = 0
-    f:SetScript("OnUpdate", function(_, dt)
-        elapsed = elapsed + dt
-        if elapsed < 0.1 or not f.inc then return end
-        elapsed = 0
-        local total = f.inc.duration or 30
-        local left = f.inc.endsAt - GetTime()
-        f.timer:SetValue(math.max(0, left / total))
-        if left <= 0 then
-            f.timerText:SetText("Bidding closed, waiting for the loot master")
-            f.ms:SetEnabled(false)
-            f.os:SetEnabled(false)
-        else
-            f.timerText:SetText(math.ceil(left) .. " seconds")
-        end
-    end)
-    return f
-end
-
--- The next item that is open and not answered yet, lowest number first
-nextUnanswered = function(except)
-    local best
-    local now = GetTime()
-    for _, inc in pairs(ns.incoming) do
-        if inc ~= except and not inc.myBid and now < inc.endsAt then
-            if not best or (inc.n or 0) < (best.n or 0) or ((inc.n or 0) == (best.n or 0) and inc.id < best.id) then
-                best = inc
-            end
-        end
-    end
-    return best
-end
-
-local function waitingCount(except)
-    local n = 0
-    local now = GetTime()
-    for _, inc in pairs(ns.incoming) do
-        if inc ~= except and not inc.myBid and now < inc.endsAt then n = n + 1 end
-    end
-    return n
-end
-
-ns.On("RGF_INCOMING_AUCTION", function(inc)
-    popup = popup or buildPopup()
-    local current = popup:IsShown() and popup.inc
-    if current and current ~= inc and not current.myBid and GetTime() < current.endsAt then
-        -- the player still has to answer the shown item, the new one waits
-        showPopup(current)
-        return
-    end
-    if current == inc and inc.myBid then
-        -- answered, go on with the next item that waits
-        local nextInc = nextUnanswered(inc)
-        if nextInc then inc = nextInc end
-    end
-    showPopup(inc)
-end)
-
-showPopup = function(inc)
-    popup.inc = inc
-    ns.bidPopup = popup
-    setTitle(popup, ns.IsTest() and "Loot Bid  |cffff8040Test mode|r" or "Loot Bid")
-    local _, _, icon = ns.ItemInfo(inc.link)
-    setPortrait(popup, icon or ICON_UNKNOWN)
-    popup.slot:SetItem(inc.link)
-    popup.item:SetText(inc.link)
-    popup.price:SetText("Main spec |cffffffff" .. inc.price .. " GP|r, " .. ns.OffSpecText(inc.price))
-
-    local me = ns.PlayerName()
-    local ep, gp, pr, mainName = ns.GetPoints(me)
-    popup.mine:SetText("Your priority |cffffd100" .. ns.FormatPR(pr) .. "|r")
-    local note = ep .. " EP, " .. gp .. " GP"
-    if mainName and mainName ~= me then note = note .. ", points of " .. ns.ShortName(mainName) end
-    if ep < ns.Setting("minEP") then note = note .. ", |cff66c7ffnew member|r" end
-    popup.note:SetText(note)
-
-    local open = GetTime() < inc.endsAt
-    popup.ms:SetEnabled(open)
-    popup.os:SetEnabled(open)
-    popup.ms:SetText(inc.myBid == "MS" and "|cff40ff40Main Spec|r" or "Main Spec")
-    popup.os:SetText(inc.myBid == "OS" and "|cff40ff40Off Spec|r" or "Off Spec")
-    local waiting = waitingCount(inc)
-    popup.timerText:SetText("")
-    if waiting > 0 then
-        popup.note:SetText(note .. "\n|cffff8040" .. waiting .. (waiting == 1 and " more item waits" or " more items wait") .. "|r")
-    end
-    if not popup:IsShown() then
-        popup:Show()
-        sound("RAID_WARNING")
-    end
-end
-
-ns.On("RGF_INCOMING_CLOSED", function(inc)
-    if popup and popup.inc == inc then
-        local nextInc = nextUnanswered(inc)
-        if nextInc then showPopup(nextInc) else popup:Hide() end
-    end
-end)
-
-------------------------------------------------------------------------
--- Winner popup. Everyone with the addon sees for a few seconds who got the
--- item. It closes by itself or with a click, and can be turned off in the
--- settings. Several awards in a row are shown one after the other.
-------------------------------------------------------------------------
-local WINNER_SECONDS = 5
-local winnerFrame
-local winnerQueue = {}
-local winnerShown = 0 -- counts up, so an old timer does not close a newer popup
-
-local function buildWinner()
-    local f = create("Button", "RedGuildForeverWinnerFrame", UIParent)
-    f:SetSize(340, 64)
-    f:SetPoint("TOP", UIParent, "TOP", 0, -70)
-    f:SetFrameStrata("HIGH")
-    local bg = f:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.02, 0.02, 0.88)
-    -- a thin gold frame
-    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
-        { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
-        local line = f:CreateTexture(nil, "BORDER")
-        line:SetPoint(edge[1])
-        line:SetPoint(edge[2])
-        if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
-        line:SetColorTexture(1, 0.82, 0, 0.9)
-    end
-    f.icon = f:CreateTexture(nil, "ARTWORK")
-    f.icon:SetSize(44, 44)
-    f.icon:SetPoint("LEFT", 10, 0)
-    f.title = text(f, "GameFontNormalLarge")
-    f.title:SetPoint("TOPLEFT", f.icon, "TOPRIGHT", 10, 0)
-    f.title:SetWidth(266)
-    f.item = text(f, "GameFontHighlight")
-    f.item:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -3)
-    f.item:SetWidth(266)
-    f.detail = text(f, "GameFontDisableSmall")
-    f.detail:SetPoint("TOPLEFT", f.item, "BOTTOMLEFT", 0, -3)
-    f.detail:SetWidth(266)
-    f:SetScript("OnClick", function() ns.CloseWinner() end)
-    f:SetScript("OnEnter", function(self)
-        if not self.link then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
-        GameTooltip:AddLine("Click to close. Turn this popup off in the settings of Red Guild EPGP", 0.6, 0.6, 0.6, true)
-        GameTooltip:Show()
-    end)
-    f:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    f:Hide()
-    return f
-end
-
-local function showNextWinner()
-    local w = table.remove(winnerQueue, 1)
-    if not w then
-        if winnerFrame then winnerFrame:Hide() end
-        return
-    end
-    winnerFrame = winnerFrame or buildWinner()
-    ns.winnerFrame = winnerFrame
-    local f = winnerFrame
-    f.link = w.link
-    local _, _, icon = ns.ItemInfo(w.link)
-    f.icon:SetTexture(icon or ICON_UNKNOWN)
-    local m = ns.members[w.name]
-    local me = w.name == ns.PlayerName()
-    f.title:SetText((me and "You win" or (ns.ShortName(w.name) .. " wins")) .. (w.test and "  |cffff8040Test|r" or ""))
-    f.title:SetTextColor(classColor(m and m.class))
-    f.item:SetText(w.link)
-    f.detail:SetText((w.spec == "OS" and "Off spec" or "Main spec") .. ", " .. (w.cost > 0 and (w.cost .. " GP") or "free"))
-    f:Show()
-    if me then sound("UI_EPICLOOT_TOAST") end
-    winnerShown = winnerShown + 1
-    local shown = winnerShown
-    ns.After(WINNER_SECONDS, function()
-        if shown == winnerShown then showNextWinner() end
-    end)
-end
-
--- Close the shown popup now, the next winner follows if one waits
-function ns.CloseWinner()
-    winnerShown = winnerShown + 1
-    showNextWinner()
-end
-
-ns.On("RGF_WINNER", function(w)
-    if not ns.Setting("showWinner") or not (w and w.name and w.link) then return end
-    table.insert(winnerQueue, w)
-    if not (winnerFrame and winnerFrame:IsShown()) then showNextWinner() end
 end)
 
 ------------------------------------------------------------------------

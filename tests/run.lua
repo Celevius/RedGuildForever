@@ -544,7 +544,7 @@ test("minimap button opens the standings and the menu", function()
     end
     local count = 0
     for _, item in ipairs(menu.items) do if item.text then count = count + 1 end end
-    eq(count, 5, "short menu for editors")
+    eq(count, 6, "short menu for editors")
     -- every entry runs without errors
     W.inRaid = true W.raid = { "Cel Dru", "Lisa Brightwater" }
     for _, item in ipairs(menu.items) do
@@ -575,7 +575,7 @@ test("members see no officer entries in the menu", function()
         assert(item.text ~= "Loot Master", "Loot Master shown to a member")
         if item.text then count = count + 1 end
     end
-    eq(count, 2, "members get sync and settings")
+    eq(count, 3, "members get sync, the rules and the settings")
 end)
 
 test("menu falls back to the window without a menu system", function()
@@ -1100,8 +1100,7 @@ test("corpse loot is listed, the window opens by itself only with the setting", 
     eq(ns.picker, nil, "by default the window stays closed, you open it yourself")
     ns.Fire("LOOT_CLOSED")
     -- the setting in the Settings tab turns it on
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.autoLoot:GetChecked(), false, "off by default")
     view.autoLoot:SetChecked(true)
     view.autoLoot:Click()
@@ -1142,7 +1141,9 @@ test("drag an item from the bags and start real bidding", function()
     p.start:Click()
     assert(ns.auction and not ns.auction.test, "real auction")
     eq(ns.auction.tier, "boss")
-    eq(p:IsShown(), false, "window closes")
+    eq(p:IsShown(), true, "the same window stays and shows the bids")
+    eq(ns.pickerState.link, nil, "the slot is free for the next item")
+    assert(p.primary:GetText():find("^Close bids now"), p.primary:GetText())
     local sent
     for _, c in ipairs(W.comms) do if c.msg:match("^A%^") then sent = true end end
     assert(sent, "raid got the auction")
@@ -1167,8 +1168,7 @@ test("test mode is a sandbox for the whole addon", function()
     setup(guild())
     local before = realSnapshot()
     -- turn it on with the checkbox in the Settings tab
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     view.test:SetChecked(true)
     view.test:Click()
     eq(ns.IsTest(), true)
@@ -1302,11 +1302,12 @@ test("Loot Master button, settings and test mode in the menu", function()
     assert(texts["Settings"], "Settings for everyone")
     assert(not texts["|cffff8040Turn test mode off|r"], "no test entry while it is off")
     texts["Loot Master"]()
-    assert(ns.picker:IsShown(), "opens Start Bidding when nothing runs")
+    assert(ns.lootFrame:IsShown(), "opens the loot window when nothing runs")
     ns.StartAuction(W.link(73, "Running Item"))
-    ns.picker:Hide()
+    ns.lootFrame:Hide()
     texts["Loot Master"]()
-    eq(ns.picker:IsShown(), false, "opens the running bidding instead")
+    eq(ns.lootFrame:IsShown(), true, "opens it again with the running bidding")
+    eq(ns.lootFrame.item:GetText(), W.link(73, "Running Item"))
     ns.Award(nil)
     ns.SetTestMode(true)
     ns.OpenMenu(ns.minimapButton)
@@ -1393,8 +1394,7 @@ end
 
 -- the view with the guild rules, in the Rules tab
 local function settingsView()
-    ns.ToggleStandings(ns.TAB.rules)
-    return ns.mainFrame.pages[ns.TAB.rules].view
+    return ns.OpenSettings("rules")
 end
 
 test("rules start with the rule book values", function()
@@ -1676,8 +1676,7 @@ test("editor commands and the editor section in the settings", function()
     assert(W.printed[#W.printed]:find("Ben Swift is now an editor"), W.printed[#W.printed])
     ns.Command("editors")
     assert(W.printed[#W.printed]:find("Ben Swift"), W.printed[#W.printed])
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.addEditor:IsEnabled(), true, "leader can add")
     assert(view.editorList:GetText():find("Ben Swift"), view.editorList:GetText())
     view.editorBox:SetText("Anna")
@@ -1707,7 +1706,8 @@ test("the Data tab has sync, decay and backup, the bottom strip only raid button
     eq(W.popup, "REDGUILDFOREVER_DECAY", "decay asks first")
     W.canEdit = false
     ns.ToggleStandings(1) ns.ToggleStandings(ns.TAB.data)
-    eq(page.decay:IsShown(), false, "members get no decay")
+    eq(page:IsShown(), false, "members do not get the Data tab")
+    eq(f.selectedTab, ns.TAB.standings, "they stay on the standings")
     eq(f.lootMaster:IsShown(), false)
     noErrors()
 end)
@@ -1932,10 +1932,12 @@ test("bidding on several items at once", function()
     eq(ns.auctions[1].bids["Max Ironhide-Forever"], nil, "not on the ring")
     -- the Loot Master window switches between the items
     ns.OpenLootMaster()
-    local lm = ns.lootMasterFrame
-    assert(lm.itemTabs[2]:IsShown(), "item buttons")
-    lm.itemTabs[2]:Click()
-    eq(ns.auction, helm, "shows the helm")
+    local lm = ns.lootFrame
+    local row = lm.items:Row(2)
+    eq(row.auction, helm, "the items are listed on the left")
+    row:Click()
+    eq(ns.auction, helm, "a click shows the helm")
+    eq(lm.item:GetText(), helm.link)
     -- all close after the bidding time, awarding one shows the next
     W.flush()
     eq(#ns.OpenAuctions(), 0, "closed by the timer")
@@ -1975,28 +1977,67 @@ test("ties on two items at once, each roll counts once", function()
     noErrors()
 end)
 
-test("the bid popup shows one item after the other", function()
+test("bid cards: one per item, stacked, with the priority after a win", function()
     setup(guild())
     W.canEdit = false
     W.rank = 5
+    W.player = "Lisa Brightwater" -- 1000 EP, 500 GP
+    ns.RebuildFromRoster()
     local a1 = "A^111111^30^100^1^" .. W.link(87, "First")
-    local a2 = "A^222222^30^150^2^" .. W.link(88, "Second")
+    local a2 = "A^222222^30^500^2^" .. W.link(88, "Second")
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, a1, "RAID", "Anna Frost")
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, a2, "RAID", "Anna Frost")
-    local p = ns.bidPopup
-    eq(p.inc.id, "111111", "the first item stays until it is answered")
-    assert(p.note:GetText():find("1 more item waits"), p.note:GetText())
+    local c1, c2 = ns.bidCards[1], ns.bidCards[2]
+    assert(c1:IsShown() and c2:IsShown(), "both items have a card at once")
+    eq(c1.inc.id, "111111") eq(c2.inc.id, "222222")
+    assert(c1.item:GetText():find("^1%. "), "numbered when several are open")
+    -- what a win would cost: 1000 / 500 = 2.00 now, 1000 / 600 = 1.67 after the first item
+    assert(c1.note:GetText():find("100 GP%.  Your priority |cffffd1002%.00|r, after a win |cffffd1001%.67|r"), c1.note:GetText())
+    assert(c2.note:GetText():find("after a win |cffffd1001%.00|r"), c2.note:GetText())
+    -- answering one card keeps the other
     W.comms = {}
-    p.ms:Click()
-    eq(p.inc.id, "222222", "then the second")
+    c1.ms:Click()
     eq(W.comms[1].msg, "B^111111^MS")
-    p.pass:Click()
-    eq(p:IsShown(), false, "nothing left")
+    eq(ns.bidCards[1].inc.id, "222222", "the second item moves down")
+    eq(ns.bidCards[2]:IsShown(), false)
+    ns.bidCards[1].pass:Click()
+    eq(ns.bidCards[1]:IsShown(), false, "nothing left")
+    eq(#W.comms, 1, "a pass without a bid sends nothing")
+    -- the key bindings answer the first card
+    ns.Command("rebid")
+    eq(ns.bidCards[1].inc.id, "111111")
+    assert(ns.AnswerFirstBid("OS"))
+    eq(W.comms[#W.comms].msg, "B^111111^OS")
     -- without addon messages the whisper names the item number
     W.blockAddon = true
     W.chat = {}
     ns.SendBid(ns.incoming["222222"], "OS")
     eq(W.chat[1].msg, "os 2")
+    noErrors()
+end)
+
+test("an item the character cannot use, and cards that remember their place", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    _G.C_PlayerInfo = { CanUseItem = function(id) return id ~= 90 end }
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^313131^30^100^1^" .. W.link(90, "Plate Helm"), "RAID", "Anna Frost")
+    local c = ns.bidCards[1]
+    eq(c.ms:IsEnabled(), false, "main spec is greyed out")
+    eq(c.os:IsEnabled(), true)
+    assert(c.note:GetText():find("You cannot use this item"), c.note:GetText())
+    eq(ns.AnswerFirstBid("MS"), false, "the key does nothing either")
+    -- drag the card somewhere else, the place is saved
+    c:GetScript("OnDragStart")(c)
+    local mover = c:GetParent()
+    eq(RedGuildForeverDB.positions and RedGuildForeverDB.positions.bid, nil, "default place at first")
+    mover:ClearAllPoints()
+    mover:SetPoint("CENTER", UIParent, "CENTER", 120, -40)
+    c:GetScript("OnDragStop")(c)
+    eq(table.concat(RedGuildForeverDB.positions.bid, ","), "CENTER,120,-40")
+    ns.Command("resetpos")
+    eq(next(RedGuildForeverDB.positions), nil, "back to the start")
+    eq(select(1, mover:GetPoint()), "BOTTOM")
     noErrors()
 end)
 
@@ -2015,7 +2056,8 @@ test("Start Bidding can open all items of the corpse at once", function()
     p.startAll:Click()
     eq(#ns.OpenAuctions(), 2)
     eq(ns.auctions[1].link, W.link(91, "Epic One"), "in the order of the corpse")
-    eq(p:IsShown(), false)
+    eq(p:IsShown(), true, "the window stays and shows the first item")
+    eq(ns.auction, ns.auctions[1])
     noErrors()
 end)
 
@@ -2096,7 +2138,7 @@ test("the weekly decay reminds when it is due and warns before a second one", fu
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY_AGAIN", "warns, the last one was two days ago")
     ns.ToggleStandings(ns.TAB.data)
-    assert(ns.mainFrame.pages[ns.TAB.data].state:GetText():find("Last one on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[ns.TAB.data].state:GetText())
+    assert(ns.mainFrame.pages[ns.TAB.data].state:GetText():find("Last decay on %d%d%.%d%d%. by Cel Dru"), ns.mainFrame.pages[ns.TAB.data].state:GetText())
     W.server = W.server + 6 * 86400
     ns.Command("decay")
     eq(W.popup, "REDGUILDFOREVER_DECAY", "a week later it asks normally")
@@ -2125,13 +2167,6 @@ test("standings search, class filter and the Discord text", function()
     ns.SetStandingsClass(nil)
     ns.Command("discord")
     assert(ns.copyFrame.box:GetText():find("4%. Tom Hammer  2%.00  %(200 EP, 100 GP%) new"), ns.copyFrame.box:GetText())
-    -- the Rules tab has the guild rules, the Settings tab the rest
-    ns.ToggleStandings(ns.TAB.rules)
-    assert(ns.mainFrame.pages[ns.TAB.rules].view.ruleBoxes.raidEP, "rules in the Rules tab")
-    eq(ns.mainFrame.pages[ns.TAB.rules].view.test, nil)
-    ns.ToggleStandings(ns.TAB.settings)
-    assert(ns.mainFrame.pages[ns.TAB.settings].view.test, "test mode in the Settings tab")
-    eq(next(ns.mainFrame.pages[ns.TAB.settings].view.ruleBoxes), nil)
     noErrors()
 end)
 
@@ -2177,8 +2212,7 @@ test("a popup shows the winner for a few seconds and can be turned off", functio
     ns.Award(nil)
     eq(f:IsShown(), false)
     -- turned off in the settings
-    ns.ToggleStandings(ns.TAB.settings)
-    local view = ns.mainFrame.pages[ns.TAB.settings].view
+    local view = ns.OpenSettings("settings")
     eq(view.showWinner:GetChecked(), true, "on by default")
     view.showWinner:SetChecked(false)
     view.showWinner:Click()
@@ -2250,6 +2284,263 @@ test("/rgf check reports the game version and missing functions", function()
     _G.GetLootSlotLink = keep
     ns.Command("check")
     assert(W.printed[#W.printed]:find("guild Redemption%-Forever, you can edit, 5 players, 0 changes"), W.printed[#W.printed])
+end)
+
+test("settings and rules are in the game's Options, not in the addon window", function()
+    setup(guild())
+    -- two pages under AddOns: the settings, and the guild rules below them
+    eq(W.categories[1].name, "Red Guild EPGP")
+    eq(W.categories[1].addon, true, "listed under AddOns")
+    eq(W.categories[2].name, "Guild rules")
+    eq(W.categories[2].parent, W.categories[1], "a page below the settings")
+    local view = ns.OpenSettings("settings")
+    eq(W.openedCategory, W.categories[1], "the game's Options open on our page")
+    assert(view.test and view.showWinner and view.editorBox, "test mode, interface and editors")
+    eq(next(view.ruleBoxes), nil, "no rules on the settings page")
+    local rules = ns.OpenSettings("rules")
+    eq(W.openedCategory, W.categories[2])
+    assert(rules.ruleBoxes.raidEP, "the rules page has the rules")
+    eq(rules.test, nil)
+    -- commands and the minimap menu lead there
+    W.openedCategory = nil
+    ns.Command("settings")
+    eq(W.openedCategory, W.categories[1])
+    ns.Command("rules")
+    eq(W.openedCategory, W.categories[2])
+    local menu = fakeMenu()
+    ns.OpenMenu(ns.minimapButton)
+    W.openedCategory = nil
+    for _, item in ipairs(menu.items) do if item.text == "Settings" then item.fn() end end
+    eq(W.openedCategory, W.categories[1])
+    for _, item in ipairs(menu.items) do if item.text == "Guild rules" then item.fn() end end
+    eq(W.openedCategory, W.categories[2])
+    -- the addon window only has the four tabs for the game itself
+    ns.ToggleStandings(ns.TAB.data)
+    eq(#ns.mainFrame.pages, 4)
+    eq(ns.TAB.settings, nil) eq(ns.TAB.rules, nil)
+    -- during a fight the game refuses to open the Options, the addon says where to click
+    _G.Settings.OpenToCategory = function() error("blocked in combat") end
+    ns.Command("rules")
+    assert(W.printed[#W.printed]:find("open the game's Options, then AddOns, then Red Guild EPGP, Guild rules"), W.printed[#W.printed])
+end)
+
+test("a game without the Options API gets a small settings window", function()
+    setup(guild())
+    _G.Settings = nil
+    ns.optionViews.settings, ns.optionViews.rules = nil, nil
+    local fresh = {}
+    W.install() W.reset()
+    W.player = "Cel Dru"
+    W.roster = guild()
+    _G.Settings = nil
+    W.load(fresh)
+    fresh.RebuildFromRoster()
+    local view = fresh.OpenSettings("rules")
+    assert(view and view.ruleBoxes.raidEP, "rules in an own window")
+    assert(fresh.OpenSettings("settings").test, "settings in an own window")
+end)
+
+test("the bid popup closes after Main Spec or Off Spec, /rgf rebid brings it back", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    local ring = W.link(89, "Closing Ring")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^121212^30^100^1^" .. ring, "RAID", "Anna Frost")
+    local p = ns.bidPopup
+    eq(p:IsShown(), true)
+    W.comms, W.printed = {}, {}
+    p.ms:Click()
+    eq(p:IsShown(), false, "gone after the bid")
+    eq(W.comms[1].msg, "B^121212^MS", "the bid was sent")
+    assert(W.printed[#W.printed]:find("you bid main spec on .-Closing Ring.-/rgf rebid"), W.printed[#W.printed])
+    -- a price change does not bring it back
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "P^121212^150", "RAID", "Anna Frost")
+    eq(p:IsShown(), false)
+    -- changing the bid
+    ns.Command("rebid")
+    eq(p:IsShown(), true, "shown again")
+    eq(p.inc.id, "121212")
+    eq(p.inc.price, 150, "with the new price")
+    W.comms = {}
+    p.os:Click()
+    eq(W.comms[1].msg, "B^121212^OS")
+    eq(p:IsShown(), false, "and gone again")
+    -- nothing open anymore
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^121212^", "RAID", "Anna Frost")
+    ns.Command("rebid")
+    assert(W.printed[#W.printed]:find("no bidding is open right now"), W.printed[#W.printed])
+    eq(p:IsShown(), false)
+    noErrors()
+end)
+
+test("one loot window: next step button, full list, confirmation, Alt click", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Anna Frost" }
+    _G.IsInGroup = function() return true end
+    local ring, helm = W.link(51, "One Window Ring"), W.link(52, "One Window Helm")
+    -- Alt click in the bags chooses the item and opens the window
+    eq(ns.AltClickItem("not a link"), false)
+    assert(ns.AltClickItem(ring), "Alt click takes the item")
+    local f = ns.lootFrame
+    eq(f:IsShown(), true)
+    eq(ns.pickerState.link, ring)
+    eq(f.primary:GetText(), "Start bidding", "the big button is the next step")
+    eq(f.closeBids:IsEnabled(), false, "nothing to close yet")
+    f.primary:Click()
+    local a = ns.auction
+    assert(a and a.link == ring, "bidding started with one click")
+    assert(f.primary:GetText():find("^Close bids now"), f.primary:GetText())
+    -- bids come in, the full list is always there
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Max Ironhide", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    local names = {}
+    for i = 1, 8 do
+        local row = f.list:Row(i)
+        local bid = rawget(row, "bid")
+        if row:IsShown() and bid then table.insert(names, ns.ShortName(bid.name)) end
+    end
+    eq(table.concat(names, ","), "Max Ironhide,Lisa Brightwater,Anna Frost", "everyone in the list, best first")
+    -- a second item while the first runs: the left side lists both
+    assert(ns.AltClickItem(helm))
+    eq(f.items:Row(1).auction, a, "the running bidding first")
+    eq(f.items:Row(2).item.link, helm, "then the item that waits")
+    eq(f.primary:GetText(), "Start bidding")
+    f.items:Row(1):Click()
+    f.primary:Click() -- Close bids now
+    eq(a.open, false)
+    eq(f.primary:GetText(), "Award to Max Ironhide  (main spec, 100 GP)", "the winner is one click away")
+    -- awarding asks first
+    W.popup = nil
+    f.primary:Click()
+    eq(W.popup, "REDGUILDFOREVER_AWARD", "asks before the award")
+    eq(note("Max Ironhide"), "1000,100", "nothing given yet")
+    StaticPopupDialogs["REDGUILDFOREVER_AWARD"].OnAccept()
+    eq(note("Max Ironhide"), "1000,200", "given after the yes")
+    -- anyone in the list can get it instead, and the question can be turned off
+    ns.SetSetting("confirmAward", false)
+    f.items:Row(1):Click() -- the helm that waits
+    eq(ns.pickerState.link, helm)
+    f.primary:Click()
+    local b = ns.auction
+    eq(b.link, helm)
+    ns.RecordBid("Lisa Brightwater", "OS", b)
+    ns.CloseBidding(b)
+    local lisaRow
+    for i = 1, 6 do
+        local row = f.list:Row(i)
+        local bid = rawget(row, "bid")
+        if bid and bid.name == "Lisa Brightwater-Forever" then lisaRow = row end
+    end
+    lisaRow.award:Click()
+    eq(#ns.auctions, 0, "awarded right away without the question")
+    eq(f:IsShown(), false, "nothing left to do, the window closes")
+    -- members and solo players get no Alt click
+    W.canEdit = false
+    eq(ns.AltClickItem(ring), false)
+    noErrors()
+end)
+
+test("a calmer main window: members see the standings only, your own row, bars and tooltips", function()
+    setup(guild())
+    ns.ToggleStandings(ns.TAB.standings)
+    local f = ns.mainFrame
+    local page = f.pages[ns.TAB.standings]
+    -- editors have all four tabs
+    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), true, "tab " .. i .. " for editors") end
+    -- your own row, also when the list is filtered to something else
+    eq(page.mine.entry.name, "Cel Dru-Forever")
+    assert(page.mine.cells.name:GetText():find("Cel Dru  |cffffd100%(you%)"), page.mine.cells.name:GetText())
+    ns.Adjust("Cel Dru", 400, 0)
+    eq(page.mine.cells.ep:GetText(), 400)
+    eq(page.mine.cells.place:GetText(), 2, "second place: 4.00, behind Max with 10.00")
+    ns.SetStandingsClass("MAGE")
+    eq(#page.shown, 1)
+    eq(page.mine.entry.name, "Cel Dru-Forever", "still there with a class filter")
+    eq(page.list:Row(1).cells.place:GetText(), 3, "Anna keeps her real place in a filtered list")
+    ns.SetStandingsClass(nil)
+    -- the bar: the best priority is full, the others a part of it
+    eq(page.list:Row(1).entry.name, "Max Ironhide-Forever")
+    eq(page.list:Row(1).barShare, 1)
+    near(page.list:Row(2).barShare, 0.4, "Cel Dru has 4.00 of 10.00")
+    -- the buttons say what they do
+    eq(f.raidEP:GetText(), "+100 EP raid")
+    eq(f.ontime:GetText(), "+25 EP on time")
+    assert(ns.SetRules({ raidEP = 120 }))
+    eq(f.raidEP:GetText(), "+120 EP raid", "follows the guild rules")
+    -- and their tooltips say who gets it
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.BenchAdd("Max Ironhide")
+    local lines = {}
+    _G.GameTooltip.AddLine = function(_, line) table.insert(lines, line) end
+    f.raidEP:GetScript("OnEnter")(f.raidEP)
+    eq(lines[1], "3 players get 120 EP: Cel Dru, Lisa Brightwater, Max Ironhide")
+    ns.Command("raid")
+    lines = {}
+    f.raidEP:GetScript("OnEnter")(f.raidEP)
+    eq(lines[1], "0 players get 120 EP: nobody")
+    eq(lines[2], "Already got it tonight: Cel Dru, Lisa Brightwater, Max Ironhide")
+    -- members: no tabs, always the standings
+    W.canEdit = false
+    ns.ToggleStandings(ns.TAB.history)
+    eq(f.selectedTab, ns.TAB.standings)
+    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
+    eq(f.pages[ns.TAB.history]:IsShown(), false)
+    eq(f.standingsButtons:IsShown(), false)
+    noErrors()
+end)
+
+test("welcome on the first login only, key bindings and a quieter chat", function()
+    setup(guild())
+    -- setup ran the timers of the first login
+    assert(ns.welcomeFrame and ns.welcomeFrame:IsShown(), "welcome shown on the first login")
+    assert(ns.welcomeFrame.body:GetText():find("You are an editor"), "editors get their own line")
+    eq(RedGuildForeverDB.welcomed, true)
+    ns.welcomeFrame.ok:Click()
+    eq(ns.welcomeFrame:IsShown(), false)
+    -- the next login stays quiet
+    ns.Fire("RGF_READY") W.flush()
+    eq(ns.welcomeFrame:IsShown(), false, "only once")
+    ns.Command("welcome")
+    eq(ns.welcomeFrame:IsShown(), true, "/rgf welcome shows it again")
+    ns.welcomeFrame:Hide()
+    -- key bindings: the names exist for every binding in Bindings.xml
+    local xml = io.open("Bindings.xml"):read("*a")
+    local count = 0
+    for name in xml:gmatch('name="([A-Z_]+)"') do
+        count = count + 1
+        assert(_G["BINDING_NAME_" .. name], "a name for the key binding " .. name)
+    end
+    eq(count, 5)
+    assert(_G.BINDING_HEADER_REDGUILDFOREVER, "a heading in the key binding settings")
+    for _, file in ipairs(W.tocFiles()) do assert(file ~= "Bindings.xml", "the game loads Bindings.xml by itself") end
+    RedGuildForever_Binding("toggle")
+    eq(ns.mainFrame:IsShown(), true, "the key opens the standings")
+    RedGuildForever_Binding("toggle")
+    eq(ns.mainFrame:IsShown(), false)
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    RedGuildForever_Binding("loot")
+    eq(ns.lootFrame:IsShown(), true, "the key opens the loot window")
+    -- bidding by key, and the rebid hint only once
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^414141^30^100^1^" .. W.link(53, "Key Ring"), "RAID", "Anna Frost")
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^424242^30^100^2^" .. W.link(54, "Key Helm"), "RAID", "Anna Frost")
+    W.comms, W.printed = {}, {}
+    RedGuildForever_Binding("ms")
+    eq(W.comms[1].msg, "B^414141^MS")
+    RedGuildForever_Binding("os")
+    eq(W.comms[2].msg, "B^424242^OS")
+    local hints = 0
+    for _, p in ipairs(W.printed) do if p:find("/rgf rebid") then hints = hints + 1 end end
+    eq(hints, 1, "the hint about changing a bid comes once")
+    -- a manual sync prints one line, the result
+    W.printed = {}
+    ns.Command("sync") W.flush()
+    eq(#W.printed, 1)
+    assert(W.printed[1]:find("sync done"), W.printed[1])
+    noErrors()
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))
