@@ -690,7 +690,7 @@ local function refreshSyncPage(page)
 end
 
 ------------------------------------------------------------------------
--- Settings, shown in the Settings tab and in the game's Options under AddOns
+-- Settings and guild rules, shown in the game's Options under AddOns
 ------------------------------------------------------------------------
 local settingsViews = {}
 ns.settingsViews = settingsViews

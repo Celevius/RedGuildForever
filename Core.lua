@@ -10,7 +10,7 @@ ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the e
 
 ------------------------------------------------------------------------
 -- Guild rules. The defaults match the guild loot rule book. The guild
--- leader and officers change them in the Settings tab, they are saved
+-- leader and officers change them in the game's Options, they are saved
 -- with the guild data and shared with Sync, so every officer uses the
 -- same values. Each rule has its own time stamp, the newest change wins.
 ------------------------------------------------------------------------
