@@ -8,3 +8,4 @@ ignore:
   - CLAUDE.md
   - dist
   - .github
+  - media
