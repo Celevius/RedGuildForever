@@ -41,6 +41,8 @@ for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end
 -- Personal settings of this player, not shared.
 ns.defaults = {
     officerRank = 1,     -- rank index 0 (guild leader) up to this index may change data
+    confirmAward = true, -- ask before an item is awarded
+    altClickBid = true,  -- Alt click on an item chooses it for bidding
     showWinner = true,   -- a short popup with the winner when loot is given out
     autoOpenLoot = false, -- open Start Bidding by itself when an editor loots good items in a group, off by default
     tierOrder = { "normal", "boss", "rare" },

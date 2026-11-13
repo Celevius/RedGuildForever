@@ -346,6 +346,14 @@ local function closeOwnPopup(a, winner)
     end
 end
 
+-- What a player would pay for the item, and whether as main spec or off spec.
+function ns.AwardCost(a, name)
+    local bid = a.bids[ns.Resolve(name)]
+    local spec = bid and bid.spec or "MS"
+    if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
+    return spec == "MS" and a.price or ns.OffSpecCost(a.price), spec
+end
+
 -- Award to a bidder or to the guild bank (name nil).
 function ns.Award(name, auction)
     local a = auction or ns.auction

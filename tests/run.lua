@@ -1141,7 +1141,9 @@ test("drag an item from the bags and start real bidding", function()
     p.start:Click()
     assert(ns.auction and not ns.auction.test, "real auction")
     eq(ns.auction.tier, "boss")
-    eq(p:IsShown(), false, "window closes")
+    eq(p:IsShown(), true, "the same window stays and shows the bids")
+    eq(ns.pickerState.link, nil, "the slot is free for the next item")
+    assert(p.primary:GetText():find("^Close bids now"), p.primary:GetText())
     local sent
     for _, c in ipairs(W.comms) do if c.msg:match("^A%^") then sent = true end end
     assert(sent, "raid got the auction")
@@ -1300,11 +1302,12 @@ test("Loot Master button, settings and test mode in the menu", function()
     assert(texts["Settings"], "Settings for everyone")
     assert(not texts["|cffff8040Turn test mode off|r"], "no test entry while it is off")
     texts["Loot Master"]()
-    assert(ns.picker:IsShown(), "opens Start Bidding when nothing runs")
+    assert(ns.lootFrame:IsShown(), "opens the loot window when nothing runs")
     ns.StartAuction(W.link(73, "Running Item"))
-    ns.picker:Hide()
+    ns.lootFrame:Hide()
     texts["Loot Master"]()
-    eq(ns.picker:IsShown(), false, "opens the running bidding instead")
+    eq(ns.lootFrame:IsShown(), true, "opens it again with the running bidding")
+    eq(ns.lootFrame.item:GetText(), W.link(73, "Running Item"))
     ns.Award(nil)
     ns.SetTestMode(true)
     ns.OpenMenu(ns.minimapButton)
@@ -1928,10 +1931,12 @@ test("bidding on several items at once", function()
     eq(ns.auctions[1].bids["Max Ironhide-Forever"], nil, "not on the ring")
     -- the Loot Master window switches between the items
     ns.OpenLootMaster()
-    local lm = ns.lootMasterFrame
-    assert(lm.itemTabs[2]:IsShown(), "item buttons")
-    lm.itemTabs[2]:Click()
-    eq(ns.auction, helm, "shows the helm")
+    local lm = ns.lootFrame
+    local row = lm.items:Row(2)
+    eq(row.auction, helm, "the items are listed on the left")
+    row:Click()
+    eq(ns.auction, helm, "a click shows the helm")
+    eq(lm.item:GetText(), helm.link)
     -- all close after the bidding time, awarding one shows the next
     W.flush()
     eq(#ns.OpenAuctions(), 0, "closed by the timer")
@@ -2011,7 +2016,8 @@ test("Start Bidding can open all items of the corpse at once", function()
     p.startAll:Click()
     eq(#ns.OpenAuctions(), 2)
     eq(ns.auctions[1].link, W.link(91, "Epic One"), "in the order of the corpse")
-    eq(p:IsShown(), false)
+    eq(p:IsShown(), true, "the window stays and shows the first item")
+    eq(ns.auction, ns.auctions[1])
     noErrors()
 end)
 
@@ -2324,6 +2330,75 @@ test("the bid popup closes after Main Spec or Off Spec, /rgf rebid brings it bac
     ns.Command("rebid")
     assert(W.printed[#W.printed]:find("no bidding is open right now"), W.printed[#W.printed])
     eq(p:IsShown(), false)
+    noErrors()
+end)
+
+test("one loot window: next step button, full list, confirmation, Alt click", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Anna Frost" }
+    _G.IsInGroup = function() return true end
+    local ring, helm = W.link(51, "One Window Ring"), W.link(52, "One Window Helm")
+    -- Alt click in the bags chooses the item and opens the window
+    eq(ns.AltClickItem("not a link"), false)
+    assert(ns.AltClickItem(ring), "Alt click takes the item")
+    local f = ns.lootFrame
+    eq(f:IsShown(), true)
+    eq(ns.pickerState.link, ring)
+    eq(f.primary:GetText(), "Start bidding", "the big button is the next step")
+    eq(f.closeBids:IsEnabled(), false, "nothing to close yet")
+    f.primary:Click()
+    local a = ns.auction
+    assert(a and a.link == ring, "bidding started with one click")
+    assert(f.primary:GetText():find("^Close bids now"), f.primary:GetText())
+    -- bids come in, the full list is always there
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Max Ironhide", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    local names = {}
+    for i = 1, 8 do
+        local row = f.list:Row(i)
+        local bid = rawget(row, "bid")
+        if row:IsShown() and bid then table.insert(names, ns.ShortName(bid.name)) end
+    end
+    eq(table.concat(names, ","), "Max Ironhide,Lisa Brightwater,Anna Frost", "everyone in the list, best first")
+    -- a second item while the first runs: the left side lists both
+    assert(ns.AltClickItem(helm))
+    eq(f.items:Row(1).auction, a, "the running bidding first")
+    eq(f.items:Row(2).item.link, helm, "then the item that waits")
+    eq(f.primary:GetText(), "Start bidding")
+    f.items:Row(1):Click()
+    f.primary:Click() -- Close bids now
+    eq(a.open, false)
+    eq(f.primary:GetText(), "Award to Max Ironhide  (main spec, 100 GP)", "the winner is one click away")
+    -- awarding asks first
+    W.popup = nil
+    f.primary:Click()
+    eq(W.popup, "REDGUILDFOREVER_AWARD", "asks before the award")
+    eq(note("Max Ironhide"), "1000,100", "nothing given yet")
+    StaticPopupDialogs["REDGUILDFOREVER_AWARD"].OnAccept()
+    eq(note("Max Ironhide"), "1000,200", "given after the yes")
+    -- anyone in the list can get it instead, and the question can be turned off
+    ns.SetSetting("confirmAward", false)
+    f.items:Row(1):Click() -- the helm that waits
+    eq(ns.pickerState.link, helm)
+    f.primary:Click()
+    local b = ns.auction
+    eq(b.link, helm)
+    ns.RecordBid("Lisa Brightwater", "OS", b)
+    ns.CloseBidding(b)
+    local lisaRow
+    for i = 1, 6 do
+        local row = f.list:Row(i)
+        local bid = rawget(row, "bid")
+        if bid and bid.name == "Lisa Brightwater-Forever" then lisaRow = row end
+    end
+    lisaRow.award:Click()
+    eq(#ns.auctions, 0, "awarded right away without the question")
+    eq(f:IsShown(), false, "nothing left to do, the window closes")
+    -- members and solo players get no Alt click
+    W.canEdit = false
+    eq(ns.AltClickItem(ring), false)
     noErrors()
 end)
 

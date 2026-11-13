@@ -19,6 +19,7 @@ Auction.lua
 Whisper.lua
 Raid.lua
 UI.lua
-LootPicker.lua
+Popups.lua
+LootWindow.lua
 Minimap.lua
 Commands.lua
