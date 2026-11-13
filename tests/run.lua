@@ -377,12 +377,12 @@ test("windows and tabs build and refresh without errors", function()
     ns.Command("raid") W.flush()
     -- standings window, every tab, as officer and as normal member
     ns.ToggleStandings()
-    ns.ToggleStandings(2)
-    ns.ToggleStandings(3)
+    ns.ToggleStandings(ns.TAB.raid)
+    ns.ToggleStandings(ns.TAB.history)
     ns.ToggleStandings(1)
     W.canEdit, W.canView = false, false
     ns.RebuildFromRoster() W.flush()
-    ns.ToggleStandings(2)
+    ns.ToggleStandings(ns.TAB.raid)
     ns.ToggleStandings(1)
     W.canEdit, W.canView = true, true
     ns.RebuildFromRoster() W.flush()
@@ -403,7 +403,7 @@ test("windows and tabs build and refresh without errors", function()
     ns.Award("Lisa Brightwater")
     W.deliver(ns, "Cel Dru")
     W.flush()
-    ns.ToggleStandings(3)
+    ns.ToggleStandings(ns.TAB.history)
     noErrors()
 end)
 
@@ -1350,7 +1350,7 @@ end)
 test("targets and party members with first and last name", function()
     setup(guild())
     W.units.target = { "Anna", "Frost" }
-    ns.ToggleStandings(2)
+    ns.ToggleStandings(ns.TAB.raid)
     ns.Command("edit")
     eq(ns.editor.target, "Anna Frost-Forever", "edit target")
     ns.BenchAdd(UnitIsPlayer("target") and ns.UnitFullName("target"))
@@ -1734,7 +1734,7 @@ test("undo works after a reload and for changes of other editors", function()
     ns.Adjust("Max Ironhide", 0, 200)
     deliverAll(computers)
     on(anna, function()
-        ns.ToggleStandings(3)
+        ns.ToggleStandings(ns.TAB.history)
         local log = ns.Log()
         local id = log[#log].id
         eq(log[#log].label, "Max Ironhide +200 GP", "our Max change is the newest")
@@ -2066,8 +2066,8 @@ test("a raid night with start, end, leavers and the loot list", function()
     W.inRaid = true
     W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide" }
     ns.BenchAdd("Ben Swift")
-    ns.ToggleStandings(2)
-    local page = ns.mainFrame.pages[2]
+    ns.ToggleStandings(ns.TAB.raid)
+    local page = ns.mainFrame.pages[ns.TAB.raid]
     eq(page.toggle:GetText(), "Start raid")
     page.toggle:Click()
     assert(ns.Session(), "raid running")
@@ -2316,7 +2316,7 @@ test("settings and rules are in the game's Options, not in the addon window", fu
     eq(W.openedCategory, W.categories[2])
     -- the addon window only has the four tabs for the game itself
     ns.ToggleStandings(ns.TAB.data)
-    eq(#ns.mainFrame.pages, 4)
+    eq(#ns.mainFrame.pages, 5)
     eq(ns.TAB.settings, nil) eq(ns.TAB.rules, nil)
     -- during a fight the game refuses to open the Options, the addon says where to click
     _G.Settings.OpenToCategory = function() error("blocked in combat") end
@@ -2448,7 +2448,7 @@ test("a calmer main window: members see the standings only, your own row, bars a
     local f = ns.mainFrame
     local page = f.pages[ns.TAB.standings]
     -- editors have all four tabs
-    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), true, "tab " .. i .. " for editors") end
+    for i = 1, 5 do eq(f.Tabs[i]:IsShown(), true, "tab " .. i .. " for editors") end
     -- your own row, also when the list is filtered to something else
     eq(page.mine.entry.name, "Cel Dru-Forever")
     assert(page.mine.cells.name:GetText():find("Cel Dru  |cffffd100%(you%)"), page.mine.cells.name:GetText())
@@ -2486,7 +2486,9 @@ test("a calmer main window: members see the standings only, your own row, bars a
     W.canEdit = false
     ns.ToggleStandings(ns.TAB.history)
     eq(f.selectedTab, ns.TAB.standings)
-    for i = 1, 4 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
+    eq(f.Tabs[ns.TAB.standings]:IsShown(), true)
+    eq(f.Tabs[ns.TAB.loot]:IsShown(), true, "members get the loot history too")
+    for i = 3, 5 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
     eq(f.pages[ns.TAB.history]:IsShown(), false)
     eq(f.standingsButtons:IsShown(), false)
     noErrors()
@@ -2540,6 +2542,141 @@ test("welcome on the first login only, key bindings and a quieter chat", functio
     ns.Command("sync") W.flush()
     eq(#W.printed, 1)
     assert(W.printed[1]:find("sync done"), W.printed[1])
+    noErrors()
+end)
+
+test("loot history: who bid and who got it, apart from the EPGP history", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Max Ironhide", "Anna Frost", "Tom Hammer" }
+    set("Tom Hammer", "1000,500") -- ties with Lisa
+    ns.SetSetting("confirmAward", false)
+    local ring, helm, junk = W.link(31, "History Ring"), W.link(32, "History Helm"), W.link(33, "History Junk")
+    -- a ring with a tie, Lisa wins the roll
+    ns.StartAuction(ring)
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Tom Hammer", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    ns.RecordBid("Max Ironhide", "PASS")
+    ns.CloseBidding()
+    ns.Fire("CHAT_MSG_SYSTEM", "Lisa Brightwater rolls 77 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Tom Hammer rolls 12 (1-100)")
+    ns.Award("Lisa Brightwater")
+    W.server = W.server + 60
+    -- a helm for off spec, and junk nobody wants
+    ns.StartAuction(helm)
+    ns.RecordBid("Anna Frost", "OS")
+    ns.Award("Anna Frost")
+    W.server = W.server + 60
+    ns.StartAuction(junk)
+    ns.Award(nil)
+
+    local list = ns.LootHistory()
+    eq(#list, 3)
+    eq(list[1].itemName, "History Junk", "newest first")
+    eq(list[1].winner, nil, "nobody took it")
+    local l = list[3]
+    eq(l.winner, "Lisa Brightwater-Forever") eq(l.cost, 100) eq(l.spec, "MS")
+    eq(#l.bids, 4, "everyone who answered")
+    eq(l.bids[1].n, "Lisa Brightwater-Forever") eq(l.bids[1].s, "MS") eq(l.bids[1].roll, 77)
+    near(l.bids[1].pr, 2.0, "the priority before she paid")
+    eq(l.bids[2].n, "Tom Hammer-Forever") eq(l.bids[2].roll, 12)
+    eq(l.bids[3].s, "OS") eq(l.bids[4].s, "PASS")
+
+    -- filters
+    eq(#ns.FilterLoot(list, { text = "helm" }), 1, "by item")
+    eq(#ns.FilterLoot(list, { text = "tom" }), 1, "by a bidder who did not win")
+    eq(#ns.FilterLoot(list, { text = "anna" }), 2, "as bidder and as winner")
+    eq(#ns.FilterLoot(list, { mine = true }), 0, "we did not bid")
+    W.server = W.server + 8 * 86400
+    eq(#ns.FilterLoot(ns.LootHistory(), { days = 7 }), 0, "older than a week")
+    eq(#ns.FilterLoot(ns.LootHistory(), { days = 30 }), 3)
+
+    -- the Loot history tab
+    ns.ToggleStandings(ns.TAB.loot)
+    local page = ns.mainFrame.pages[ns.TAB.loot]
+    eq(#page.shown, 3)
+    eq(page.list:Row(1).cells.winner:GetText(), "|cff999999Bank or disenchant|r")
+    eq(page.list:Row(3).cells.bids:GetText(), 3, "three wanted the ring")
+    page.list:Row(3):Click()
+    local d = page.detail
+    eq(d.title:GetText(), ring)
+    assert(d.sub:GetText():find("Won by |cffffffffLisa Brightwater|r for 100 GP, main spec"), d.sub:GetText())
+    eq(d.list:Row(1).cells.name:GetText(), "Lisa Brightwater")
+    eq(d.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r")
+    eq(d.list:Row(1).cells.roll:GetText(), 77)
+    eq(d.list:Row(2).cells.pr:GetText(), "2.00")
+    eq(d.list:Row(4).cells.spec:GetText(), "|cff999999Pass|r")
+    -- search and time in the tab
+    page.search:SetText("helm")
+    page.search:GetScript("OnTextChanged")(page.search)
+    eq(#page.shown, 1)
+    eq(d.title:GetText(), helm, "the detail follows the list")
+    page.search:SetText("")
+    page.search:GetScript("OnTextChanged")(page.search)
+    page.period:Click()
+    eq(page.period:GetText(), "Last 7 days")
+    eq(#page.shown, 0)
+    eq(d:IsShown(), false)
+    page.period:Click() page.period:Click()
+    eq(page.period:GetText(), "All time")
+    -- take an award back from the loot history
+    page.list:Row(3):Click()
+    eq(note("Lisa Brightwater"), "1000,600")
+    d.undo:Click()
+    eq(note("Lisa Brightwater"), "1000,500", "the GP are back")
+    eq(page.list:Row(3).cells.spec:GetText(), "|cff808080taken back|r", "the item stays, marked")
+    eq(d.undo:IsShown(), false)
+
+    -- the EPGP history has no loot, unless asked for
+    ns.AwardEP({ "Lisa Brightwater" }, 100, "Raid night", "raid")
+    ns.ToggleStandings(ns.TAB.history)
+    local h = ns.mainFrame.pages[ns.TAB.history]
+    eq(h.shownCount, 2, "the raid EP and the undo, no loot awards")
+    h.withLoot:SetChecked(true) h.withLoot:Click()
+    eq(h.shownCount, 4, "with the two awards")
+    h.search:SetText("raid night")
+    h.search:GetScript("OnTextChanged")(h.search)
+    eq(h.shownCount, 1)
+
+    -- loot records travel with sync and the backup, and change no points
+    local backup = ns.ExportText()
+    assert(backup:find("!L,%x+,%d+,Cel Dru,31,Lisa Brightwater,100,MS,%x+,Lisa Brightwater:MS:2.00:77/Tom Hammer:MS:2.00:12/Anna Frost:OS:2.50:/Max Ironhide:PASS:10.00:,"), "the record with its bids is in the backup")
+    local before = note("Anna Frost")
+    wipe(ns.Data().events) ns.Invalidate()
+    assert(ns.ImportText(backup))
+    eq(#ns.LootHistory(), 3, "back from the backup")
+    eq(ns.LootHistory()[3].bids[1].roll, 77)
+    eq(note("Anna Frost"), before)
+    noErrors()
+end)
+
+test("loot records are not sent to versions that do not know them", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.SetSetting("confirmAward", false)
+    ns.StartAuction(W.link(34, "Record Ring"))
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.Award("Lisa Brightwater")
+    W.flush()
+    local cutoff = ns.SyncCutoff()
+    local digest = ns.SyncDigest(cutoff)
+    assert(digest:find("V3:0:0"), "our digest carries the version mark")
+    local lootKey = digest:match("(L%d+):1:")
+    assert(lootKey, "loot records have their own bucket: " .. digest)
+    -- version 2.3 asks: same points, no version mark, no loot bucket
+    local old = digest:gsub(",?" .. lootKey .. ":%d+:%d+", ""):gsub(",?V3:0:0", "")
+    W.comms = {}
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "Q^7^" .. cutoff .. "=" .. old, "GUILD", "Ben Swift-Forever")
+    W.flush()
+    eq(#W.comms, 0, "nothing to send to the older version")
+    -- a current version without the record gets it
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "Q^8^" .. cutoff .. "=" .. old .. ",V3:0:0", "GUILD", "Ben Swift-Forever")
+    W.flush()
+    local sent
+    for _, c in ipairs(W.comms) do if c.msg:find("!L,", 1, true) then sent = true end end
+    assert(sent, "the loot record goes to a version that knows it")
     noErrors()
 end)
 

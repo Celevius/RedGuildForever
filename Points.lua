@@ -25,6 +25,8 @@
 --   D  decay by pct percent
 --   A  alt link, alt and main (no main makes the alt a main again)
 --   U  undo of the event ref
+--   L  loot record: the item, every bid with priority and roll, the winner.
+--      It changes no points, the award itself is a P event (ref)
 -- Rules, editors and the bench are small settings, for them the newest
 -- change wins (t is the server time of the change).
 
@@ -884,7 +886,7 @@ function ns.LastOwnEvent()
     local me = ns.PlayerName()
     for i = #st.events, 1, -1 do
         local ev = st.events[i]
-        if ev.by == me and ev.k ~= "U" and not st.undone[ev.id] then return ev end
+        if ev.by == me and ev.k ~= "U" and ev.k ~= "L" and not st.undone[ev.id] then return ev end
     end
     return nil
 end
@@ -894,6 +896,11 @@ end
 function ns.UndoEvent(id)
     if not ns.CanChange() then return nil end
     local ev = ns.Data().events[id]
+    -- undoing a loot record takes the award behind it back
+    if ev and ev.k == "L" then
+        if not ev.ref then return nil end
+        return ns.UndoEvent(ev.ref)
+    end
     if not ev or ev.k == "U" or ns.State().undone[id] then return nil end
     ns.AddEvent({ k = "U", ref = id, r = "Undo " .. (ev.r or "") })
     return { label = ev.r or "", id = id }
@@ -1015,8 +1022,11 @@ function ns.Log()
         table.insert(list, { time = e.time or 0, label = e.label, count = e.count or 1, by = e.by, order = #list })
     end
     for _, ev in ipairs(st.events) do
-        table.insert(list, { time = ev.t, label = ev.r ~= "" and ev.r or "Points changed", count = eventCount(ev), by = ev.by,
-            id = ev.id, undo = ev.k == "U", undone = st.undone[ev.id] ~= nil, item = ev.item, order = #list })
+        if ev.k ~= "L" then -- loot records have their own history
+            table.insert(list, { time = ev.t, label = ev.r ~= "" and ev.r or "Points changed", count = eventCount(ev), by = ev.by,
+                id = ev.id, undo = ev.k == "U", undone = st.undone[ev.id] ~= nil, item = ev.item, order = #list,
+                kind = ev.k, loot = ev.kind == "loot" })
+        end
     end
     table.sort(list, function(a, b)
         if a.time ~= b.time then return a.time < b.time end

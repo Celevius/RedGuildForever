@@ -2,6 +2,20 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.4.0 (13 November 2026)
+
+### Added
+* **Loot history**, a tab of its own for everyone. Every item with the date, the winner, main spec or off spec, the price and how many players wanted it. Click an item to see everyone who bid: their answer, their priority at that moment and their roll
+* Items that went to the bank or the disenchanter are in the loot history too
+* **Search** by item or player (as winner and as bidder), a **time** button for all time, 7 days or 30 days, and **Only mine** for the items you won or bid on
+* Editors can take an award back from the loot history with **Take back**
+* The bids of every item are now kept and shared with Sync and the backup
+
+### Changed
+* The History tab is now the **EPGP history**. It shows EP and GP changes, decay, edits, alt links and undos, with a search box. GP from loot is left out unless you tick **Also show GP from loot**
+* The tabs are Standings, Loot history, Raid, EPGP history and Data. Members get the first two
+* Editors on 2.3 or older still sync points with 2.4. They do not get the loot records, so their loot history stays without bids until they update
+
 ## 2.3.0 (13 November 2026)
 
 ### Added

@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.3.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.4.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -175,11 +175,17 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 
 ## The window
 
-`/rgf` opens the window. Members see the standings, editors also get the tabs **Raid**, **History** and **Data** at the bottom. The buttons explain themselves when you hover them, and a small **i** next to a heading explains the rest.
+`/rgf` opens the window. Members see the standings and the loot history, editors also get the tabs **Raid**, **EPGP history** and **Data** at the bottom. The buttons explain themselves when you hover them, and a small **i** next to a heading explains the rest.
 
 * **Standings** with your own row always at the top, your place, class icons and a bar that shows each priority against the best one. There is a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **+100 EP raid**, **+25 EP on time** and **Undo** at the bottom. Hover the EP buttons to see who would get the EP, and **Undo** to see what it would take back
+* **Loot history** with every item that was given out: the date, the item, the winner, main spec or off spec, the price and how many players wanted it. Click an item and the lower half shows **everyone who bid**: their answer, their priority at that moment, their roll, and who won. Items for the bank or the disenchanter are listed too
+    * **Search** finds an item or a player, as winner and as bidder
+    * The **time** button switches between all time, the last 7 days and the last 30 days
+    * **Only mine** shows the items you won or bid on, with any of your characters
+    * Editors can take an award back with **Take back**. The item stays in the list, marked as taken back
+    * Items given out before version 2.4 are listed without bids, they were not kept then
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
-* **History** with every change of every editor. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
+* **EPGP history** with every EP and GP change of every editor: raid EP, the on time bonus, decay, edits, alt links and undos. A search box finds a player, an editor or a kind of change. GP from loot is left out, tick **Also show GP from loot** to see it here too. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Data** with sync, the weekly decay, the backups and the imports
 
 **Key bindings.** In the game's key binding settings, under **Red Guild EPGP**, you can set keys to open the standings, open the Loot Master window, and to bid Main Spec, Off Spec or Pass.
@@ -209,13 +215,13 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 **Editing a player.** Click a player in the standings, or type `/rgf edit Cel Dru`, without a name for your target. In the editor you can
 
 * set exact EP and GP, or use the quick buttons like +100 EP
-* add a reason, which shows up in the History tab
+* add a reason, which shows up in the EPGP history
 * link the player as an alt of a main, or make an alt a main again
 * put the player on the bench or take them off
 
 **Alts.** When you link an alt, its EP and the GP above the start move to the main. Undo takes the link back and the alt has its own points again. An alt that becomes a main again starts at 0 EP.
 
-**Undo.** **Undo last change** takes back your newest change, also one from an earlier day. The **History** tab can undo any change.
+**Undo.** **Undo last change** takes back your newest change, also one from an earlier day. The **EPGP history** tab can undo any change, and the **Loot history** tab can take an award back.
 
 **Weekly decay.** The **Data** tab shows when the last decay was and who ran it. A week later the addon reminds editors after login and at the end of a raid. If someone ran a decay in the last six days, also another editor, the addon warns before a second one.
 
