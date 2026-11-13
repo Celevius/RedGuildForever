@@ -22,56 +22,131 @@ function ns.OnComm(kind, fn)
     ns.commHandlers[kind] = fn
 end
 
+-- The result codes of the game (Enum.SendAddonMessageResult)
+local SENT, THROTTLED, CHANNEL_THROTTLED, GENERAL_ERROR, LOCKDOWN = 0, 3, 8, 9, 11
+-- these can work a moment later, every other code will never work for this message
+local TRY_AGAIN = { [THROTTLED] = true, [CHANNEL_THROTTLED] = true, [GENERAL_ERROR] = true, [LOCKDOWN] = true }
+
+-- Returns true when the game took the message, otherwise false and the result code.
 local function rawSend(msg, channel, target)
     if not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return false end
-    local ok, result = pcall(C_ChatInfo.SendAddonMessage, ns.prefix, msg, channel, target)
-    -- newer clients return a result code, 0 means success
-    if not ok then return false end
-    if type(result) == "number" then return result == 0 end
-    return result ~= false
+    local results = { pcall(C_ChatInfo.SendAddonMessage, ns.prefix, msg, channel, target) }
+    if not results[1] then return false end
+    -- the result code is the last value, older clients return true or false
+    local result = results[#results]
+    if type(result) == "number" then return result == SENT, result end
+    return result ~= false, GENERAL_ERROR
+end
+
+-- During boss fights and other restricted content the game takes no addon messages.
+local function lockedDown()
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        return ok and locked == true
+    end
+    return false
 end
 
 ------------------------------------------------------------------------
--- Send queue. The game drops addon messages when too many go out at once,
--- so sync data goes out a few messages per second. Auctions and bids are
--- sent right away.
+-- Send queue. The game gives every addon an allowance of 10 messages, which
+-- refills by one per second. A message over the allowance is refused, so
+-- we count the allowance ourselves and never send more. Sync data waits in
+-- the queue and leaves a few messages of the allowance free, so auctions
+-- and bids always go out right away. A refused message is tried again, it
+-- is only given up when the game refuses it for ten minutes.
 ------------------------------------------------------------------------
-local queue = {}
-local pumping = false
-local INTERVAL = 0.3 -- seconds between two queued messages
+local ALLOWANCE = 10 -- messages the game takes in one go
+local REFILL = 1     -- messages per second that come back
+local RESERVE = 3    -- kept free for auctions and bids
 local RETRY = 2      -- seconds to wait when the game refused a message
+local GIVE_UP = 600  -- seconds after which a refused message is dropped
 
-local function pump()
-    local m = queue[1]
-    if not m then
-        pumping = false
+local urgent, queue = {}, {} -- urgent: auction messages the game refused
+local pumping = false
+local tokens, tokenTime = ALLOWANCE, nil
+
+local function now()
+    return GetTime and GetTime() or 0
+end
+
+local function refill()
+    local t = now()
+    if tokenTime then tokens = math.min(ALLOWANCE, tokens + (t - tokenTime) * REFILL) end
+    tokenTime = t
+end
+
+local pump
+
+local function pumpLater(seconds)
+    ns.After(seconds, pump)
+end
+
+pump = function()
+    refill()
+    if lockedDown() then
+        pumpLater(RETRY)
         return
     end
-    if rawSend(m.msg, m.channel, m.target) then
-        table.remove(queue, 1)
-        ns.After(INTERVAL, pump)
-    else
-        -- blocked or throttled, try the same message again a bit later
-        m.tries = (m.tries or 0) + 1
-        if m.tries > 3 then table.remove(queue, 1) end
-        ns.After(RETRY, pump)
+    while true do
+        local list = urgent[1] and urgent or queue
+        local m = list[1]
+        if not m then
+            pumping = false
+            return
+        end
+        local need = list == urgent and 1 or (RESERVE + 1)
+        if tokens < need then
+            pumpLater((need - tokens) / REFILL + 0.05)
+            return
+        end
+        local ok, code = rawSend(m.msg, m.channel, m.target)
+        if ok then
+            tokens = tokens - 1
+            table.remove(list, 1)
+        elseif TRY_AGAIN[code or GENERAL_ERROR] and now() - m.since < GIVE_UP then
+            -- the game says we sent too much, so our count was too high
+            if code == THROTTLED or code == CHANNEL_THROTTLED then tokens = 0 end
+            pumpLater(RETRY)
+            return
+        else
+            table.remove(list, 1) -- it can never go out, or we tried for too long
+        end
     end
 end
 
--- bulk messages wait in the queue, everything else goes out at once
-function ns.SendComm(msg, channel, target, bulk)
-    if ns.IsTest() then return true end -- in test mode nothing leaves this computer
-    if not bulk then return rawSend(msg, channel, target) end
-    table.insert(queue, { msg = msg, channel = channel, target = target })
+local function enqueue(list, msg, channel, target)
+    table.insert(list, { msg = msg, channel = channel, target = target, since = now() })
     if not pumping then
         pumping = true
         pump()
     end
+end
+
+-- bulk messages (sync data) wait in the queue, everything else goes out at once.
+-- Returns false only for a whisper the game refused, the caller then whispers in chat.
+function ns.SendComm(msg, channel, target, bulk)
+    if ns.IsTest() then return true end -- in test mode nothing leaves this computer
+    if bulk then
+        enqueue(queue, msg, channel, target)
+        return true
+    end
+    refill()
+    if not urgent[1] and not lockedDown() then
+        local ok, code = rawSend(msg, channel, target)
+        if ok then
+            tokens = math.max(0, tokens - 1)
+            return true
+        end
+        if not TRY_AGAIN[code or GENERAL_ERROR] then return false end
+    end
+    if channel == "WHISPER" then return false end
+    -- an auction message for the raid must not get lost, it goes out first when the game allows it
+    enqueue(urgent, msg, channel, target)
     return true
 end
 
 function ns.QueuedMessages()
-    return #queue
+    return #queue + #urgent
 end
 
 function ns.Split(msg)
@@ -650,7 +725,7 @@ end
 ------------------------------------------------------------------------
 -- Automatic backups. The newest three are kept in a second save file, one
 -- per character (RedGuildForeverBackup). When the guild data comes back
--- empty, for example because the beta did not load the main save file, the
+-- empty, for example because the game did not load the main save file, the
 -- newest backup is put back by itself.
 ------------------------------------------------------------------------
 local KEEP = 3

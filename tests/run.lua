@@ -1007,7 +1007,8 @@ test("a big guild goes out in small messages, a few per second", function()
     on(anna, function() return ns.Sync(true) end)
     local sent = deliverAll({ me, anna }) -- the mock refuses messages over 255 bytes
     assert(#sent > 40, "many messages, " .. #sent)
-    assert(W.now - start >= #sent * 0.25, "spread over time, not all at once")
+    assert(W.now - start >= #sent - 20, "about one message per second after the first few")
+    eq(W.throttled, 0, "the game never had to refuse a message")
     eq(noteOn(anna, "Player Number60"), (420 + 60) .. ",160", "everything arrived")
     noErrors()
 end)
@@ -2184,6 +2185,71 @@ test("a popup shows the winner for a few seconds and can be turned off", functio
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, "C^555555^Lisa Brightwater-Forever^75^MS^" .. ring, "RAID", "Anna Frost")
     eq(f:IsShown(), false, "no popup when it is turned off")
     noErrors()
+end)
+
+test("the game's message allowance: sync never blocks an auction", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    W.flush()
+    W.comms = {}
+    -- a long sync transfer starts, only a part of the allowance is used at once
+    for i = 1, 40 do ns.SendComm("X^" .. i, "GUILD", nil, true) end
+    eq(#W.comms, 7, "ten are allowed at once, three stay free for auctions")
+    assert(ns.QueuedMessages() > 30, "the rest waits")
+    -- an auction still goes out right away
+    ns.StartAuction(W.link(71, "Urgent Ring"))
+    local out
+    for _, c in ipairs(W.comms) do if c.msg:match("^A%^") then out = true end end
+    assert(out, "the auction went out at once")
+    ns.CancelAllAuctions()
+    W.flush()
+    eq(ns.QueuedMessages(), 0, "everything is out in the end")
+    eq(W.throttled, 0, "and the game never refused a message")
+    noErrors()
+end)
+
+test("during a boss fight messages wait, bids fall back to a whisper", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    W.flush()
+    W.comms = {}
+    W.lockdown = true
+    local a = ns.StartAuction(W.link(72, "Locked Ring"))
+    eq(#W.comms, 0, "the game takes no addon messages now")
+    eq(ns.QueuedMessages(), 1, "the auction waits")
+    -- a raider's bid cannot wait, it goes as a normal whisper
+    W.chat = {}
+    ns.SendBid({ id = "999999", owner = "Anna Frost-Forever", ownerRaw = "Anna Frost", n = 1 }, "MS")
+    eq(W.chat[1].msg, "ms 1")
+    -- the fight is over
+    W.lockdown = false
+    W.now = W.now + 3
+    local t = table.remove(W.timers, 1)
+    while t and #W.comms == 0 do t.fn() t = table.remove(W.timers, 1) end
+    assert(W.comms[1] and W.comms[1].msg:match("^A%^" .. a.id), "sent after the fight")
+    ns.CancelAllAuctions()
+    noErrors()
+end)
+
+test("/rgf check reports the game version and missing functions", function()
+    setup(guild())
+    _G.GetBuildInfo = function() return "1.60.1", "70888", "Nov 4 2026", 16001 end
+    _G.GetItemInfoInstant = nil
+    W.printed = {}
+    local needed = ns.SelfCheck()
+    eq(#needed, 0, "the simulated game has everything: " .. table.concat(needed, ", "))
+    assert(W.printed[1]:find("game 1.60.1 %(build 70888, interface 16001%)"), W.printed[1])
+    assert(W.printed[2]:find("game functions the addon needs are there"), W.printed[2])
+    -- a function that is gone shows up by name
+    local keep = _G.GetLootSlotLink
+    _G.GetLootSlotLink = nil
+    needed = ns.SelfCheck()
+    eq(needed[1], "GetLootSlotLink")
+    _G.GetLootSlotLink = keep
+    ns.Command("check")
+    assert(W.printed[#W.printed]:find("guild Redemption%-Forever, you can edit, 5 players, 0 changes"), W.printed[#W.printed])
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

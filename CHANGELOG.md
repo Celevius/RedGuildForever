@@ -2,6 +2,19 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.1.1 (13 November 2026)
+
+### Added
+* `/rgf check` prints which game version runs, whether every game function the addon needs is there, and the state of your data. Paste it into a bug report
+
+### Changed
+* The addon is now for the released game, World of Warcraft Forever 1.60.1. The texts no longer speak of the beta, and the install folder is `_forever_`
+* During a boss fight the game takes no addon messages. The addon now asks the game about that and waits, instead of trying and failing
+
+### Fixed
+* **Sync could lose messages in the released game.** The game takes ten addon messages at once and then one per second, the addon sent about three per second and gave a refused message up after three tries. It now counts the allowance itself, never sends more, and tries a refused message again for up to ten minutes
+* A long sync could use up the allowance, so the start or the end of an auction was refused and lost. Sync now leaves room for auction messages, and a refused auction message goes out first as soon as the game allows it
+
 ## 2.1.0 (13 November 2026)
 
 ### Added

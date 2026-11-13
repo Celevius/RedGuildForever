@@ -11,6 +11,7 @@ M.comms = {}      -- addon messages sent
 M.printed = {}
 M.now = 1000
 M.timers = {}
+M.allowance, M.throttled = {}, 0
 M.raid = {}
 M.inRaid = false
 M.canEdit = true
@@ -25,6 +26,7 @@ M.roster = {}
 function M.reset()
     M.chat, M.comms, M.printed, M.timers = {}, {}, {}, {}
     M.context, M.switch, M.blockAddon = nil, nil, nil
+    M.allowance, M.throttled, M.lockdown = {}, 0, nil
 end
 
 -- run every queued timer in the order of their delay, timers can add timers.
@@ -186,9 +188,22 @@ function M.install()
     }
     _G.C_ChatInfo = {
         RegisterAddonMessagePrefix = function() return true end,
+        InChatMessagingLockdown = function() return M.lockdown == true end,
         SendAddonMessage = function(prefix, msg, channel, target)
             assert(#msg <= 255, "addon message too long")
             if M.blockAddon then return 9 end -- like a blocked message in an instance
+            if M.lockdown then return 11 end
+            -- the allowance of the real client: 10 messages per sender, one comes back per second
+            local who = M.context or M
+            local al = M.allowance[who] or { tokens = 10, at = M.now }
+            M.allowance[who] = al
+            al.tokens = math.min(10, al.tokens + (M.now - al.at))
+            al.at = M.now
+            if al.tokens < 1 then
+                M.throttled = M.throttled + 1
+                return 3
+            end
+            al.tokens = al.tokens - 1
             table.insert(M.comms, { prefix = prefix, msg = msg, channel = channel, target = target, from = M.context })
             return 0
         end,

@@ -96,6 +96,7 @@ local help = {
     "/rgf sync  sync the data with everyone online",
     "/rgf export  open the Sync tab with backup export and import",
     "/rgf log  show the last changes",
+    "/rgf check  check that this game version has everything the addon needs",
     "/rgf discord  the standings as text for Discord, with the search and class of the window",
     "|cffffd100Guild leader|r",
     "/rgf editors  show who may change data",
@@ -115,6 +116,71 @@ end
 local function awardGroup(amount, label, kind)
     if not needOfficer() then return end
     ns.AwardGroup(amount, label, kind)
+end
+
+------------------------------------------------------------------------
+-- /rgf check: is everything the addon uses there in this game version?
+-- Prints a short report to paste into a bug report.
+------------------------------------------------------------------------
+local NEEDED = {
+    "CreateFrame", "GetTime", "GetServerTime", "UnitName", "UnitIsPlayer", "IsInGuild", "IsInRaid", "IsInGroup",
+    "GetNumGroupMembers", "GetRaidRosterInfo", "GetNumGuildMembers", "GetGuildRosterInfo", "GetGuildInfo",
+    "GetGuildInfoText", "GetNormalizedRealmName", "GetNumLootItems", "GetLootSlotLink", "GetLootSlotInfo",
+    "GetCursorInfo", "ClearCursor", "StaticPopup_Show", "StaticPopupDialogs",
+    "C_ChatInfo.SendAddonMessage", "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendChatMessage|SendChatMessage",
+    "C_Timer.After", "C_Timer.NewTicker", "C_Item.GetItemInfoInstant|GetItemInfoInstant",
+    "C_GuildInfo.GuildRoster|GuildRoster",
+}
+-- without these the addon still works, something small is missing
+local NICE = {
+    "MenuUtil.CreateContextMenu", "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterAddOnCategory",
+    "C_ChatInfo.InChatMessagingLockdown", "C_ClassColor.GetClassColor|RAID_CLASS_COLORS", "C_Item.GetItemQualityByID",
+    "GetAutoCompleteRealms", "GetInventoryItemLink", "PlaySound", "SOUNDKIT", "RANDOM_ROLL_RESULT",
+    "LOCALIZED_CLASS_NAMES_MALE", "HandleModifiedItemClick", "SetItemButtonTexture",
+}
+
+local function exists(path)
+    local value = _G
+    for part in path:gmatch("[^%.]+") do
+        if type(value) ~= "table" then return false end
+        value = value[part]
+    end
+    return value ~= nil
+end
+
+-- "A|B" is fine when one of the two is there
+local function missing(list)
+    local gone = {}
+    for _, entry in ipairs(list) do
+        local found = false
+        for path in entry:gmatch("[^|]+") do
+            if exists(path) then found = true end
+        end
+        if not found then table.insert(gone, (entry:gsub("|", " or "))) end
+    end
+    return gone
+end
+
+-- Returns the missing needed and the missing optional functions.
+function ns.SelfCheck()
+    local version, build, _, interface = "?", "?", nil, nil
+    if GetBuildInfo then version, build, _, interface = GetBuildInfo() end
+    ns.Print(string.format("Red Guild EPGP %s, game %s (build %s, interface %s)", ns.version, tostring(version), tostring(build), tostring(interface)))
+    local needed, nice = missing(NEEDED), missing(NICE)
+    if #needed == 0 then
+        ns.Print("|cff40ff40all " .. #NEEDED .. " game functions the addon needs are there|r")
+    else
+        ns.Print("|cffff5555missing, the addon cannot work fully:|r " .. table.concat(needed, ", "))
+    end
+    if #nice > 0 then ns.Print("missing, small things do not work: " .. table.concat(nice, ", ")) end
+    local data = ns.Data()
+    local players, changes = 0, 0
+    for _ in pairs(ns.Players()) do players = players + 1 end
+    for _ in pairs(data.events or {}) do changes = changes + 1 end
+    ns.Print(string.format("guild %s, %s, %d players, %d changes, %d sync messages waiting%s",
+        tostring(ns.GuildKey() or "none"), ns.CanEdit() and "you can edit" or "you cannot edit", players, changes,
+        ns.QueuedMessages(), ns.IsTest() and ", test mode is on" or ""))
+    return needed, nice
 end
 
 function ns.Command(line)
@@ -287,6 +353,9 @@ function ns.Command(line)
     elseif cmd == "sync" then
         ns.RequestRoster()
         ns.Sync()
+
+    elseif cmd == "check" then
+        ns.SelfCheck()
 
     elseif cmd == "discord" then
         ns.ToggleStandings(ns.TAB.standings)

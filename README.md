@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.1.0, updated on 13 November 2026 for the Forever beta client (interface 16001).
+Version 2.1.1, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -23,7 +23,7 @@ Show up and you go up the list, take loot and you go down the list.
 ## Install
 
 1. Download `RedGuildForever.zip` from CurseForge or from the [releases on GitHub](https://github.com/Celevius/RedGuildForever/releases), or build it with `./build.sh`
-2. Extract it so the folder sits at `World of Warcraft\_classic_\Interface\AddOns\RedGuildForever`
+2. Extract it so the folder sits at `World of Warcraft\_forever_\Interface\AddOns\RedGuildForever`
 3. Enable **Red Guild EPGP** on the character selection screen
 
 Do not use the green **Code** button and **Download ZIP** on GitHub. That zip has the folder `RedGuildForever-main`, and the game only loads the addon when the folder is called `RedGuildForever` like the `.toc` file.
@@ -40,7 +40,8 @@ The points are saved in the addon's own save file, `WTF\Account\<your account>\S
 
 * Editors send, everyone else only receives
 * Both sides compare a short summary first, so only what is missing is sent
-* Sync messages go out a few per second, the game drops messages when too many go out at once. Bids and auctions are sent right away
+* The game takes ten addon messages at once and then one per second. The addon counts that itself, so no message is refused, and it always keeps room for bids and auctions, which go out right away
+* During a boss fight the game takes no addon messages. They wait and go out after the fight
 * A transfer that arrives with a piece missing is thrown away and asked for again
 * The bench, the rules, fixed prices, the editor list and the history are shared too
 
@@ -232,6 +233,7 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf test` | turn test mode on or off |
 | `/rgf settings` | open the settings |
 | `/rgf log` | last changes |
+| `/rgf check` | check that your game version has everything the addon needs |
 | `/rgf editors` | who may change data |
 | `/rgf editor add Cel Dru` | guild leader only, make a player an editor, `editor remove Cel Dru` takes it away |
 | `/rgf help` | all commands |
@@ -240,12 +242,13 @@ Names work with first and last name, in any letter case. The first name alone is
 
 Pick one loot master per raid. Two raids at the same time each have their own loot master.
 
-## Known limits on the Forever beta
+## Known limits
 
-* The addon has been tested against a simulated game API, not yet inside the Forever client. Please report Lua errors with the steps that caused them
-* Some players report that the beta does not load saved addon files after a restart. The automatic backup in the second save file is meant for that, but it could be hit by the same problem. **Keep a backup in Discord** after big changes too
-* Forever uses the Midnight addon rules, which can block addon messages inside instances during combat. Open bidding after the boss is dead. If the popup does not show up, whispering `ms` or `os` always works. Changes made while messages are blocked go out later, the next sync brings them to everyone
-* Every change is kept forever, so the data grows by a few hundred changes a month. A player who starts with an empty save file gets the whole history once, which takes a few minutes in the background
+* The addon is tested against a simulated game and checked against the published functions of Forever 1.60.1, but the author's tests do not run inside the game. Type `/rgf check` to see whether your game version has everything the addon needs, and please report Lua errors with that report and the steps that caused them
+* A save file can get lost, for example after a crash. The automatic backup in the second save file is meant for that. **Keep a backup in Discord** after big changes too
+* Trial and Veteran accounts cannot send addon messages in Forever. Such a player can read the standings and bids by whisper, the popup falls back to a whisper by itself, but cannot work as an editor
+* Forever blocks addon messages during boss fights. Open bidding after the boss is dead. Messages from a fight wait and go out afterwards, and whispering `ms` or `os` always works
+* Every change is kept forever, so the data grows by a few hundred changes a month. A player who starts with an empty save file gets the whole history once, at one message per second. With a few thousand changes that takes around ten minutes in the background
 
 ## Changelog
 
