@@ -144,10 +144,17 @@ end)
 ------------------------------------------------------------------------
 -- The item link in the label of a loot event, and its plain name
 local function itemOf(ev)
-    local link = ev.r and ev.r:match("(|c%x+|H.-|h|r)")
-    local name = link and link:match("%[(.-)%]") or (ev.item and ("item " .. ev.item)) or "?"
+    local link = ns.LinkIn(ev.r)
+    local name = link and link:match("%[(.-)%]")
+    if not link and ev.item then
+        -- only the number is known, ask the game for the item
+        local known, knownName = ns.ItemById(ev.item)
+        link, name = known, knownName
+    end
+    name = name or (ev.item and ("item " .. ev.item)) or "?"
     return link or name, name
 end
+ns.ItemOfEvent = itemOf
 
 local function lootEntry(ev, c, st)
     local link, name = itemOf(ev)
@@ -208,7 +215,7 @@ function ns.LootHistory()
             local link, name = itemOf(ev)
             table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
                 winner = ev.winner, cost = ev.cost or 0, spec = ev.spec, by = ev.by, bids = ev.bids or {},
-                undone = ev.ref ~= nil and st.undone[ev.ref] ~= nil })
+                ref = ev.ref, undone = ev.ref ~= nil and st.undone[ev.ref] ~= nil })
         end
     end
     for _, ev in ipairs(st.events) do
@@ -216,7 +223,8 @@ function ns.LootHistory()
             local link, name = itemOf(ev)
             for _, c in ipairs(ev.ch or {}) do
                 table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
-                    winner = c.n, cost = c.gp or 0, by = ev.by, bids = {}, old = true, undone = st.undone[ev.id] ~= nil })
+                    winner = c.n, cost = c.gp or 0, by = ev.by, bids = {}, old = true, ref = ev.id,
+                    undone = st.undone[ev.id] ~= nil })
             end
         end
     end
@@ -255,6 +263,19 @@ function ns.FilterLoot(list, filter)
         if ok then table.insert(out, l) end
     end
     return out
+end
+
+-- EP, GP and priority of the players right before an item was given out,
+-- for the loot history: { [main] = { ep, gp } } and a function for any character.
+function ns.PointsBefore(l)
+    local st = ns.StateBefore(l.ref or l.id)
+    local base = ns.Setting("baseGP")
+    return function(name)
+        local e = st.players[name]
+        if e and e.main then e = st.players[e.main] end
+        local ep, gp = e and e.ep or 0, e and e.gp or base
+        return ep, gp, ep / math.max(gp, 1)
+    end
 end
 
 -- "2 main, 1 off, 3 pass" for a list of bids

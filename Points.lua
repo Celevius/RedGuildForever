@@ -499,7 +499,8 @@ function ns.SortedEvents()
     return list
 end
 
-local function compute()
+-- stopId: only the events before this one count, for a look back in time
+local function compute(stopId)
     local data = ns.Data()
     local base = ns.Setting("baseGP")
     local players = {}
@@ -511,6 +512,14 @@ local function compute()
         end
     end
     local events = ns.SortedEvents()
+    if stopId then
+        local before = {}
+        for _, ev in ipairs(events) do
+            if ev.id == stopId then break end
+            table.insert(before, ev)
+        end
+        events = before
+    end
     local undone = {}
     for _, ev in ipairs(events) do
         if ev.k == "U" and ev.ref then undone[ev.ref] = ev end
@@ -577,6 +586,11 @@ local function compute()
         end
     end
     return { players = players, undone = undone, events = events }
+end
+
+-- The points as they were right before an event, not kept in the cache
+function ns.StateBefore(eventId)
+    return compute(eventId)
 end
 
 -- The computed points: { players = ..., undone = { [id] = undo event }, events = sorted list }

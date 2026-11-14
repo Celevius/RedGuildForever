@@ -11,7 +11,7 @@ local function words(line)
 end
 
 local function itemLink(line)
-    return line:match("(|c.-|h|r)") or line:match("(|H.-|h.-|h)")
+    return ns.LinkIn(line)
 end
 
 -- Find the guild member someone typed, and explain when it does not work.

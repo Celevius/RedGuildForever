@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.4.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.4.1, updated on 14 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -178,7 +178,7 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 `/rgf` opens the window. Members see the standings and the loot history, editors also get the tabs **Raid**, **EPGP history** and **Data** at the bottom. The buttons explain themselves when you hover them, and a small **i** next to a heading explains the rest.
 
 * **Standings** with your own row always at the top, your place, class icons and a bar that shows each priority against the best one. There is a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **+100 EP raid**, **+25 EP on time** and **Undo** at the bottom. Hover the EP buttons to see who would get the EP, and **Undo** to see what it would take back
-* **Loot history** with every item that was given out: the date, the item, the winner, main spec or off spec, the price and how many players wanted it. Click an item and the lower half shows **everyone who bid**: their answer, their priority at that moment, their roll, and who won. Items for the bank or the disenchanter are listed too
+* **Loot history** with every item that was given out: the date and time, the item with its icon, the winner, main spec or off spec, the price, and how many players bid main spec, off spec or passed. Hover an item for its tooltip, shift click puts it into chat. Click an item and the lower half shows **everyone who bid**: their answer, their EP, GP and priority at that moment, their roll, who won and the winner's priority afterwards. Items for the bank or the disenchanter are listed too, and the top right shows how many items and how much GP the list adds up to
     * **Search** finds an item or a player, as winner and as bidder
     * The **time** button switches between all time, the last 7 days and the last 30 days
     * **Only mine** shows the items you won or bid on, with any of your characters

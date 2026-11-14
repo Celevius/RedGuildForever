@@ -2597,13 +2597,21 @@ test("loot history: who bid and who got it, apart from the EPGP history", functi
     local page = ns.mainFrame.pages[ns.TAB.loot]
     eq(#page.shown, 3)
     eq(page.list:Row(1).cells.winner:GetText(), "|cff999999Bank or disenchant|r")
-    eq(page.list:Row(3).cells.bids:GetText(), 3, "three wanted the ring")
+    eq(page.list:Row(3).cells.ms:GetText(), "|cff40ff402|r", "two for main spec")
+    eq(page.list:Row(3).cells.os:GetText(), "|cff66c7ff1|r", "one for off spec")
+    eq(page.list:Row(3).cells.pass:GetText(), "|cff9999991|r", "one passed")
+    eq(page.list:Row(3).cells.item:GetText(), ring, "the item as a link")
+    assert(page.list:Row(3).cells.time:GetText():find("^%d%d%.%d%d%.%d%d %d%d:%d%d$"), "date and time")
+    eq(page.total:GetText(), "3 items, 100 GP spent", "the helm for off spec was free")
     page.list:Row(3):Click()
     local d = page.detail
     eq(d.title:GetText(), ring)
-    assert(d.sub:GetText():find("Won by |cffffffffLisa Brightwater|r for 100 GP, main spec"), d.sub:GetText())
+    assert(d.sub:GetText():find("Won by |cffffffffLisa Brightwater|r for |cffffffff100 GP|r, main spec"), d.sub:GetText())
     eq(d.list:Row(1).cells.name:GetText(), "Lisa Brightwater")
-    eq(d.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r")
+    eq(d.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r, then 1.67", "her priority after paying")
+    eq(d.list:Row(1).cells.ep:GetText(), 1000, "EP at that moment")
+    eq(d.list:Row(1).cells.gp:GetText(), 500, "GP before she paid")
+    assert(d.sub2:GetText():find("loot master Cel Dru%.  2 main spec, 1 off spec, 1 passed"), d.sub2:GetText())
     eq(d.list:Row(1).cells.roll:GetText(), 77)
     eq(d.list:Row(2).cells.pr:GetText(), "2.00")
     eq(d.list:Row(4).cells.spec:GetText(), "|cff999999Pass|r")
@@ -2677,6 +2685,60 @@ test("loot records are not sent to versions that do not know them", function()
     local sent
     for _, c in ipairs(W.comms) do if c.msg:find("!L,", 1, true) then sent = true end end
     assert(sent, "the loot record goes to a version that knows it")
+    noErrors()
+end)
+
+test("item links in the new format of the game, and items known only by number", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.SetSetting("confirmAward", false)
+    -- the released game writes links with a quality code instead of a color
+    local newLink = "|cnIQ4:|Hitem:4925::::::::60:::::|h[Chromatic Sword]|h|r"
+    eq(ns.LinkIn("Lisa " .. newLink .. " 150 GP"), newLink)
+    eq(ns.LinkIn("Lisa " .. W.link(5, "Old Style") .. " 150 GP"), W.link(5, "Old Style"))
+    eq(ns.LinkIn("no link here"), nil)
+    ns.Command("bid " .. newLink)
+    assert(ns.auction and ns.auction.link == newLink, "/rgf bid takes the new link")
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.Award("Lisa Brightwater")
+    local l = ns.LootHistory()[1]
+    eq(l.link, newLink, "the loot history has the real link")
+    eq(l.itemName, "Chromatic Sword", "and the name, not a number")
+    eq(ns.LootOf("Lisa Brightwater")[1].itemName, "Chromatic Sword")
+    assert(ns.RaidLootText({ start = 0, seen = {}, by = "Cel Dru-Forever" }):find("Chromatic Sword  Lisa Brightwater  100 GP"), "Discord text with the name")
+    -- the tooltip of a row is the item's own tooltip
+    ns.ToggleStandings(ns.TAB.loot)
+    local page = ns.mainFrame.pages[ns.TAB.loot]
+    local shown
+    _G.GameTooltip.SetHyperlink = function(_, link) shown = link end
+    page.list:Row(1):GetScript("OnEnter")(page.list:Row(1))
+    eq(shown, newLink)
+    -- a record that only knows the item number: the game is asked for the item
+    local asked
+    _G.C_Item.GetItemInfo = function(id) if id == 777 then return "Loaded Later", W.link(777, "Loaded Later") end end
+    _G.C_Item.RequestLoadItemDataByID = function(id) asked = id end
+    ns.AddEvent({ k = "L", item = 888, winner = nil, cost = 0, bids = {}, r = "" })
+    ns.AddEvent({ k = "L", item = 777, winner = nil, cost = 0, bids = {}, r = "" })
+    local list = ns.LootHistory()
+    local byItem = {}
+    for _, x in ipairs(list) do byItem[x.item] = x end
+    eq(byItem[777].itemName, "Loaded Later", "the game knew it")
+    eq(byItem[888].itemName, "item 888", "not loaded yet, the number for now")
+    eq(asked, 888, "and the game is asked to load it")
+    shown = nil
+    ns.RefreshStandings()
+    for i = 1, 3 do
+        local row = page.list:Row(i)
+        if row.entry.item == 888 then row:GetScript("OnEnter")(row) end
+    end
+    eq(shown, "item:888", "the tooltip still works with the number")
+    -- when the game has loaded the item, the list is filled in
+    _G.C_Item.GetItemInfo = function(id) return "Now Known", W.link(id, "Now Known") end
+    ns.Fire("GET_ITEM_INFO_RECEIVED") W.flush()
+    local found
+    for i = 1, 3 do if page.list:Row(i).cells.item:GetText() == W.link(888, "Now Known") then found = true end end
+    assert(found, "the name shows up once the game has it")
     noErrors()
 end)
 

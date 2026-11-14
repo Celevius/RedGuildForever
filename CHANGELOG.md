@@ -2,6 +2,17 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.4.1 (14 November 2026)
+
+### Fixed
+* **Items showed as "item 4925" instead of their name**, in the loot history, the loot of the raid, the Discord lists and `!loot`. The released game writes item links in a new way, the addon now reads both. Items already in the history show their name too, nothing was lost
+* The item tooltip in the loot history works again. An item that is only known by its number is asked from the game and filled in when it arrives
+
+### Changed
+* **The main window is wider**, so names and columns are no longer cut off
+* **More in the loot history.** The list shows the time, the item icon, and separate counts for main spec, off spec and passes, with a total of items and GP at the top. The detail shows the EP and GP of every bidder at that moment, the winner's priority after paying, and a line with the loot master and the counts
+* Shift click an item in the loot history to put it into chat
+
 ## 2.4.0 (13 November 2026)
 
 ### Added

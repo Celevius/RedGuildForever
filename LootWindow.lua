@@ -28,6 +28,9 @@ local function quality(link, fromLoot)
         local ok, q = pcall(C_Item.GetItemQualityByID, link)
         if ok and q then return q end
     end
+    -- the link itself tells the quality, as "|cnIQ4:" or as a color
+    local iq = link and link:match("|cnIQ(%d):")
+    if iq then return tonumber(iq) end
     local color = link and link:match("|c(%x%x%x%x%x%x%x%x)")
     if color then
         for q, c in pairs(QUALITY_COLORS) do if c == color:lower() then return q end end
