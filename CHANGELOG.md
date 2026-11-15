@@ -2,29 +2,6 @@
 
 All changes to Red Guild EPGP, newest version first.
 
-## 2.7.0 (15 November 2026)
-
-### Changed
-* **Editors are no longer tied to guild ranks.** The guild leader can always edit, everyone else only when the guild leader made them an editor by hand, in the Characters tab, the game's Options or with `/rgf editor add Name`
-* **After this update only the guild leader can edit until the editors are picked.** Until now, guild rank 1 could edit as long as the editor list was empty. Guild leaders: add your officers and loot masters in the Characters tab before the next raid. The addon reminds you at login while the list is empty
-* The line `EPGP officers 2` in the Guild Information no longer does anything
-* The buttons **Add the current officer ranks** are gone, they came from the rank rule
-
-## 2.6.1 (15 November 2026)
-
-### Added
-* **Editors in the Characters tab.** The guild leader clicks a character and then **Make editor** or **Remove editor**, no name to type. A **Rights** column shows who is an editor and who is the guild leader, and the list can show only the editors
-* **Add the current officer ranks** is in the tab too, while the editor list is still empty
-
-## 2.6.0 (15 November 2026)
-
-### Added
-* **Characters tab** for the guild leader, to link mains and alts with clicks. The left side lists every character with its role, the right side shows the alts of the chosen main with **Unlink**, and every character that can be linked with **Link**
-* The list of characters to link says what each one brings along to the main, for example "300 EP, 150 GP"
-* A search, and a button to show only mains with alts, only alts, or only characters that are not linked
-* **Copy for Discord** for the list of all mains with their alts
-* `/rgf alts` opens the tab for the guild leader. Everyone else gets the list of mains and alts in chat
-
 ## 2.5.0 (15 November 2026)
 
 ### Added
@@ -33,12 +10,21 @@ All changes to Red Guild EPGP, newest version first.
 * The Loot Master window marks guests and shows them in their own sections, in the order they win. The big button says for example "Award to Pug (guest, main spec, free)"
 * A guest who bids by whisper is told that the guild goes first. A guest with the addon sees it on the bid card
 * The loot history, the loot of the raid and the Discord list show what a guest won, marked as guest
+* **Characters tab** for the guild leader, to link mains and alts with clicks. The left side lists every character with its role, the right side shows the alts of the chosen main with **Unlink**, and every character that can be linked with **Link**
+* The list of characters to link says what each one brings along to the main, for example "300 EP, 150 GP"
+* **Editors in the Characters tab.** The guild leader clicks a character and then **Make editor** or **Remove editor**, no name to type. A **Rights** column shows who is an editor and who is the guild leader
+* A search in the Characters tab, and a button to show only mains with alts, only alts, only characters that are not linked, or only editors
+* **Copy for Discord** for the list of all mains with their alts
+* `/rgf alts` opens the Characters tab for the guild leader. Everyone else gets the list of mains and alts in chat
+
+### Changed
+* **Editors are no longer tied to guild ranks.** The guild leader can always edit, everyone else only when the guild leader made them an editor by hand, in the Characters tab, the game's Options or with `/rgf editor add Name`
+* **After this update only the guild leader can edit until the editors are picked.** Until now, guild rank 1 could edit as long as the editor list was empty. Guild leaders: add your officers and loot masters in the Characters tab before the next raid. The addon reminds you at login while the list is empty
+* The line `EPGP officers 2` in the Guild Information no longer does anything, and the buttons **Add the current officer ranks** are gone
+* The loot of the raid, the item tooltips and `!loot` now come from the loot history, so they agree with it
 
 ### Fixed
 * Awarding an item to a player outside the guild did nothing but print "is not in the guild". The only way out was Bank or Disenchant, and the loot history lost who got the item
-
-### Changed
-* The loot of the raid, the item tooltips and `!loot` now come from the loot history, so they agree with it
 
 ## 2.4.1 (14 November 2026)
 

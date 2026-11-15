@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.7.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.5.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -221,7 +221,7 @@ The guild leader and the editors can change all data: points, bidding and awards
 
 The list is saved with the guild data and shared with **Sync** and the backup. Everyone only accepts list changes the guild leader made, an editor can pass them on but cannot change the list.
 
-**Coming from version 2.6 or older?** Until 2.6, guild rank 1 could edit as long as the guild leader had not picked any editor, and a line like `EPGP officers 2` in the Guild Information could allow more ranks. That is gone. After the update only the guild leader can edit until the editors are on the list, so add your officers and loot masters in the **Characters** tab before the next raid. The addon reminds the guild leader at login while the list is empty.
+**Coming from version 2.4 or older?** Until 2.4, guild rank 1 could edit as long as the guild leader had not picked any editor, and a line like `EPGP officers 2` in the Guild Information could allow more ranks. That is gone. After the update only the guild leader can edit until the editors are on the list, so add your officers and loot masters in the **Characters** tab before the next raid. The addon reminds the guild leader at login while the list is empty.
 
 ## For editors
 
