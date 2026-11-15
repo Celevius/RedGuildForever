@@ -216,21 +216,9 @@ end
 -- /rgf editor add Name. The list is saved with the guild data and shared
 -- with Sync, everyone only accepts list changes made by the guild leader.
 --
--- Until the guild leader adds the first editor, the old rank rule still
--- applies, so updating the addon never locks anyone out: rank 0 and 1, or
--- what "EPGP officers 2" in the guild information allows.
+-- The guild rank plays no part: the guild leader can always edit, everyone
+-- else only when the guild leader put them on the list.
 ------------------------------------------------------------------------
-function ns.OfficerRank()
-    if GetGuildInfoText then
-        local ok, info = pcall(GetGuildInfoText)
-        if ok and type(info) == "string" then
-            local rank = info:lower():match("epgp%s+officers?%s*[=:]?%s*(%d+)")
-            if rank then return tonumber(rank) end
-        end
-    end
-    return ns.Setting("officerRank")
-end
-
 function ns.MyRank()
     if not GetGuildInfo then return nil end
     local _, _, rankIndex = GetGuildInfo("player")
@@ -249,11 +237,6 @@ function ns.EditorList()
     return data.editors
 end
 
--- true once the guild leader added or removed an editor
-function ns.EditorsInUse()
-    return next(ns.EditorList()) ~= nil
-end
-
 function ns.IsGuildLeader(full)
     full = full and ns.Resolve(full)
     return full ~= nil and rankOf(full) == 0
@@ -264,11 +247,8 @@ function ns.IsEditor(full)
     if not full then return false end
     local rank = rankOf(full)
     if rank == 0 then return true end
-    if ns.EditorsInUse() then
-        local e = ns.EditorList()[full]
-        return e ~= nil and e.on == true
-    end
-    return rank ~= nil and rank <= ns.OfficerRank()
+    local e = ns.EditorList()[full]
+    return e ~= nil and e.on == true
 end
 ns.IsOfficer = ns.IsEditor -- older name
 
@@ -307,9 +287,7 @@ function ns.SetEditor(name, on)
     if e and e.on == on then
         return nil, ns.ShortName(full) .. (on and " is already an editor" or " is not an editor")
     end
-    if not e and not on and not ns.EditorsInUse() then
-        return nil, "the editor list is still empty, add the editors you want first"
-    end
+    if not e and not on then return nil, ns.ShortName(full) .. " is not an editor" end
     local me = ns.PlayerName()
     list[full] = { on = on, t = ns.Now(), by = me }
     ns.AddLogEntry(ns.ShortName(full) .. (on and " is now an editor" or " is no editor anymore"), 1)
@@ -317,23 +295,6 @@ function ns.SetEditor(name, on)
     ns.Fire("RGF_POINTS_CHANGED")
     ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     return true, full
-end
-
--- Start the list with everyone the old rank rule allows, without the guild leader.
--- Returns the number of added editors.
-function ns.AddRankEditors()
-    if not ns.CanManageEditors() then return 0 end
-    local limit, names = ns.OfficerRank(), {}
-    for full, m in pairs(ns.members) do
-        if m.rank and m.rank > 0 and m.rank <= limit then table.insert(names, full) end
-    end
-    table.sort(names)
-    local count = 0
-    for _, full in ipairs(names) do
-        local e = ns.EditorList()[full]
-        if not (e and e.on) and ns.SetEditor(full, true) then count = count + 1 end
-    end
-    return count
 end
 
 -- Every change goes through here, it explains why a change is not possible.
@@ -499,7 +460,8 @@ function ns.SortedEvents()
     return list
 end
 
-local function compute()
+-- stopId: only the events before this one count, for a look back in time
+local function compute(stopId)
     local data = ns.Data()
     local base = ns.Setting("baseGP")
     local players = {}
@@ -511,6 +473,14 @@ local function compute()
         end
     end
     local events = ns.SortedEvents()
+    if stopId then
+        local before = {}
+        for _, ev in ipairs(events) do
+            if ev.id == stopId then break end
+            table.insert(before, ev)
+        end
+        events = before
+    end
     local undone = {}
     for _, ev in ipairs(events) do
         if ev.k == "U" and ev.ref then undone[ev.ref] = ev end
@@ -579,6 +549,11 @@ local function compute()
     return { players = players, undone = undone, events = events }
 end
 
+-- The points as they were right before an event, not kept in the cache
+function ns.StateBefore(eventId)
+    return compute(eventId)
+end
+
 -- The computed points: { players = ..., undone = { [id] = undo event }, events = sorted list }
 function ns.State()
     -- a new guild or test mode has its own data
@@ -618,6 +593,61 @@ function ns.AltsOf(main)
     end
     table.sort(list)
     return list
+end
+
+------------------------------------------------------------------------
+-- Mains and alts, for the Characters tab of the guild leader
+------------------------------------------------------------------------
+-- Every guild character with its role: "main" (has alts), "alt" or "single".
+-- Characters that left the guild but are still linked are in it too.
+function ns.Characters()
+    local players = ns.Players()
+    local list, seen = {}, {}
+    local function add(full)
+        if seen[full] then return end
+        seen[full] = true
+        local e = players[full]
+        local m = ns.members[full]
+        local c = { name = full, class = m and m.class, left = m == nil }
+        if e and e.main then
+            c.role, c.main = "alt", e.main
+        else
+            c.alts = ns.AltsOf(full)
+            c.role = #c.alts > 0 and "main" or "single"
+            c.ep, c.gp = ns.GetPoints(full)
+        end
+        table.insert(list, c)
+    end
+    for full in pairs(ns.members) do add(full) end
+    for full, e in pairs(players) do
+        if e.main then add(full) add(e.main) end
+    end
+    table.sort(list, function(a, b) return a.name < b.name end)
+    return list
+end
+
+-- The characters that can become an alt of main: in the guild, not linked
+-- yet and without alts of their own.
+function ns.AltCandidates(main)
+    local list = {}
+    for _, c in ipairs(ns.Characters()) do
+        if c.role == "single" and c.name ~= main and not c.left then table.insert(list, c) end
+    end
+    return list
+end
+
+-- Every main with its alts as text, for Discord
+function ns.AltsText()
+    local lines = { "Mains and alts on " .. date("%d.%m.%Y") }
+    for _, c in ipairs(ns.Characters()) do
+        if c.role == "main" then
+            local names = {}
+            for _, a in ipairs(c.alts) do table.insert(names, ns.ShortName(a)) end
+            table.insert(lines, ns.ShortName(c.name) .. ": " .. table.concat(names, ", "))
+        end
+    end
+    if #lines == 1 then table.insert(lines, "No characters are linked yet.") end
+    return table.concat(lines, "\n")
 end
 
 -- Returns ep, gp, priority and the main for any character.

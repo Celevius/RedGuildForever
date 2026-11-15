@@ -28,6 +28,9 @@ local function quality(link, fromLoot)
         local ok, q = pcall(C_Item.GetItemQualityByID, link)
         if ok and q then return q end
     end
+    -- the link itself tells the quality, as "|cnIQ4:" or as a color
+    local iq = link and link:match("|cnIQ(%d):")
+    if iq then return tonumber(iq) end
     local color = link and link:match("|c(%x%x%x%x%x%x%x%x)")
     if color then
         for q, c in pairs(QUALITY_COLORS) do if c == color:lower() then return q end end
@@ -163,8 +166,9 @@ local function nextStep()
         if #ns.TiedForFirst(a) > 0 then
             return "Tie, ask for rolls again", function() ns.RequestRolls(a) end, true
         end
-        local cost, spec = ns.AwardCost(a, o.winner.name)
-        return string.format("Award to %s  (%s, %s)", ns.ShortName(o.winner.name), spec == "MS" and "main spec" or "off spec", costText(cost)),
+        local cost, spec, guest = ns.AwardCost(a, o.winner.name)
+        return string.format("Award to %s  (%s%s, %s)", ns.ShortName(o.winner.name), guest and "guest, " or "",
+                spec == "MS" and "main spec" or "off spec", costText(cost)),
             function() ns.AskAward(o.winner.name, a) end, true
     end
     return "Choose an item on the left", function() end, false
@@ -425,15 +429,19 @@ local function showBid(row, a, b, isWinner, canAward)
     row.sectionLine:Hide()
     local label = ns.ShortName(b.name)
     if b.main and b.main ~= b.name then label = label .. " |cff999999(" .. ns.ShortName(b.main) .. ")|r" end
+    if b.guest then label = label .. "  |cffff8040Guest|r" end
     row.cells.name:SetText(label)
     local m = ns.members[b.name]
     row.cells.name:SetTextColor(classColor(m and m.class))
     local c = SECTION_COLORS[b.spec] or SECTION_COLORS.PASS
     row.cells.spec:SetText(b.spec == "MS" and "Main Spec" or (b.spec == "OS" and "Off Spec" or "Pass"))
     row.cells.spec:SetTextColor(c[1], c[2], c[3])
-    row.cells.ep:SetText(b.ep)
-    row.cells.gp:SetText(b.gp)
-    if b.spec == "MS" then
+    row.cells.ep:SetText(b.guest and "" or b.ep)
+    row.cells.gp:SetText(b.guest and "" or b.gp)
+    if b.guest and b.spec ~= "PASS" then
+        row.cells.pr:SetText("rolls, free")
+        row.cells.pr:SetTextColor(0.7, 0.7, 0.7)
+    elseif b.spec == "MS" then
         row.cells.pr:SetText(ns.FormatPR(b.pr))
         if b.newcomer then row.cells.pr:SetTextColor(0.4, 0.78, 1) else row.cells.pr:SetTextColor(1, 0.82, 0) end
     elseif b.spec == "OS" then
@@ -524,19 +532,19 @@ local function fillBids(f, a)
         f.state:SetText("Bidding is closed. Award the item to the winner, or to anyone in the list.")
     end
     f.counts:SetText(string.format(
-        "|cff40ff40Main Spec %d|r     |cff66c7ffOff Spec %d|r     |cff999999Pass %d|r     |cffff8040No answer %d|r",
-        #o.ms, #o.os, #o.passed, #o.waiting))
+        "|cff40ff40Main Spec %d|r     |cff66c7ffOff Spec %d|r     |cff999999Pass %d|r     |cffff8040No answer %d|r%s",
+        #o.ms, #o.os, #o.passed, #o.waiting,
+        o.guests > 0 and ("     |cffff8040Guests " .. o.guests .. "|r, they go after the guild and pay nothing") or ""))
     local n = 0
     local function nextRow()
         n = n + 1
         return f.list:Row(n)
     end
     local winner = (#tied == 0) and o.winner or nil
-    local sections = {
-        { key = "MS", label = "Main Spec", list = o.ms },
-        { key = "OS", label = "Off Spec", list = o.os },
-        { key = "PASS", label = "Passed", list = o.passed },
-    }
+    -- the sections in the order they win: guild members first, then guests
+    local sections = {}
+    for _, sec in ipairs(o.sections) do table.insert(sections, sec) end
+    table.insert(sections, { key = "PASS", label = "Passed", list = o.passed })
     for _, sec in ipairs(sections) do
         if #sec.list > 0 then
             showSection(nextRow(), sec.label, #sec.list, sec.key)
@@ -745,10 +753,10 @@ function ns.AskAward(name, auction)
     if not a or not name then return false end
     if not ns.Setting("confirmAward") or not StaticPopup_Show then return ns.Award(name, a) end
     local full = ns.Resolve(name)
-    local cost, spec = ns.AwardCost(a, full)
+    local cost, spec, guest = ns.AwardCost(a, full)
     ns.pendingAward = { name = full, auction = a }
     StaticPopup_Show("REDGUILDFOREVER_AWARD", a.link,
-        string.format("%s for %s, %s", ns.ShortName(full), spec == "MS" and "main spec" or "off spec", costText(cost)))
+        string.format("%s%s for %s, %s", ns.ShortName(full), guest and " (guest)" or "", spec == "MS" and "main spec" or "off spec", costText(cost)))
     return true
 end
 

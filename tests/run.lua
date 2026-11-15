@@ -100,6 +100,11 @@ local function guild()
     }
 end
 
+-- the guild leader made this player an editor some time ago
+local function makeEditor(name)
+    ns.EditorList()[ns.FullName(name)] = { on = true, t = W.server - 200, by = "Cel Dru-Forever" }
+end
+
 -- the saved data of a player in the old note style, "ep,gp" or "@Main"
 local function note(name)
     local e = ns.Players()[ns.FullName(name)]
@@ -777,15 +782,20 @@ test("without loaded data officers cannot change anything until sync or start fr
     eq(note("Lisa Brightwater"), "100,100")
 end)
 
-test("who may edit, guild leader, officer ranks and the guild info setting", function()
+test("who may edit: the guild leader always, everyone else only by hand", function()
     setup(guild())
     W.rank = 0 eq(ns.CanEdit(), true, "guild leader")
-    W.rank = 1 eq(ns.CanEdit(), true, "officer rank 1")
-    W.rank = 2 eq(ns.CanEdit(), false, "rank 2 by default")
+    -- no guild rank gives the right, also not with the old line in the guild information
     W.guildInfo = "Welcome!\nEPGP officers 2"
-    eq(ns.CanEdit(), true, "rank 2 after the guild leader allowed it")
-    eq(ns.IsOfficer("Lisa Brightwater"), true, "Lisa is rank 2")
-    W.rank = 3 eq(ns.CanEdit(), false)
+    W.rank = 1 eq(ns.CanEdit(), false, "rank 1 is no editor by itself")
+    W.rank = 2 eq(ns.CanEdit(), false)
+    eq(ns.IsEditor("Lisa Brightwater"), false, "Lisa is rank 2, not on the list")
+    eq(ns.OfficerRank, nil, "the rank rule is gone")
+    -- only the list counts
+    makeEditor("Lisa Brightwater")
+    eq(ns.IsEditor("Lisa Brightwater"), true)
+    ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
+    W.rank = 7 eq(ns.CanEdit(), true, "the lowest rank can be an editor")
 end)
 
 -- collect the data messages one editor would send with everything it has
@@ -905,7 +915,7 @@ end
 
 test("changes made at the same time on two computers both count", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna Frost is rank 2 and an editor
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -933,7 +943,7 @@ end)
 
 test("a new computer gets everything and members never send", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     ns.AwardEP({ "Lisa Brightwater", "Tom Spark" }, 100, "Raid night", "raid")
     ns.SetAlt("Ben Swift", "Max Ironhide")
@@ -956,7 +966,7 @@ end)
 
 test("sync sends only what is missing", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -975,7 +985,7 @@ end)
 
 test("a lost piece is asked for again", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -997,7 +1007,7 @@ test("a big guild goes out in small messages, a few per second", function()
     table.insert(roster, 1, { "Cel Dru", 0, "", "DRUID" })
     table.insert(roster, 2, { "Anna Frost", 2, "", "MAGE" })
     setup(roster)
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     for i = 1, 60 do ns.Adjust("Player Number" .. i, i, 0) end
     W.flush()
@@ -1281,7 +1291,7 @@ end)
 
 test("real messages from other players are ignored in test mode", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     set("Lisa Brightwater", "7777,100")
     local fromAnna = dataMessages()
     set("Lisa Brightwater", "1000,500")
@@ -1491,7 +1501,7 @@ end)
 
 test("rules travel with sync, the newest change wins", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna Frost counts as officer
+    makeEditor("Anna Frost")
     -- Anna changed the end boss price, we changed raid EP later
     assert(ns.SetRules({ tier_boss = 180 }))
     local fromAnna = dataMessages()
@@ -1510,7 +1520,7 @@ end)
 
 test("rules from sync outside the limits or from members are ignored", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     transferFrom("Anna Frost", { "#baseGP,0," .. (W.server + 5), "#unknown,5," .. (W.server + 5), "#raidEP,140," .. (W.server + 5) })
     eq(ns.Setting("baseGP"), 100, "a base GP of 0 is refused")
     eq(ns.Data().rules.unknown, nil)
@@ -1522,7 +1532,7 @@ end)
 
 test("fixed item prices are shared and clearing them too", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     W.itemSlots = { [94] = "INVTYPE_HAND" }
     local gloves = W.link(94, "Gloves")
     ns.Command("price " .. gloves .. " 250")
@@ -1602,19 +1612,17 @@ end)
 ------------------------------------------------------------------------
 local function syncFrom(sender, entries) transferFrom(sender, entries) end
 
-test("the guild leader picks editors of any rank and the rank rule stops counting", function()
+test("the guild leader picks editors of any rank", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
-    eq(ns.IsEditor("Anna Frost"), true, "rank rule before the list is used")
-    eq(ns.EditorsInUse(), false)
+    eq(ns.IsEditor("Anna Frost"), false, "nobody is an editor by rank")
     W.rank = 0
     assert(ns.SetEditor("Ben Swift", true))
-    eq(ns.EditorsInUse(), true)
     eq(ns.IsEditor("Ben Swift"), true, "rank 3 is an editor now")
-    eq(ns.IsEditor("Anna Frost"), false, "the rank rule does not count anymore")
+    eq(ns.IsEditor("Anna Frost"), false)
     eq(ns.IsEditor("Cel Dru"), true, "the guild leader always edits")
     eq(select(2, ns.SetEditor("Cel Dru", true)), "Cel Dru is the guild leader and can always edit")
     eq(select(2, ns.SetEditor("Ben Swift", true)), "Ben Swift is already an editor")
+    eq(select(2, ns.SetEditor("Anna Frost", false)), "Anna Frost is not an editor")
     -- an editor without officer rank can change data
     ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
     W.rank = 4
@@ -1626,24 +1634,20 @@ test("the guild leader picks editors of any rank and the rank rule stops countin
     W.rank = 0
     assert(ns.SetEditor("Ben Swift", false))
     eq(ns.IsEditor("Ben Swift"), false)
-    eq(ns.EditorsInUse(), true, "a removed editor keeps the list in use")
     eq(#ns.Editors(), 1)
+    -- the guild leader with no editors is told where to add them, once at login
+    ns.EditorList()["Cel Dru-Forever"] = nil
+    W.printed = {}
+    ns.Fire("RGF_READY") W.flush()
+    local said
+    for _, p in ipairs(W.printed) do if p:find("Add editors and loot masters in the Characters tab") then said = true end end
+    assert(said, "hint for the guild leader")
     noErrors()
-end)
-
-test("starting the list from the current officer ranks", function()
-    setup(guild())
-    W.guildInfo = "EPGP officers 2"
-    W.rank = 0
-    eq(ns.AddRankEditors(), 5, "every rank 1 and 2 member")
-    eq(ns.IsEditor("Anna Frost"), true)
-    eq(ns.IsEditor("Ben Swift"), false, "rank 3 stays out")
-    eq(ns.AddRankEditors(), 0, "nothing twice")
 end)
 
 test("the editor list travels with sync, only changes by the guild leader count", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna counts as editor while the list is empty
+    makeEditor("Anna Frost")
     local t = W.server + 10
     syncFrom("Anna Frost", {
         "@Ben Swift,1," .. t .. ",Cel Dru",    -- made by the guild leader, Anna passes it on
@@ -1653,7 +1657,9 @@ test("the editor list travels with sync, only changes by the guild leader count"
     eq(ns.IsEditor("Ben Swift"), true, "change by the guild leader accepted")
     eq(ns.EditorList()["Tom Hammer-Forever"], nil, "change by an editor ignored")
     eq(note("Lisa Brightwater"), "1234,500", "points from Anna merged")
-    eq(ns.IsEditor("Anna Frost"), false, "the list counts now")
+    -- the guild leader takes Anna off the list, Ben passes that on
+    syncFrom("Ben Swift", { "@Anna Frost,0," .. (t + 1) .. ",Cel Dru" })
+    eq(ns.IsEditor("Anna Frost"), false, "removed by the guild leader")
     -- Anna is no editor anymore, Ben is
     syncFrom("Anna Frost", { "Max Ironhide,9999,100," .. (t + 5) })
     eq(note("Max Ironhide"), "1000,100", "data from a former editor ignored")
@@ -1714,7 +1720,7 @@ end)
 
 test("undo works after a reload and for changes of other editors", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -1749,7 +1755,7 @@ end)
 
 test("raid EP and on time EP count once per night, also with two raids", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -2118,7 +2124,7 @@ end)
 
 test("the weekly decay reminds when it is due and warns before a second one", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     eq(ns.DecayDue(), false, "no changes yet, nothing is due")
     ns.Adjust("Lisa Brightwater", 10, 0)
     W.server = W.server + 8 * 86400
@@ -2316,7 +2322,7 @@ test("settings and rules are in the game's Options, not in the addon window", fu
     eq(W.openedCategory, W.categories[2])
     -- the addon window only has the four tabs for the game itself
     ns.ToggleStandings(ns.TAB.data)
-    eq(#ns.mainFrame.pages, 5)
+    eq(#ns.mainFrame.pages, 6)
     eq(ns.TAB.settings, nil) eq(ns.TAB.rules, nil)
     -- during a fight the game refuses to open the Options, the addon says where to click
     _G.Settings.OpenToCategory = function() error("blocked in combat") end
@@ -2488,7 +2494,7 @@ test("a calmer main window: members see the standings only, your own row, bars a
     eq(f.selectedTab, ns.TAB.standings)
     eq(f.Tabs[ns.TAB.standings]:IsShown(), true)
     eq(f.Tabs[ns.TAB.loot]:IsShown(), true, "members get the loot history too")
-    for i = 3, 5 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
+    for i = 3, 6 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
     eq(f.pages[ns.TAB.history]:IsShown(), false)
     eq(f.standingsButtons:IsShown(), false)
     noErrors()
@@ -2597,13 +2603,21 @@ test("loot history: who bid and who got it, apart from the EPGP history", functi
     local page = ns.mainFrame.pages[ns.TAB.loot]
     eq(#page.shown, 3)
     eq(page.list:Row(1).cells.winner:GetText(), "|cff999999Bank or disenchant|r")
-    eq(page.list:Row(3).cells.bids:GetText(), 3, "three wanted the ring")
+    eq(page.list:Row(3).cells.ms:GetText(), "|cff40ff402|r", "two for main spec")
+    eq(page.list:Row(3).cells.os:GetText(), "|cff66c7ff1|r", "one for off spec")
+    eq(page.list:Row(3).cells.pass:GetText(), "|cff9999991|r", "one passed")
+    eq(page.list:Row(3).cells.item:GetText(), ring, "the item as a link")
+    assert(page.list:Row(3).cells.time:GetText():find("^%d%d%.%d%d%.%d%d %d%d:%d%d$"), "date and time")
+    eq(page.total:GetText(), "3 items, 100 GP spent", "the helm for off spec was free")
     page.list:Row(3):Click()
     local d = page.detail
     eq(d.title:GetText(), ring)
-    assert(d.sub:GetText():find("Won by |cffffffffLisa Brightwater|r for 100 GP, main spec"), d.sub:GetText())
+    assert(d.sub:GetText():find("Won by |cffffffffLisa Brightwater|r for |cffffffff100 GP|r, main spec"), d.sub:GetText())
     eq(d.list:Row(1).cells.name:GetText(), "Lisa Brightwater")
-    eq(d.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r")
+    eq(d.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r, then 1.67", "her priority after paying")
+    eq(d.list:Row(1).cells.ep:GetText(), 1000, "EP at that moment")
+    eq(d.list:Row(1).cells.gp:GetText(), 500, "GP before she paid")
+    assert(d.sub2:GetText():find("loot master Cel Dru%.  2 main spec, 1 off spec, 1 passed"), d.sub2:GetText())
     eq(d.list:Row(1).cells.roll:GetText(), 77)
     eq(d.list:Row(2).cells.pr:GetText(), "2.00")
     eq(d.list:Row(4).cells.spec:GetText(), "|cff999999Pass|r")
@@ -2677,6 +2691,304 @@ test("loot records are not sent to versions that do not know them", function()
     local sent
     for _, c in ipairs(W.comms) do if c.msg:find("!L,", 1, true) then sent = true end end
     assert(sent, "the loot record goes to a version that knows it")
+    noErrors()
+end)
+
+test("item links in the new format of the game, and items known only by number", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater" }
+    ns.SetSetting("confirmAward", false)
+    -- the released game writes links with a quality code instead of a color
+    local newLink = "|cnIQ4:|Hitem:4925::::::::60:::::|h[Chromatic Sword]|h|r"
+    eq(ns.LinkIn("Lisa " .. newLink .. " 150 GP"), newLink)
+    eq(ns.LinkIn("Lisa " .. W.link(5, "Old Style") .. " 150 GP"), W.link(5, "Old Style"))
+    eq(ns.LinkIn("no link here"), nil)
+    ns.Command("bid " .. newLink)
+    assert(ns.auction and ns.auction.link == newLink, "/rgf bid takes the new link")
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.Award("Lisa Brightwater")
+    local l = ns.LootHistory()[1]
+    eq(l.link, newLink, "the loot history has the real link")
+    eq(l.itemName, "Chromatic Sword", "and the name, not a number")
+    eq(ns.LootOf("Lisa Brightwater")[1].itemName, "Chromatic Sword")
+    assert(ns.RaidLootText({ start = 0, seen = {}, by = "Cel Dru-Forever" }):find("Chromatic Sword  Lisa Brightwater  100 GP"), "Discord text with the name")
+    -- the tooltip of a row is the item's own tooltip
+    ns.ToggleStandings(ns.TAB.loot)
+    local page = ns.mainFrame.pages[ns.TAB.loot]
+    local shown
+    _G.GameTooltip.SetHyperlink = function(_, link) shown = link end
+    page.list:Row(1):GetScript("OnEnter")(page.list:Row(1))
+    eq(shown, newLink)
+    -- a record that only knows the item number: the game is asked for the item
+    local asked
+    _G.C_Item.GetItemInfo = function(id) if id == 777 then return "Loaded Later", W.link(777, "Loaded Later") end end
+    _G.C_Item.RequestLoadItemDataByID = function(id) asked = id end
+    ns.AddEvent({ k = "L", item = 888, winner = nil, cost = 0, bids = {}, r = "" })
+    ns.AddEvent({ k = "L", item = 777, winner = nil, cost = 0, bids = {}, r = "" })
+    local list = ns.LootHistory()
+    local byItem = {}
+    for _, x in ipairs(list) do byItem[x.item] = x end
+    eq(byItem[777].itemName, "Loaded Later", "the game knew it")
+    eq(byItem[888].itemName, "item 888", "not loaded yet, the number for now")
+    eq(asked, 888, "and the game is asked to load it")
+    shown = nil
+    ns.RefreshStandings()
+    for i = 1, 3 do
+        local row = page.list:Row(i)
+        if row.entry.item == 888 then row:GetScript("OnEnter")(row) end
+    end
+    eq(shown, "item:888", "the tooltip still works with the number")
+    -- when the game has loaded the item, the list is filled in
+    _G.C_Item.GetItemInfo = function(id) return "Now Known", W.link(id, "Now Known") end
+    ns.Fire("GET_ITEM_INFO_RECEIVED") W.flush()
+    local found
+    for i = 1, 3 do if page.list:Row(i).cells.item:GetText() == W.link(888, "Now Known") then found = true end end
+    assert(found, "the name shows up once the game has it")
+    noErrors()
+end)
+
+test("guests fill spots: guild first, guests roll, pay nothing and get no EP", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Anna Frost", "Pug One", "Pug Two" }
+    ns.SetSetting("confirmAward", false)
+    eq(ns.IsGuest("Pug One"), true)
+    eq(ns.IsGuest("Lisa Brightwater"), false)
+    eq(ns.IsGuest("Tom Spark"), false, "an alt of a member is no guest")
+    local ring, helm, cloak = W.link(35, "Guest Ring"), W.link(36, "Guest Helm"), W.link(37, "Guest Cloak")
+
+    -- a guild member wants it for main spec: the guests come after, also with a bid
+    local a = ns.StartAuction(ring)
+    local list, answer = whisper("ms", "Pug One")
+    assert(answer:find("You are a guest: guild members go first, guests roll for it and pay nothing"), answer)
+    ns.RecordBid("Pug Two", "MS")
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    local order = {}
+    for _, b in ipairs(ns.SortedBids(a)) do table.insert(order, ns.ShortName(b.name)) end
+    eq(table.concat(order, ","), "Lisa Brightwater,Pug One,Pug Two,Anna Frost", "guild main, guest main, guild off")
+    -- the window marks the guests and gives them their own section
+    local f = ns.lootFrame
+    local labels = {}
+    for i = 1, 9 do
+        local row = f.list:Row(i)
+        if row:IsShown() and row.section:IsShown() then table.insert(labels, (row.section:GetText():gsub("  .*", ""))) end
+    end
+    eq(table.concat(labels, "|"), "Main Spec|Guests, Main Spec|Off Spec|No answer yet", "sections in winning order")
+    assert(f.counts:GetText():find("Guests 2"), f.counts:GetText())
+    W.chat = {}
+    ns.CloseBidding(a)
+    assert(raidChat():find("Main spec Lisa Brightwater 2.00%. Guests main spec Pug One, Pug Two%. Off spec Anna Frost%."), raidChat())
+    eq(#ns.TiedForFirst(a), 0, "the guild member wins without a roll")
+    ns.Award("Lisa Brightwater")
+    eq(note("Lisa Brightwater"), "1000,600")
+
+    -- only guests want it: they roll, the winner pays nothing
+    a = ns.StartAuction(helm)
+    ns.RecordBid("Pug One", "MS")
+    ns.RecordBid("Pug Two", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    W.chat = {}
+    ns.CloseBidding(a)
+    assert(raidChat():find("Tie for .- between Pug One, Pug Two%. Please /roll now"), raidChat())
+    ns.Fire("CHAT_MSG_SYSTEM", "Pug One rolls 20 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Pug Two rolls 80 (1-100)")
+    eq(ns.SortedBids(a)[1].name, "Pug Two-Forever", "the highest roll among the guests")
+    eq(f.primary:GetText(), "Award to Pug Two  (guest, main spec, free)")
+    local events = 0
+    for _ in pairs(ns.Data().events) do events = events + 1 end
+    W.chat = {}
+    f.primary:Click()
+    eq(#ns.auctions, 0, "the award to a guest works")
+    assert(raidChat():find("Pug Two %(guest%) gets .-Guest Helm.-%. Guests pay no GP%."), raidChat())
+    local told
+    for _, c in ipairs(W.chat) do if c.channel == "WHISPER" and c.target == "Pug Two" then told = c.msg end end
+    assert(told and told:find("as a guest, it costs you nothing"), tostring(told))
+    eq(ns.Players()["Pug Two-Forever"], nil, "no points for the guest, not in the standings")
+
+    -- with the other rule the guild off spec goes before the guests
+    assert(ns.SetRules({ guestMS = 0 }))
+    a = ns.StartAuction(cloak)
+    ns.RecordBid("Pug One", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    eq(ns.SortedBids(a)[1].name, "Anna Frost-Forever", "guild off spec first with the rule turned off")
+    ns.Award("Pug One")
+    eq(note("Anna Frost"), "500,200", "she did not pay, the guest got it by hand")
+
+    -- the loot history knows the guests
+    local h = ns.LootHistory()
+    eq(h[2].itemName, "Guest Helm")
+    eq(h[2].winner, "Pug Two-Forever") eq(h[2].guest, true) eq(h[2].cost, 0) eq(h[2].spec, "MS")
+    eq(h[2].bids[1].pr, nil, "a guest bid has no priority")
+    eq(h[2].bids[1].roll, 80)
+    ns.ToggleStandings(ns.TAB.loot)
+    local page = ns.mainFrame.pages[ns.TAB.loot]
+    eq(page.list:Row(2).cells.spec:GetText(), "|cffff8040Guest|r")
+    page.list:Row(2):Click()
+    assert(page.detail.sub:GetText():find("Won by |cffffffffPug Two|r |cffff8040%(guest%)|r for |cfffffffffree|r, main spec"), page.detail.sub:GetText())
+    eq(page.detail.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r, |cffff8040guest|r")
+    eq(page.detail.undo:IsShown(), false, "nothing to take back, no GP were paid")
+    -- the loot of the raid and the Discord text have the guest too
+    local textValue = ns.RaidLootText({ start = 0, seen = {}, by = "Cel Dru-Forever" })
+    assert(textValue:find("Guest Helm  Pug Two  guest, free"), textValue)
+    assert(textValue:find("Guest Ring  Lisa Brightwater  100 GP"), textValue)
+
+    -- EP still only goes to the guild
+    W.printed = {}
+    ns.Command("raid")
+    eq(ns.Players()["Pug One-Forever"], nil)
+    local said
+    for _, p in ipairs(W.printed) do if p:find("not in the guild, no EP Pug One, Pug Two") then said = true end end
+    assert(said, "the guests are named")
+    noErrors()
+end)
+
+test("a guest with the addon sees on the bid card that he is a guest", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    -- the loot master is nobody from our guild
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^515151^30^100^1^" .. W.link(38, "Other Guild Item"), "RAID", "Stranger Lead-Forever")
+    assert(ns.bidCards[1].note:GetText():find("You are a guest: the guild goes first, guests roll and pay nothing"), ns.bidCards[1].note:GetText())
+    ns.bidCards[1].pass:Click()
+    -- with our own loot master the card shows the priority
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^525252^30^100^1^" .. W.link(39, "Own Guild Item"), "RAID", "Anna Frost-Forever")
+    assert(ns.bidCards[1].note:GetText():find("Your priority"), ns.bidCards[1].note:GetText())
+    noErrors()
+end)
+
+test("the Characters tab: the guild leader links mains and alts", function()
+    setup(guild())
+    W.rank = 0
+    ns.ToggleStandings(ns.TAB.characters)
+    local f = ns.mainFrame
+    local page = f.pages[ns.TAB.characters]
+    eq(f.Tabs[ns.TAB.characters]:IsShown(), true, "the guild leader has the tab")
+    eq(page:IsShown(), true)
+    -- every character with its role
+    local roles = {}
+    for _, c in ipairs(page.shown) do roles[ns.ShortName(c.name)] = c.role end
+    eq(roles["Tom Hammer"], "main") eq(roles["Tom Spark"], "alt") eq(roles["Lisa Brightwater"], "single")
+    eq(#page.shown, 7, "the whole guild")
+    -- choose Lisa as the main and link Ben to her
+    local function pick(name)
+        for i, c in ipairs(page.shown) do
+            if ns.ShortName(c.name) == name then page.list:Row(i):Click() return end
+        end
+        error("no row for " .. name)
+    end
+    pick("Lisa Brightwater")
+    eq(page.title:GetText(), "Lisa Brightwater")
+    assert(page.sub:GetText():find("Not linked, 1000 EP, 500 GP"), page.sub:GetText())
+    eq(page.altsEmpty:IsShown(), true)
+    set("Ben Swift", "300,250")
+    ns.RefreshStandings()
+    local benRow
+    for i = 1, 6 do
+        local row = page.candidates:Row(i)
+        if row:IsShown() and rawget(row, "name") == "Ben Swift-Forever" then benRow = row end
+        assert(rawget(row, "name") ~= "Tom Spark-Forever", "an alt cannot be linked again")
+        assert(rawget(row, "name") ~= "Tom Hammer-Forever", "a main with alts cannot become an alt")
+        assert(rawget(row, "name") ~= "Lisa Brightwater-Forever", "not to itself")
+    end
+    eq(benRow.cells.info:GetText(), "300 EP, 150 GP", "what Ben brings along")
+    benRow.link:Click()
+    eq(note("Ben Swift"), "@Lisa Brightwater", "linked with one click")
+    eq(note("Lisa Brightwater"), "1300,650", "his points moved to the main")
+    eq(page.alts:Row(1).cells.name:GetText(), "Ben Swift")
+    assert(page.sub:GetText():find("^Main, 1300 EP, 650 GP"), page.sub:GetText())
+    eq(f.status:GetText(), "2 characters are linked as alts. Alts share the points of their main")
+    -- an alt on the left shows its main
+    pick("Ben Swift")
+    assert(page.sub:GetText():find("Alt of |cffffffffLisa Brightwater|r"), page.sub:GetText())
+    eq(page.unlinkSelf:IsShown(), true)
+    eq(page.altHolder:IsShown(), false)
+    page.goMain:Click()
+    eq(page.selected, "Lisa Brightwater-Forever")
+    -- the filter and the search
+    page.role:Click()
+    eq(page.role:GetText(), "Mains with alts")
+    eq(#page.shown, 2, "Lisa and Tom Hammer")
+    page.role:Click()
+    eq(page.role:GetText(), "Alts")
+    eq(#page.shown, 2)
+    page.role:Click() page.role:Click() page.role:Click()
+    eq(page.role:GetText(), "All characters")
+    page.search:SetText("tom")
+    page.search:GetScript("OnTextChanged")(page.search)
+    eq(#page.shown, 2)
+    page.search:SetText("")
+    page.search:GetScript("OnTextChanged")(page.search)
+    -- unlink from the list of alts, undo brings it back
+    pick("Lisa Brightwater")
+    page.alts:Row(1).unlink:Click()
+    eq(note("Ben Swift"), "0,100", "a main again, starting at 0 EP")
+    ns.Command("undo")
+    eq(note("Ben Swift"), "@Lisa Brightwater")
+    -- the list for Discord
+    page.discord:Click()
+    local textValue = ns.copyFrame.box:GetText()
+    assert(textValue:find("Lisa Brightwater: Ben Swift"), textValue)
+    assert(textValue:find("Tom Hammer: Tom Spark"), textValue)
+    -- an editor who is not the guild leader does not get the tab
+    ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
+    W.rank = 1
+    ns.ToggleStandings(ns.TAB.characters)
+    eq(f.selectedTab, ns.TAB.standings)
+    eq(f.Tabs[ns.TAB.characters]:IsShown(), false, "only the guild leader")
+    eq(f.Tabs[ns.TAB.data]:IsShown(), true, "the editor tabs stay")
+    W.printed = {}
+    ns.Command("alts")
+    assert(W.printed[#W.printed]:find("Tom Hammer: Tom Spark") or W.printed[#W.printed - 1]:find("Tom Hammer: Tom Spark"), "everyone else gets the list in chat")
+    noErrors()
+end)
+
+test("the Characters tab: the guild leader picks editors with a click", function()
+    setup(guild())
+    W.rank = 0
+    ns.ToggleStandings(ns.TAB.characters)
+    local page = ns.mainFrame.pages[ns.TAB.characters]
+    local function pick(name)
+        for i, c in ipairs(page.shown) do
+            if ns.ShortName(c.name) == name then page.list:Row(i):Click() return page.list:Row(i) end
+        end
+        error("no row for " .. name)
+    end
+    -- the guild leader himself
+    local row = pick("Cel Dru")
+    eq(row.cells.rights:GetText(), "|cffffd100leader|r")
+    eq(page.editor:IsShown(), false, "the leader cannot remove himself")
+    -- nobody is an editor by rank, also not Anna with her higher rank
+    eq(pick("Anna Frost").cells.rights:GetText(), "")
+    pick("Ben Swift")
+    eq(page.editor:GetText(), "Make editor")
+    assert(page.editorText:GetText():find("^No editor"), page.editorText:GetText())
+    -- one click makes Ben, rank 3, an editor
+    page.editor:Click()
+    eq(ns.IsEditor("Ben Swift"), true)
+    eq(page.editor:GetText(), "Remove editor")
+    assert(page.editorText:GetText():find("^|cff40ff40Editor|r"), page.editorText:GetText())
+    eq(pick("Ben Swift").cells.rights:GetText(), "|cff40ff40editor|r")
+    eq(pick("Anna Frost").cells.rights:GetText(), "", "a higher guild rank changes nothing")
+    -- an alt can be an editor too
+    pick("Tom Spark")
+    eq(page.editor:IsShown(), true)
+    page.editor:Click()
+    eq(ns.IsEditor("Tom Spark"), true)
+    -- the filter shows the editors: the leader and the two picked ones
+    for _ = 1, 4 do page.role:Click() end
+    eq(page.role:GetText(), "Editors")
+    local names = {}
+    for _, c in ipairs(page.shown) do table.insert(names, ns.ShortName(c.name)) end
+    eq(table.concat(names, ","), "Ben Swift,Cel Dru,Tom Spark")
+    -- and takes the right away again
+    pick("Ben Swift")
+    page.editor:Click()
+    eq(ns.IsEditor("Ben Swift"), false)
+    eq(#page.shown, 2, "gone from the editors")
+    -- the same list as in the game's Options
+    assert(ns.OpenSettings("settings").editorList:GetText():find("Tom Spark"), "the Options show the same list")
     noErrors()
 end)
 

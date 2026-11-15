@@ -11,7 +11,7 @@ local function words(line)
 end
 
 local function itemLink(line)
-    return line:match("(|c.-|h|r)") or line:match("(|H.-|h.-|h)")
+    return ns.LinkIn(line)
 end
 
 -- Find the guild member someone typed, and explain when it does not work.
@@ -103,6 +103,7 @@ local help = {
     "/rgf welcome  show the short introduction again",
     "/rgf discord  the standings as text for Discord, with the search and class of the window",
     "|cffffd100Guild leader|r",
+    "/rgf alts  open the Characters tab to link mains and alts, everyone else gets the list in chat",
     "/rgf editors  show who may change data",
     "/rgf editor add Cel Dru  let a player change data, any guild rank works",
     "/rgf editor remove Cel Dru  take it away again",
@@ -329,11 +330,8 @@ function ns.Command(line)
     elseif cmd == "editors" or (cmd == "editor" and not w[2]) then
         local names = {}
         for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
-        if ns.EditorsInUse() then
-            ns.Print("editors besides the guild leader, " .. (#names > 0 and table.concat(names, ", ") or "nobody"))
-        else
-            ns.Print("the editor list is still empty, the guild leader and rank 1 to " .. ns.OfficerRank() .. " can change data. The guild leader adds editors with /rgf editor add Name")
-        end
+        ns.Print("editors besides the guild leader, " .. (#names > 0 and table.concat(names, ", ")
+            or "nobody. The guild leader adds them in the Characters tab or with /rgf editor add Name"))
 
     elseif cmd == "editor" then
         local sub = (w[2] or ""):lower()
@@ -357,6 +355,13 @@ function ns.Command(line)
     elseif cmd == "sync" then
         ns.RequestRoster()
         ns.Sync()
+
+    elseif cmd == "alts" then
+        if ns.CanManageEditors() then
+            ns.ToggleStandings(ns.TAB.characters)
+        else
+            for line in ns.AltsText():gmatch("[^\n]+") do ns.Print(line) end
+        end
 
     elseif cmd == "welcome" then
         ns.ShowWelcome()

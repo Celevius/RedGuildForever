@@ -360,46 +360,50 @@ local sortKey, sortDesc = "pr", true
 
 local standingsColumns = {
     { key = "place", label = "#", w = 34, justify = "RIGHT" },
-    { key = "name", label = "Name", w = 156, sort = "name" },
-    { key = "ep", label = "EP", w = 74, justify = "RIGHT", sort = "ep" },
-    { key = "gp", label = "GP", w = 74, justify = "RIGHT", sort = "gp" },
-    { key = "pr", label = "Priority", w = 84, justify = "RIGHT", sort = "pr" },
-    { key = "alts", label = "Alts", w = 58, justify = "RIGHT", sort = "alts" },
+    { key = "name", label = "Name", w = 250, sort = "name" },
+    { key = "ep", label = "EP", w = 100, justify = "RIGHT", sort = "ep" },
+    { key = "gp", label = "GP", w = 100, justify = "RIGHT", sort = "gp" },
+    { key = "pr", label = "Priority", w = 110, justify = "RIGHT", sort = "pr" },
+    { key = "alts", label = "Alts", w = 70, justify = "RIGHT", sort = "alts" },
 }
 
 local benchColumns = {
-    { key = "name", label = "Bench", w = 330 },
+    { key = "name", label = "Bench", w = 560 },
     { key = "action", label = "", w = 110 },
 }
 
 local raidLootColumns = {
-    { key = "item", label = "Loot of the raid", w = 210 },
-    { key = "name", label = "Winner", w = 140 },
-    { key = "gp", label = "GP", w = 50, justify = "RIGHT" },
-    { key = "time", label = "Time", w = 50, justify = "RIGHT" },
+    { key = "item", label = "Loot of the raid", w = 320 },
+    { key = "name", label = "Winner", w = 220 },
+    { key = "gp", label = "GP", w = 66, justify = "RIGHT" },
+    { key = "time", label = "Time", w = 66, justify = "RIGHT" },
 }
 
 local lootColumns = {
-    { key = "time", label = "Date", w = 62 },
-    { key = "item", label = "Item", w = 166 },
-    { key = "winner", label = "Winner", w = 118 },
-    { key = "spec", label = "For", w = 58 },
-    { key = "gp", label = "GP", w = 44, justify = "RIGHT" },
-    { key = "bids", label = "Bids", w = 44, justify = "RIGHT" },
+    { key = "time", label = "Date", w = 104 },
+    { key = "item", label = "Item", w = 206 },
+    { key = "winner", label = "Winner", w = 156 },
+    { key = "spec", label = "For", w = 80 },
+    { key = "gp", label = "GP", w = 48, justify = "RIGHT" },
+    { key = "ms", label = "Main", w = 40, justify = "RIGHT" },
+    { key = "os", label = "Off", w = 40, justify = "RIGHT" },
+    { key = "pass", label = "Pass", w = 44, justify = "RIGHT" },
 }
 
 local lootBidColumns = {
-    { key = "name", label = "Player", w = 170 },
+    { key = "name", label = "Player", w = 180 },
     { key = "spec", label = "Answer", w = 90 },
-    { key = "pr", label = "Priority", w = 70, justify = "RIGHT" },
-    { key = "roll", label = "Roll", w = 50, justify = "RIGHT" },
-    { key = "note", label = "", w = 100 },
+    { key = "ep", label = "EP then", w = 64, justify = "RIGHT" },
+    { key = "gp", label = "GP then", w = 64, justify = "RIGHT" },
+    { key = "pr", label = "Priority", w = 74, justify = "RIGHT" },
+    { key = "roll", label = "Roll", w = 56, justify = "RIGHT" },
+    { key = "note", label = "", w = 150 },
 }
 
 local historyColumns = {
-    { key = "time", label = "Time", w = 82 },
-    { key = "label", label = "Change", w = 250 },
-    { key = "by", label = "By", w = 80 },
+    { key = "time", label = "Time", w = 90 },
+    { key = "label", label = "Change", w = 430 },
+    { key = "by", label = "By", w = 124 },
     { key = "action", label = "", w = 60 },
 }
 
@@ -407,8 +411,17 @@ local function showPage(id)
     if not main then return end
     -- members get the standings and the loot history, the other tabs are for editors
     local canEdit = ns.CanEdit()
+    local leader = ns.CanManageEditors()
     if not canEdit and id ~= ns.TAB.loot then id = ns.TAB.standings end
-    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit or i <= ns.TAB.loot) end
+    -- the Characters tab, where mains and alts are linked, is for the guild leader
+    if id == ns.TAB.characters and not leader then id = ns.TAB.standings end
+    for i, tab in ipairs(main.Tabs or {}) do
+        if i == ns.TAB.characters then
+            tab:SetShown(leader)
+        else
+            tab:SetShown(canEdit or i <= ns.TAB.loot)
+        end
+    end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
     main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
@@ -516,7 +529,7 @@ local function buildStandingsPage(parent)
         row.classIcon:SetPoint("LEFT", 40, 0)
         row.cells.name:ClearAllPoints()
         row.cells.name:SetPoint("LEFT", 58, 0)
-        row.cells.name:SetWidth(128)
+        row.cells.name:SetWidth(220)
         row.bar = row:CreateTexture(nil, "BORDER")
         row.bar:SetPoint("LEFT", 36, 0)
         row.bar:SetHeight(14)
@@ -588,7 +601,7 @@ local function buildRaidPage(parent)
     page:SetAllPoints()
     page.state = text(page, "GameFontHighlight")
     page.state:SetPoint("TOPLEFT", 12, -10)
-    page.state:SetWidth(470)
+    page.state:SetWidth(680)
     page.state:SetWordWrap(true)
     page.toggle = button(page, "Start raid", 110, function()
         if ns.Session() then ns.EndRaid() else ns.StartRaid() end
@@ -653,7 +666,7 @@ local function buildSyncPage(parent)
 
     page.state = text(page, "GameFontHighlight")
     page.state:SetPoint("TOPLEFT", 12, -34)
-    page.state:SetWidth(470)
+    page.state:SetWidth(680)
     page.state:SetWordWrap(true)
 
     page.sync = button(page, "Sync now", 110, function() ns.Sync() end)
@@ -696,7 +709,7 @@ local function buildSyncPage(parent)
     box:SetMultiLine(true)
     box:SetAutoFocus(false)
     box:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
-    box:SetWidth(430)
+    box:SetWidth(640)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     scroll:SetScrollChild(box)
     page.box = box
@@ -919,7 +932,7 @@ local function buildSettingsContent(holder, top, parts)
     -- Editors
     heading("Editors", "GameFontNormalLarge")
     local editorHelp = helpIcon(parent, "Editors", {
-        "Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is.",
+        "Editors may change points, run the bidding, award loot and change the rules. The guild rank plays no part.",
         "Only the guild leader adds or removes them. Sync shares the list with everyone.",
     })
     editorHelp:SetPoint("TOPLEFT", 90, y + 22)
@@ -956,13 +969,6 @@ local function buildSettingsContent(holder, top, parts)
     view.addEditor:SetPoint("LEFT", view.editorBox, "RIGHT", 6, 0)
     view.removeEditor = button(parent, "Remove", 80, function() changeEditor(false) end)
     view.removeEditor:SetPoint("LEFT", view.addEditor, "RIGHT", 4, 0)
-    y = y - 30
-    view.rankEditors = button(parent, "Add the current officer ranks", 210, function()
-        local count = ns.AddRankEditors()
-        view.editorStatus:SetText(GREEN .. "Added " .. count .. (count == 1 and " editor." or " editors.") .. "|r")
-        ns.RefreshSettings()
-    end)
-    view.rankEditors:SetPoint("TOPLEFT", 14, y)
     y = y - 30
     view.editorStatus = paragraph(nil, 2)
     y = y - 10
@@ -1052,13 +1058,10 @@ function ns.RefreshSettings()
 
     -- who may edit
     local editorText
-    if ns.EditorsInUse() then
+    do
         local names = {}
         for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
         editorText = "Editors besides the guild leader: |cffffffff" .. (#names > 0 and table.concat(names, ", ") or "nobody") .. "|r"
-    else
-        editorText = "The list is still empty, so the old rank rule applies: the guild leader and rank 1 to " .. ns.OfficerRank()
-            .. " may edit. Once the guild leader adds the first editor, only the list counts."
     end
     if not canManage then
         editorText = editorText .. "\n|cff999999Only the guild leader can change the list.|r"
@@ -1090,7 +1093,6 @@ function ns.RefreshSettings()
             view.editorBox:SetEnabled(canManage)
             view.addEditor:SetEnabled(canManage)
             view.removeEditor:SetEnabled(canManage)
-            view.rankEditors:SetShown(canManage and not ns.EditorsInUse())
         end
 
         if view.save then
@@ -1260,9 +1262,30 @@ local PERIODS = { { nil, "All time" }, { 7, "Last 7 days" }, { 30, "Last 30 days
 
 local function specText(l)
     if not l.winner then return "|cff999999none|r" end
+    if l.guest then return "|cffff8040Guest|r" end
     if l.spec == "OS" then return "|cff66c7ffOff spec|r" end
     if l.spec == "MS" then return "|cff40ff40Main spec|r" end
     return ""
+end
+
+-- The link to show a tooltip for: the real link, or one made from the item number
+local function tooltipLink(l)
+    if l.link and l.link:find("|H", 1, true) then return l.link end
+    if l.item then return "item:" .. l.item end
+    return nil
+end
+
+local function showItemTooltip(owner, l, anchorPoint)
+    GameTooltip:SetOwner(owner, anchorPoint or "ANCHOR_RIGHT")
+    local link = tooltipLink(l)
+    if not (link and pcall(GameTooltip.SetHyperlink, GameTooltip, link)) then
+        GameTooltip:SetText(l.itemName or "?")
+    end
+end
+
+local function itemIcon(l)
+    local _, _, icon = ns.ItemInfo(tooltipLink(l) or "")
+    return icon or ICON_UNKNOWN
 end
 
 local function buildLootPage(parent)
@@ -1271,7 +1294,7 @@ local function buildLootPage(parent)
     local searchLabel = text(page, "GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT", 10, -10)
     searchLabel:SetText("Search")
-    page.search = ns.UIInputBox(page, 130, false)
+    page.search = ns.UIInputBox(page, 170, false)
     page.search:SetMaxLetters(30)
     page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
     page.search:SetScript("OnTextChanged", function(self)
@@ -1279,7 +1302,7 @@ local function buildLootPage(parent)
         ns.RefreshStandings()
     end)
     tip(page.search, "Search the loot history", "Type a part of an item name or of a player's name. Players are found as winner and as bidder.")
-    page.period = button(page, "All time", 110, function()
+    page.period = button(page, "All time", 120, function()
         local nextOne = 1
         for i, p in ipairs(PERIODS) do if p[1] == lootFilter.days then nextOne = i % #PERIODS + 1 end end
         lootFilter.days = PERIODS[nextOne][1]
@@ -1293,29 +1316,41 @@ local function buildLootPage(parent)
     end)
     page.mine:SetPoint("LEFT", page.period, "RIGHT", 8, 0)
     tip(page.mine, "Only mine", "Only items you won or bid on, with any of your characters.")
+    page.total = text(page, "GameFontDisableSmall", "RIGHT")
+    page.total:SetPoint("TOPRIGHT", -12, -12)
+    page.total:SetWidth(220)
 
     local holder = CreateFrame("Frame", nil, page)
     holder:SetPoint("TOPLEFT", 0, -28)
-    holder:SetPoint("BOTTOMRIGHT", 0, 156)
+    holder:SetPoint("BOTTOMRIGHT", 0, 196)
     headerRow(holder, lootColumns)
-    page.list = scrollList(holder, 18, function(row)
+    page.list = scrollList(holder, 20, function(row)
         rowCells(row, lootColumns)
+        -- the item with its icon
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(16, 16)
+        row.icon:SetPoint("LEFT", 108, 0)
+        row.cells.item:ClearAllPoints()
+        row.cells.item:SetPoint("LEFT", 128, 0)
+        row.cells.item:SetWidth(178)
         row.selected = row:CreateTexture(nil, "BACKGROUND")
         row.selected:SetAllPoints()
         row.selected:SetColorTexture(1, 0.82, 0, 0.14)
         row:SetScript("OnClick", function(self)
             if not self.entry then return end
+            -- shift click puts the item into chat, like everywhere in the game
+            local link = tooltipLink(self.entry)
+            if IsModifiedClick and IsModifiedClick() and HandleModifiedItemClick and link and link:find("|H", 1, true) then
+                pcall(HandleModifiedItemClick, link)
+                return
+            end
             sound("U_CHAT_SCROLL_BUTTON")
             page.selected = self.entry.id
             ns.RefreshStandings()
         end)
         row:SetScript("OnEnter", function(self)
-            local l = self.entry
-            if not l then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if not (l.link:find("|H", 1, true) and pcall(GameTooltip.SetHyperlink, GameTooltip, l.link)) then
-                GameTooltip:SetText(l.itemName)
-            end
+            if not self.entry then return end
+            showItemTooltip(self, self.entry)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Click to see who bid", 0, 1, 0)
             GameTooltip:Show()
@@ -1326,57 +1361,362 @@ local function buildLootPage(parent)
     page.list:SetPoint("BOTTOMRIGHT", -26, 0)
     page.empty = text(holder, "GameFontDisable", "CENTER")
     page.empty:SetPoint("TOP", 0, -70)
-    page.empty:SetWidth(420)
+    page.empty:SetWidth(520)
     page.empty:SetWordWrap(true)
 
     -- the chosen item: who bid, and who got it
     local detail = CreateFrame("Frame", nil, page)
     detail:SetPoint("BOTTOMLEFT")
     detail:SetPoint("BOTTOMRIGHT")
-    detail:SetHeight(154)
+    detail:SetHeight(194)
     page.detail = detail
     local line = detail:CreateTexture(nil, "ARTWORK")
     line:SetPoint("TOPLEFT", 4, 0)
     line:SetPoint("TOPRIGHT", -4, 0)
     line:SetHeight(1)
     line:SetColorTexture(1, 0.82, 0, 0.35)
-    detail.title = text(detail, "GameFontNormal")
-    detail.title:SetPoint("TOPLEFT", 10, -8)
-    detail.title:SetWidth(400)
+    detail.icon = itemButton(detail, 36)
+    detail.icon:SetPoint("TOPLEFT", 10, -8)
+    detail.icon:SetScript("OnEnter", function(self)
+        if not detail.entry then return end
+        showItemTooltip(self, detail.entry)
+        GameTooltip:Show()
+    end)
+    detail.title = text(detail, "GameFontNormalLarge")
+    detail.title:SetPoint("TOPLEFT", detail.icon, "TOPRIGHT", 10, 2)
+    detail.title:SetWidth(520)
     detail.sub = text(detail, "GameFontHighlightSmall")
     detail.sub:SetPoint("TOPLEFT", detail.title, "BOTTOMLEFT", 0, -3)
-    detail.sub:SetWidth(480)
+    detail.sub:SetWidth(640)
+    detail.sub2 = text(detail, "GameFontDisableSmall")
+    detail.sub2:SetPoint("TOPLEFT", detail.sub, "BOTTOMLEFT", 0, -2)
+    detail.sub2:SetWidth(640)
     detail.undo = button(detail, "Take back", 90, function()
         if not page.selected then return end
         local done = ns.UndoEvent(page.selected)
         if done then ns.Print("undone " .. done.label) end
     end)
-    detail.undo:SetPoint("TOPRIGHT", -8, -4)
+    detail.undo:SetPoint("TOPRIGHT", -8, -6)
     tip(detail.undo, "Take this award back", "The winner gets the GP back. The item stays in the loot history, marked as taken back.")
     local bidHolder = CreateFrame("Frame", nil, detail)
-    bidHolder:SetPoint("TOPLEFT", 0, -38)
+    bidHolder:SetPoint("TOPLEFT", 0, -52)
     bidHolder:SetPoint("BOTTOMRIGHT")
     headerRow(bidHolder, lootBidColumns)
-    detail.list = scrollList(bidHolder, 16, function(row) rowCells(row, lootBidColumns) end)
+    detail.list = scrollList(bidHolder, 17, function(row) rowCells(row, lootBidColumns) end)
     detail.list:SetPoint("TOPLEFT", 4, -28)
     detail.list:SetPoint("BOTTOMRIGHT", -26, 2)
     detail.empty = text(bidHolder, "GameFontDisableSmall", "CENTER")
-    detail.empty:SetPoint("TOP", 0, -44)
-    detail.empty:SetWidth(420)
+    detail.empty:SetPoint("TOP", 0, -52)
+    detail.empty:SetWidth(520)
     return page
+end
+
+------------------------------------------------------------------------
+-- Characters tab, only for the guild leader: which characters belong
+-- together. Left every character with its role, right the alts of the
+-- chosen one and the characters that can be linked to it.
+------------------------------------------------------------------------
+local characterColumns = {
+    { key = "name", label = "Character", w = 150 },
+    { key = "role", label = "Role", w = 110 },
+    { key = "rights", label = "Rights", w = 56 },
+}
+local altColumns = {
+    { key = "name", label = "Alts of this main", w = 190 },
+    { key = "info", label = "", w = 110 },
+    { key = "action", label = "", w = 90 },
+}
+local candidateColumns = {
+    { key = "name", label = "Link as alt", w = 190 },
+    { key = "info", label = "Brings along", w = 110 },
+    { key = "action", label = "", w = 90 },
+}
+local ROLE_FILTERS = { { nil, "All characters" }, { "main", "Mains with alts" }, { "alt", "Alts" }, { "single", "Not linked" },
+    { "editor", "Editors" } }
+local characterFilter = { text = "", role = nil, add = "" }
+
+local function nameMatches(full, wanted)
+    return wanted == "" or ns.ShortName(full):lower():find(wanted, 1, true) ~= nil
+end
+
+function ns.BuildCharactersPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+
+    -- left: every character
+    local searchLabel = text(page, "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", 10, -10)
+    searchLabel:SetText("Search")
+    page.search = ns.UIInputBox(page, 120, false)
+    page.search:SetMaxLetters(30)
+    page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    page.search:SetScript("OnTextChanged", function(self)
+        characterFilter.text = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    page.role = button(page, "All characters", 124, function()
+        local nextOne = 1
+        for i, r in ipairs(ROLE_FILTERS) do if r[1] == characterFilter.role then nextOne = i % #ROLE_FILTERS + 1 end end
+        characterFilter.role = ROLE_FILTERS[nextOne][1]
+        ns.RefreshStandings()
+    end)
+    page.role:SetPoint("LEFT", page.search, "RIGHT", 6, 0)
+    tip(page.role, "Which characters", "Click to switch between all characters, mains with alts, alts, characters that are not linked, and editors.")
+
+    local left = CreateFrame("Frame", nil, page)
+    left:SetPoint("TOPLEFT", 0, -28)
+    left:SetPoint("BOTTOMLEFT", 0, 0)
+    left:SetWidth(330)
+    headerRow(left, characterColumns)
+    page.list = scrollList(left, 18, function(row)
+        rowCells(row, characterColumns)
+        row.selected = row:CreateTexture(nil, "BACKGROUND")
+        row.selected:SetAllPoints()
+        row.selected:SetColorTexture(1, 0.82, 0, 0.14)
+        row:SetScript("OnClick", function(self)
+            if not self.entry then return end
+            sound("U_CHAT_SCROLL_BUTTON")
+            page.selected = self.entry.name
+            ns.RefreshStandings()
+        end)
+    end)
+    page.list:SetPoint("TOPLEFT", 4, -30)
+    page.list:SetPoint("BOTTOMRIGHT", -26, 4)
+    local divider = left:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPRIGHT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", 0, 4)
+    divider:SetWidth(1)
+    divider:SetColorTexture(1, 0.82, 0, 0.25)
+
+    -- right: the chosen character
+    local right = CreateFrame("Frame", nil, page)
+    right:SetPoint("TOPLEFT", left, "TOPRIGHT", 4, 28)
+    right:SetPoint("BOTTOMRIGHT")
+    page.right = right
+    page.title = text(right, "GameFontNormalLarge")
+    page.title:SetPoint("TOPLEFT", 10, -10)
+    page.title:SetWidth(250)
+    page.sub = text(right, "GameFontHighlightSmall")
+    page.sub:SetPoint("TOPLEFT", page.title, "BOTTOMLEFT", 0, -3)
+    page.sub:SetWidth(380)
+    page.sub:SetWordWrap(true)
+    page.help = helpIcon(right, "Mains and alts", {
+        "All characters of a player share one set of points: the points of the main.",
+        "Choose the main on the left, then click Link next to each of its alts. The alt's EP and its GP above the start move to the main.",
+        "Unlink makes an alt a main again, it then starts at 0 EP. Undo takes a link or an unlink back.",
+    })
+    page.help:SetPoint("TOPRIGHT", -10, -10)
+    page.discord = button(right, "Copy for Discord", 130, function() ns.ShowCopyText("Mains and alts", ns.AltsText()) end)
+    page.discord:SetPoint("RIGHT", page.help, "LEFT", -8, 0)
+
+    -- editor rights: who may run the loot and change points, whatever the guild rank is
+    page.editor = button(right, "Make editor", 130, function()
+        if not page.selected then return end
+        local ok, result = ns.SetEditor(page.selected, not ns.IsEditor(page.selected))
+        if not ok then ns.Print(result) end
+        ns.RefreshStandings()
+    end)
+    page.editor:SetPoint("TOPLEFT", 8, -50)
+    tip(page.editor, "Editors and loot masters", {
+        "An editor may run the Loot Master window, start and end the raid, give EP, change points and the guild rules. Loot masters are editors.",
+        "The guild rank plays no part. Only you as the guild leader add or remove editors, Sync shares the list with everyone.",
+    })
+    page.editorText = text(right, "GameFontHighlightSmall")
+    page.editorText:SetPoint("LEFT", page.editor, "RIGHT", 8, 0)
+    page.editorText:SetWidth(250)
+    page.editorText:SetWordWrap(true)
+    -- for an alt: one button back to a main, and one to its main
+    page.unlinkSelf = button(right, "Make main again", 140, function()
+        if page.selected and ns.UnsetAlt(page.selected) then ns.RefreshStandings() end
+    end)
+    page.unlinkSelf:SetPoint("TOPLEFT", 8, -112)
+    tip(page.unlinkSelf, "Make main again", "The character gets its own points again and starts at 0 EP. Undo brings the link back.")
+    page.goMain = button(right, "Show the main", 120, function()
+        if page.mainOfSelected then
+            page.selected = page.mainOfSelected
+            ns.RefreshStandings()
+        end
+    end)
+    page.goMain:SetPoint("LEFT", page.unlinkSelf, "RIGHT", 4, 0)
+
+    -- for a main: its alts
+    local altHolder = CreateFrame("Frame", nil, right)
+    altHolder:SetPoint("TOPLEFT", 0, -104)
+    altHolder:SetPoint("TOPRIGHT", 0, -104)
+    altHolder:SetHeight(122)
+    page.altHolder = altHolder
+    headerRow(altHolder, altColumns)
+    page.alts = scrollList(altHolder, 20, function(row)
+        rowCells(row, altColumns)
+        row.unlink = button(row, "Unlink", 80, function()
+            if row.name and ns.UnsetAlt(row.name) then ns.RefreshStandings() end
+        end)
+        row.unlink:SetHeight(18)
+        row.unlink:SetPoint("RIGHT", -4, 0)
+    end)
+    page.alts:SetPoint("TOPLEFT", 4, -30)
+    page.alts:SetPoint("BOTTOMRIGHT", -26, 0)
+    page.altsEmpty = text(altHolder, "GameFontDisableSmall")
+    page.altsEmpty:SetPoint("TOPLEFT", 12, -40)
+    page.altsEmpty:SetText("No alts yet. Link one from the list below.")
+
+    -- and the characters that can be linked to it
+    local addHolder = CreateFrame("Frame", nil, right)
+    addHolder:SetPoint("TOPLEFT", 0, -232)
+    addHolder:SetPoint("BOTTOMRIGHT")
+    page.addHolder = addHolder
+    local addLabel = text(addHolder, "GameFontNormalSmall")
+    addLabel:SetPoint("TOPLEFT", 10, -6)
+    addLabel:SetText("Find")
+    page.addSearch = ns.UIInputBox(addHolder, 150, false)
+    page.addSearch:SetMaxLetters(30)
+    page.addSearch:SetPoint("LEFT", addLabel, "RIGHT", 8, 0)
+    page.addSearch:SetScript("OnTextChanged", function(self)
+        characterFilter.add = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    tip(page.addSearch, "Find a character", "Type a part of the name of the alt you want to link.")
+    local candHolder = CreateFrame("Frame", nil, addHolder)
+    candHolder:SetPoint("TOPLEFT", 0, -26)
+    candHolder:SetPoint("BOTTOMRIGHT")
+    headerRow(candHolder, candidateColumns)
+    page.candidates = scrollList(candHolder, 20, function(row)
+        rowCells(row, candidateColumns)
+        row.link = button(row, "Link", 80, function()
+            if row.name and page.selected and ns.SetAlt(row.name, page.selected) then ns.RefreshStandings() end
+        end)
+        row.link:SetHeight(18)
+        row.link:SetPoint("RIGHT", -4, 0)
+    end)
+    page.candidates:SetPoint("TOPLEFT", 4, -30)
+    page.candidates:SetPoint("BOTTOMRIGHT", -26, 4)
+    page.candEmpty = text(candHolder, "GameFontDisableSmall")
+    page.candEmpty:SetPoint("TOPLEFT", 12, -40)
+    return page
+end
+
+-- Returns the number of linked alts.
+function ns.RefreshCharactersPage(page)
+    local all = ns.Characters()
+    local byName, linked = {}, 0
+    for _, c in ipairs(all) do
+        byName[c.name] = c
+        if c.role == "alt" then linked = linked + 1 end
+    end
+    for _, r in ipairs(ROLE_FILTERS) do
+        if r[1] == characterFilter.role then page.role:SetText(r[2]) end
+    end
+    -- the left list
+    local list = {}
+    for _, c in ipairs(all) do
+        c.leader = ns.IsGuildLeader(c.name)
+        c.editor = not c.left and ns.IsEditor(c.name)
+        local roleOk = not characterFilter.role or c.role == characterFilter.role
+        if characterFilter.role == "editor" then roleOk = c.editor end
+        if roleOk and nameMatches(c.name, characterFilter.text) then
+            table.insert(list, c)
+        end
+    end
+    page.shown = list
+    if not (page.selected and byName[page.selected]) then page.selected = list[1] and list[1].name or nil end
+    for i, c in ipairs(list) do
+        local row = page.list:Row(i)
+        row.entry = c
+        row.cells.name:SetText(ns.ShortName(c.name) .. (c.left and " |cff808080(left)|r" or ""))
+        row.cells.name:SetTextColor(classColor(c.class))
+        if c.role == "alt" then
+            row.cells.role:SetText("|cff999999alt of " .. ns.ShortName(c.main) .. "|r")
+        elseif c.role == "main" then
+            row.cells.role:SetText("|cffffd100main, " .. #c.alts .. (#c.alts == 1 and " alt" or " alts") .. "|r")
+        else
+            row.cells.role:SetText("")
+        end
+        row.cells.rights:SetText(c.leader and "|cffffd100leader|r" or (c.editor and "|cff40ff40editor|r" or ""))
+        row.selected:SetShown(c.name == page.selected)
+        row:Show()
+    end
+    page.list:SetCount(#list)
+
+    -- the right side
+    local c = page.selected and byName[page.selected]
+    page.right:SetShown(c ~= nil)
+    if not c then return linked end
+    page.title:SetText(ns.ShortName(c.name))
+    page.title:SetTextColor(classColor(c.class))
+    -- editor rights of this character
+    page.editor:SetShown(not c.leader and not c.left)
+    page.editor:SetText(c.editor and "Remove editor" or "Make editor")
+    if c.leader then
+        page.editorText:SetText("|cffffd100Guild leader|r, can always edit and picks the editors.")
+    elseif c.left then
+        page.editorText:SetText("|cff808080Left the guild.|r")
+    elseif c.editor then
+        page.editorText:SetText("|cff40ff40Editor|r: runs the loot, gives EP and changes points.")
+    else
+        page.editorText:SetText("No editor. Can bid and look at the lists.")
+    end
+    local isAlt = c.role == "alt"
+    page.mainOfSelected = isAlt and c.main or nil
+    page.unlinkSelf:SetShown(isAlt)
+    page.goMain:SetShown(isAlt)
+    page.altHolder:SetShown(not isAlt)
+    page.addHolder:SetShown(not isAlt)
+    if isAlt then
+        local ep, gp, pr = ns.GetPoints(c.main)
+        page.sub:SetText(string.format("Alt of |cffffffff%s|r. It uses the points of the main: %d EP, %d GP, priority %s.",
+            ns.ShortName(c.main), ep, gp, ns.FormatPR(pr)))
+        return linked
+    end
+    page.sub:SetText(string.format("%s, %d EP, %d GP. Its alts share these points.",
+        c.role == "main" and "Main" or "Not linked", c.ep, c.gp))
+    for i, alt in ipairs(c.alts) do
+        local row = page.alts:Row(i)
+        row.name = alt
+        row.cells.name:SetText(ns.ShortName(alt))
+        local m = ns.members[alt]
+        row.cells.name:SetTextColor(classColor(m and m.class))
+        row.cells.info:SetText(m and "" or "|cff808080left the guild|r")
+        row:Show()
+    end
+    page.alts:SetCount(#c.alts)
+    page.altsEmpty:SetShown(#c.alts == 0)
+
+    local base = ns.Setting("baseGP")
+    local n = 0
+    for _, cand in ipairs(ns.AltCandidates(c.name)) do
+        if nameMatches(cand.name, characterFilter.add) then
+            n = n + 1
+            local row = page.candidates:Row(n)
+            row.name = cand.name
+            row.cells.name:SetText(ns.ShortName(cand.name))
+            row.cells.name:SetTextColor(classColor(cand.class))
+            -- what moves to the main when this character is linked
+            local extra = math.max(0, (cand.gp or base) - base)
+            if (cand.ep or 0) ~= 0 or extra > 0 then
+                row.cells.info:SetText((cand.ep or 0) .. " EP, " .. extra .. " GP")
+            else
+                row.cells.info:SetText("|cff808080nothing|r")
+            end
+            row:Show()
+        end
+    end
+    page.candidates:SetCount(n)
+    page.candEmpty:SetShown(n == 0)
+    page.candEmpty:SetText(characterFilter.add ~= "" and "Nobody matches." or "Every other character is linked already.")
+    return linked
 end
 
 local function buildMain()
     local name = "RedGuildForeverFrame"
-    local f = window(name, 520, 500, "Red Guild EPGP", ICON_STANDINGS)
+    local f = window(name, 740, 560, "Red Guild EPGP", ICON_STANDINGS)
 
     -- line next to the portrait, like "Level 11 Druid"
     f.summary = text(f, "GameFontNormal")
     f.summary:SetPoint("TOPLEFT", 66, -32)
-    f.summary:SetWidth(300)
+    f.summary:SetWidth(420)
     f.status = text(f, "GameFontDisableSmall")
     f.status:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -3)
-    f.status:SetWidth(300)
+    f.status:SetWidth(420)
 
     f.showAll = checkbox(f, "Show everyone", function(checked)
         showAll = checked and true or false
@@ -1390,6 +1730,7 @@ local function buildMain()
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
         buildSyncPage(f.Inset),
+        ns.BuildCharactersPage(f.Inset),
     }
 
     -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
@@ -1445,7 +1786,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Loot history", "Raid", "EPGP history", "Data" }, showPage)
+    tabs(f, name, { "Standings", "Loot history", "Raid", "EPGP history", "Data", "Characters" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1469,7 +1810,7 @@ local function sortedStandings()
 end
 
 local CLASS_ICONS = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
-local BAR_WIDTH = 440
+local BAR_WIDTH = 640
 
 -- Fill one standings row. best is the highest priority, it gets the full bar.
 local function fillStandingsRow(row, e, best, minEP)
@@ -1624,11 +1965,13 @@ local function refreshLootPage(page)
     chosen = chosen or list[1]
     page.selected = chosen and chosen.id or nil
 
+    local spent = 0
     for i, l in ipairs(list) do
         local row = page.list:Row(i)
         row.entry = l
         local grey = l.undone and "|cff808080" or ""
-        row.cells.time:SetText(grey .. date("%d.%m.%y", l.time))
+        row.cells.time:SetText(grey .. date("%d.%m.%y %H:%M", l.time))
+        row.icon:SetTexture(itemIcon(l))
         row.cells.item:SetText(l.undone and (grey .. l.itemName .. "|r") or l.link)
         if l.winner then
             row.cells.winner:SetText(grey .. ns.ShortName(l.winner))
@@ -1640,12 +1983,22 @@ local function refreshLootPage(page)
         end
         row.cells.spec:SetText(l.undone and "|cff808080taken back|r" or specText(l))
         row.cells.gp:SetText(l.winner and (grey .. l.cost) or "")
-        local ms, os = ns.BidCounts(l.bids)
-        row.cells.bids:SetText(l.old and "|cff808080?|r" or (ms + os))
+        if l.old then
+            row.cells.ms:SetText("|cff808080?|r")
+            row.cells.os:SetText("")
+            row.cells.pass:SetText("")
+        else
+            local ms, os, pass = ns.BidCounts(l.bids)
+            row.cells.ms:SetText(ms > 0 and ("|cff40ff40" .. ms .. "|r") or "|cff8080800|r")
+            row.cells.os:SetText(os > 0 and ("|cff66c7ff" .. os .. "|r") or "|cff8080800|r")
+            row.cells.pass:SetText(pass > 0 and ("|cff999999" .. pass .. "|r") or "|cff8080800|r")
+        end
+        if l.winner and not l.undone then spent = spent + l.cost end
         row.selected:SetShown(chosen == l)
         row:Show()
     end
     page.list:SetCount(#list)
+    page.total:SetText(#list .. (#list == 1 and " item, " or " items, ") .. spent .. " GP spent")
     page.empty:SetShown(#list == 0)
     page.empty:SetText(#all == 0 and "No loot given out yet. Every item the loot master gives out shows up here, with everyone who bid on it."
         or "Nothing matches. Change the search, the time or Only mine.")
@@ -1653,29 +2006,57 @@ local function refreshLootPage(page)
     -- the bids of the chosen item
     local d = page.detail
     d:SetShown(chosen ~= nil)
+    d.entry = chosen
     if not chosen then return end
     local l = chosen
+    d.icon.link = tooltipLink(l)
+    if d.icon.icon then pcall(d.icon.icon.SetTexture, d.icon.icon, itemIcon(l)) end
+    if SetItemButtonTexture then pcall(SetItemButtonTexture, d.icon, itemIcon(l)) end
     d.title:SetText(l.link)
     local sub
     if l.winner then
-        sub = string.format("Won by |cffffffff%s|r for %s%s", ns.ShortName(l.winner), l.cost > 0 and (l.cost .. " GP") or "free",
+        sub = string.format("Won by |cffffffff%s|r%s for |cffffffff%s|r%s", ns.ShortName(l.winner),
+            l.guest and " |cffff8040(guest)|r" or "", l.cost > 0 and (l.cost .. " GP") or "free",
             l.spec and (l.spec == "OS" and ", off spec" or ", main spec") or "")
     else
-        sub = "Nobody took it, bank or disenchant"
+        sub = "Nobody took it, it went to the bank or was disenchanted"
     end
-    sub = sub .. "  |cff999999" .. date("%d.%m.%Y %H:%M", l.time) .. ", loot master " .. ns.ShortName(l.by) .. "|r"
     if l.undone then sub = "|cffff8040Taken back.|r  " .. sub end
     d.sub:SetText(sub)
-    d.undo:SetShown(ns.CanEdit() and l.winner ~= nil and not l.undone)
+    local ms, os, pass = ns.BidCounts(l.bids)
+    local sub2 = date("%d.%m.%Y %H:%M", l.time) .. ", loot master " .. ns.ShortName(l.by)
+    if not l.old then
+        sub2 = sub2 .. string.format(".  %d main spec, %d off spec, %d passed", ms, os, pass)
+    end
+    d.sub2:SetText(sub2)
+    -- a guest paid nothing, so there is nothing to take back
+    d.undo:SetShown(ns.CanEdit() and l.winner ~= nil and l.ref ~= nil and not l.undone)
+
+    -- EP and GP as they were right before the item was given out
+    local before = #l.bids > 0 and ns.PointsBefore(l) or nil
+    local minEP = ns.Setting("minEP")
     for i, b in ipairs(l.bids) do
         local row = d.list:Row(i)
         row.cells.name:SetText(ns.ShortName(b.n))
         local m = ns.members[b.n]
         row.cells.name:SetTextColor(classColor(m and m.class))
         row.cells.spec:SetText(b.s == "MS" and "|cff40ff40Main spec|r" or (b.s == "OS" and "|cff66c7ffOff spec|r" or "|cff999999Pass|r"))
+        local ep, gp = before(b.n)
+        -- a bid without a priority came from a guest
+        local guest = b.pr == nil and not l.old
+        row.cells.ep:SetText(guest and "" or ep)
+        row.cells.gp:SetText(guest and "" or gp)
         row.cells.pr:SetText(b.pr and ns.FormatPR(b.pr) or "")
         row.cells.roll:SetText(b.roll or "")
-        row.cells.note:SetText(b.n == l.winner and "|cffffd100Winner|r" or "")
+        local note = ""
+        if guest then
+            note = (b.n == l.winner and "|cffffd100Winner|r, " or "") .. "|cffff8040guest|r"
+        elseif b.n == l.winner then
+            note = "|cffffd100Winner|r, then " .. ns.FormatPR(ep / math.max(gp + l.cost, 1))
+        elseif b.s == "MS" and ep < minEP then
+            note = "|cff66c7ffnew member|r"
+        end
+        row.cells.note:SetText(note)
         row:Show()
     end
     d.list:SetCount(#l.bids)
@@ -1688,8 +2069,9 @@ function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
     local T = ns.TAB
-    if tab ~= T.standings and tab ~= T.loot and not ns.CanEdit() then
-        showPage(T.standings) -- no editor anymore, back to the standings
+    if (tab ~= T.standings and tab ~= T.loot and not ns.CanEdit())
+        or (tab == T.characters and not ns.CanManageEditors()) then
+        showPage(T.standings) -- no editor or no guild leader anymore, back to the standings
         return
     end
     local count = 0
@@ -1704,6 +2086,8 @@ function ns.RefreshStandings()
         refreshHistoryPage(main.pages[T.history])
     elseif tab == T.data then
         refreshSyncPage(main.pages[T.data])
+    elseif tab == T.characters then
+        count = ns.RefreshCharactersPage(main.pages[T.characters])
     end
     setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
     main.lootMaster:SetShown(ns.CanEdit())
@@ -1725,6 +2109,8 @@ function ns.RefreshStandings()
         status = "Every EP and GP change of every editor"
     elseif tab == T.data then
         status = "Sync, decay and backup"
+    elseif tab == T.characters then
+        status = count .. " characters are linked as alts. Alts share the points of their main"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
     else
@@ -1750,6 +2136,17 @@ function ns.ToggleBench()
 end
 
 ns.On("RGF_POINTS_CHANGED", function() ns.RefreshStandings() end)
+
+-- the game loaded an item we asked for, the loot lists can show its name now
+local itemRefresh = false
+ns.On("GET_ITEM_INFO_RECEIVED", function()
+    if itemRefresh or not (main and main:IsShown()) then return end
+    itemRefresh = true
+    ns.After(0.5, function()
+        itemRefresh = false
+        ns.RefreshStandings()
+    end)
+end)
 
 ------------------------------------------------------------------------
 -- Player editor for the guild leader and officers
@@ -2029,6 +2426,14 @@ function ns.ShowWelcome()
     welcome:Show()
     RedGuildForeverDB.welcomed = true
 end
+
+-- The guild leader without any editor: say once per session where they are added
+ns.On("RGF_READY", function()
+    ns.After(20, function()
+        if ns.IsTest() or not ns.CanManageEditors() or #ns.Editors() > 0 then return end
+        ns.Print("you are the only one who can give out loot and EP. Add editors and loot masters in the Characters tab, /rgf alts opens it")
+    end)
+end)
 
 -- once, a few seconds after the first login with the addon
 ns.On("RGF_READY", function()

@@ -144,41 +144,36 @@ end)
 ------------------------------------------------------------------------
 -- The item link in the label of a loot event, and its plain name
 local function itemOf(ev)
-    local link = ev.r and ev.r:match("(|c%x+|H.-|h|r)")
-    local name = link and link:match("%[(.-)%]") or (ev.item and ("item " .. ev.item)) or "?"
+    local link = ns.LinkIn(ev.r)
+    local name = link and link:match("%[(.-)%]")
+    if not link and ev.item then
+        -- only the number is known, ask the game for the item
+        local known, knownName = ns.ItemById(ev.item)
+        link, name = known, knownName
+    end
+    name = name or (ev.item and ("item " .. ev.item)) or "?"
     return link or name, name
 end
+ns.ItemOfEvent = itemOf
 
-local function lootEntry(ev, c, st)
-    local link, name = itemOf(ev)
-    return { time = ev.t, name = c.n, main = ns.MainOf(c.n), gp = c.gp or 0, link = link, itemName = name,
-        item = ev.item, by = ev.by, id = ev.id, label = link }
-end
-
-local function eachLoot(fn)
-    local st = ns.State()
-    for i = #st.events, 1, -1 do
-        local ev = st.events[i]
-        if ev.k == "P" and ev.kind == "loot" and not st.undone[ev.id] then
-            for _, c in ipairs(ev.ch or {}) do
-                if fn(ev, c, st) == false then return end
-            end
-        end
-    end
+-- One won item in the shape the raid list, the tooltips and !loot use
+local function wonItem(l)
+    return { time = l.time, name = l.winner, main = ns.MainOf(l.winner), gp = l.cost, link = l.link,
+        itemName = l.itemName, item = l.item, by = l.by, id = l.id, label = l.link, guest = l.guest }
 end
 
 -- Items given out in a raid, newest first: by this loot master, or won by
--- somebody who was in the raid.
+-- somebody who was in the raid. Guests who won something are in it too.
 function ns.RaidLoot(s)
     local list = {}
     if not s then return list end
     local last = (s.ended or ns.Now()) + 3600
-    eachLoot(function(ev, c, st)
-        if ev.t < s.start then return false end
-        if ev.t <= last and (ev.by == s.by or s.seen[c.n]) then
-            table.insert(list, lootEntry(ev, c, st))
+    for _, l in ipairs(ns.LootHistory()) do
+        if l.time < s.start then break end
+        if l.winner and not l.undone and l.time <= last and (l.by == s.by or s.seen[l.winner]) then
+            table.insert(list, wonItem(l))
         end
-    end)
+    end
     return list
 end
 
@@ -186,12 +181,12 @@ end
 function ns.LootOf(name, limit)
     local main = ns.MainOf(name)
     local list = {}
-    eachLoot(function(ev, c, st)
-        if ns.MainOf(c.n) == main then
-            table.insert(list, lootEntry(ev, c, st))
-            if limit and #list >= limit then return false end
+    for _, l in ipairs(ns.LootHistory()) do
+        if l.winner and not l.undone and ns.MainOf(l.winner) == main then
+            table.insert(list, wonItem(l))
+            if limit and #list >= limit then break end
         end
-    end)
+    end
     return list
 end
 
@@ -206,9 +201,13 @@ function ns.LootHistory()
         if ev.k == "L" then
             if ev.ref then covered[ev.ref] = true end
             local link, name = itemOf(ev)
+            -- a guest won it: the record says GM or GO for main or off spec
+            local guest = ev.spec == "GM" or ev.spec == "GO"
+            local spec = ev.spec
+            if guest then spec = ev.spec == "GO" and "OS" or "MS" end
             table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
-                winner = ev.winner, cost = ev.cost or 0, spec = ev.spec, by = ev.by, bids = ev.bids or {},
-                undone = ev.ref ~= nil and st.undone[ev.ref] ~= nil })
+                winner = ev.winner, cost = ev.cost or 0, spec = spec, guest = guest, by = ev.by, bids = ev.bids or {},
+                ref = ev.ref, undone = ev.ref ~= nil and st.undone[ev.ref] ~= nil })
         end
     end
     for _, ev in ipairs(st.events) do
@@ -216,7 +215,8 @@ function ns.LootHistory()
             local link, name = itemOf(ev)
             for _, c in ipairs(ev.ch or {}) do
                 table.insert(list, { id = ev.id, time = ev.t, link = link, itemName = name, item = ev.item,
-                    winner = c.n, cost = c.gp or 0, by = ev.by, bids = {}, old = true, undone = st.undone[ev.id] ~= nil })
+                    winner = c.n, cost = c.gp or 0, by = ev.by, bids = {}, old = true, ref = ev.id,
+                    undone = st.undone[ev.id] ~= nil })
             end
         end
     end
@@ -257,6 +257,19 @@ function ns.FilterLoot(list, filter)
     return out
 end
 
+-- EP, GP and priority of the players right before an item was given out,
+-- for the loot history: { [main] = { ep, gp } } and a function for any character.
+function ns.PointsBefore(l)
+    local st = ns.StateBefore(l.ref or l.id)
+    local base = ns.Setting("baseGP")
+    return function(name)
+        local e = st.players[name]
+        if e and e.main then e = st.players[e.main] end
+        local ep, gp = e and e.ep or 0, e and e.gp or base
+        return ep, gp, ep / math.max(gp, 1)
+    end
+end
+
 -- "2 main, 1 off, 3 pass" for a list of bids
 function ns.BidCounts(bids)
     local ms, os, pass = 0, 0, 0
@@ -274,7 +287,7 @@ function ns.RaidLootText(s)
     local lines = { string.format("Raid on %s, %d players, %d items", date("%d.%m.%Y", s.start), ns.SeenCount(s), #loot) }
     for i = #loot, 1, -1 do
         local l = loot[i]
-        table.insert(lines, string.format("%s  %s  %d GP", l.itemName, ns.ShortName(l.name), l.gp))
+        table.insert(lines, string.format("%s  %s  %s", l.itemName, ns.ShortName(l.name), l.guest and "guest, free" or (l.gp .. " GP")))
     end
     return table.concat(lines, "\n")
 end

@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.4.0, updated on 13 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.5.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -64,6 +64,7 @@ All values below are the defaults from the guild rule book. The guild leader and
 | Weekly decay of EP and GP | 10 percent |
 | New members until | 300 EP |
 | Bidding time | 30 seconds |
+| Guests' main spec before guild off spec | 1, so yes. 0 puts the guild's off spec first |
 | Off spec costs | 0 percent of the price, so free |
 | Who may change data | the guild leader and the editors, see below |
 
@@ -92,6 +93,15 @@ Who wins
 3. Then the highest priority wins, priority is EP divided by GP
 4. A tie is decided by `/roll`, the addon reads the rolls and shows the winner
 5. Off spec costs the off spec percent of the price, free by default. If several people want it they roll
+
+**Guests.** A guest is a player outside the guild, a pug who fills a spot. The guild goes first, guests roll.
+
+* Guests bid like everyone else, with the bid card if they have the addon, or by whisper. The answer tells them that they are a guest
+* The order is guild main spec, guest main spec, guild off spec, guest off spec. With the rule set to 0, the guild's off spec goes before all guests
+* Guests have no priority. When several guests want an item and no guild member is ahead of them, the addon asks them to `/roll`
+* A guest pays no GP and gets no EP, and never shows up in the standings
+* The Loot Master window marks guests and lists them in their own sections. The loot history and the loot list of the raid show what a guest won, marked as guest
+* A guest who joins the guild later starts as a new member
 
 **Raid EP once per night.** The EP for the raid night and the on time bonus count once per player in 12 hours. With two raids on one evening, a player on the bench, or an alt in the second raid, gets them once. The addon lists who already got them.
 
@@ -178,7 +188,7 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 `/rgf` opens the window. Members see the standings and the loot history, editors also get the tabs **Raid**, **EPGP history** and **Data** at the bottom. The buttons explain themselves when you hover them, and a small **i** next to a heading explains the rest.
 
 * **Standings** with your own row always at the top, your place, class icons and a bar that shows each priority against the best one. There is a search box, a class filter and **Copy for Discord**, which copies the shown list as text. Click a column header to sort. Editors get **Loot Master**, **+100 EP raid**, **+25 EP on time** and **Undo** at the bottom. Hover the EP buttons to see who would get the EP, and **Undo** to see what it would take back
-* **Loot history** with every item that was given out: the date, the item, the winner, main spec or off spec, the price and how many players wanted it. Click an item and the lower half shows **everyone who bid**: their answer, their priority at that moment, their roll, and who won. Items for the bank or the disenchanter are listed too
+* **Loot history** with every item that was given out: the date and time, the item with its icon, the winner, main spec or off spec, the price, and how many players bid main spec, off spec or passed. Hover an item for its tooltip, shift click puts it into chat. Click an item and the lower half shows **everyone who bid**: their answer, their EP, GP and priority at that moment, their roll, who won and the winner's priority afterwards. Items for the bank or the disenchanter are listed too, and the top right shows how many items and how much GP the list adds up to
     * **Search** finds an item or a player, as winner and as bidder
     * The **time** button switches between all time, the last 7 days and the last 30 days
     * **Only mine** shows the items you won or bid on, with any of your characters
@@ -187,6 +197,7 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
 * **EPGP history** with every EP and GP change of every editor: raid EP, the on time bonus, decay, edits, alt links and undos. A search box finds a player, an editor or a kind of change. GP from loot is left out, tick **Also show GP from loot** to see it here too. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Data** with sync, the weekly decay, the backups and the imports
+* **Characters**, only for the guild leader, to link mains and alts and to pick the editors. See [Alts](#for-editors) below
 
 **Key bindings.** In the game's key binding settings, under **Red Guild EPGP**, you can set keys to open the standings, open the Loot Master window, and to bid Main Spec, Off Spec or Pass.
 
@@ -201,14 +212,16 @@ The settings and the guild rules are not in the addon window. They are in the ga
 
 The guild leader and the editors can change all data: points, bidding and awards, the rules, decay and the backup import.
 
-**Adding editors.** Only the guild leader adds or removes editors. Any guild rank works.
+**Adding editors.** The guild leader can always edit. Everyone else only when the guild leader made them an editor by hand. The guild rank plays no part, an officer rank gives no rights and a low rank takes none away. Loot masters are editors, there is one role for both.
+
+* In the **Characters** tab of the `/rgf` window: click a character and click **Make editor**, or **Remove editor**. The list shows who is an editor in the **Rights** column, and the button at the top can show only the editors.
 
 * In the game's Options under **AddOns**, **Red Guild EPGP**, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
 * Or type `/rgf editor add Cel Dru` and `/rgf editor remove Cel Dru`. `/rgf editors` shows the list, everyone can use it
 
 The list is saved with the guild data and shared with **Sync** and the backup. Everyone only accepts list changes the guild leader made, an editor can pass them on but cannot change the list.
 
-**Coming from version 1.6 or older?** Until the guild leader adds the first editor, the old rank rule still applies: the guild leader and rank 1, or more ranks with `EPGP officers 2` in the **Guild Information** text. Once the list has one entry, only the list counts. To keep the current officers, click **Add the current officer ranks** once, it adds everyone the old rule allowed.
+**Coming from version 2.4 or older?** Until 2.4, guild rank 1 could edit as long as the guild leader had not picked any editor, and a line like `EPGP officers 2` in the Guild Information could allow more ranks. That is gone. After the update only the guild leader can edit until the editors are on the list, so add your officers and loot masters in the **Characters** tab before the next raid. The addon reminds the guild leader at login while the list is empty.
 
 ## For editors
 
@@ -218,6 +231,15 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 * add a reason, which shows up in the EPGP history
 * link the player as an alt of a main, or make an alt a main again
 * put the player on the bench or take them off
+
+**Alts in the Characters tab.** The guild leader has a **Characters** tab, `/rgf alts` opens it.
+
+* The left side lists every character of the guild with its role: main with its number of alts, alt of someone, or not linked. Search by name, or switch the list to mains, alts or characters that are not linked
+* Click the main. The right side shows its alts, each with **Unlink**, and below them every character that can be linked, each with **Link**. The list says what the character brings along, for example "300 EP, 150 GP"
+* Click an alt on the left to see whose alt it is. **Make main again** separates it, **Show the main** jumps to the main
+* **Copy for Discord** gives the list of all mains with their alts as text
+
+Editors who are not the guild leader link alts in the player editor or with `/rgf alt`, as before.
 
 **Alts.** When you link an alt, its EP and the GP above the start move to the main. Undo takes the link back and the alt has its own points again. An alt that becomes a main again starts at 0 EP.
 
@@ -237,6 +259,7 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf gp Cel Dru 100` | give or take GP |
 | `/rgf alt Cel Rog, Cel Dru` | link the alt Cel Rog to the main Cel Dru, they share points from now on |
 | `/rgf unalt Cel Rog` | the alt becomes a main again |
+| `/rgf alts` | the guild leader opens the Characters tab, everyone else gets the list of mains and alts in chat |
 | `/rgf decay` | weekly decay, asks before it runs |
 | `/rgf undo` | undo your newest change |
 | `/rgf price [item] 250` | fixed price for one item, `clear` removes it |

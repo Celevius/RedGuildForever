@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.4.0"
+ns.version = "2.5.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
@@ -34,13 +34,13 @@ ns.RULES = {
     { key = "decayPercent", label = "Weekly decay in percent", default = 10, min = 0, max = 100 },
 
     { section = "Bidding", key = "bidSeconds", label = "Bidding time in seconds", default = 30, min = 10, max = 300 },
+    { key = "guestMS", label = "Guests' main spec before guild off spec, 1 yes or 0 no", default = 1, min = 0, max = 1 },
 }
 ns.RULE = {}
 for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end
 
 -- Personal settings of this player, not shared.
 ns.defaults = {
-    officerRank = 1,     -- rank index 0 (guild leader) up to this index may change data
     confirmAward = true, -- ask before an item is awarded
     altClickBid = true,  -- Alt click on an item chooses it for bidding
     showWinner = true,   -- a short popup with the winner when loot is given out
@@ -146,7 +146,7 @@ end
 ns.TEST_TAG = "|cffff8040[Test]|r "
 
 -- the tabs of the main window
-ns.TAB = { standings = 1, loot = 2, raid = 3, history = 4, data = 5 }
+ns.TAB = { standings = 1, loot = 2, raid = 3, history = 4, data = 5, characters = 6 }
 
 -- The addon never writes in guild or officer chat, only raid, party and whispers.
 local blockedChannels = { GUILD = true, OFFICER = true }
@@ -168,6 +168,26 @@ function ns.ItemInfo(link)
     local ok, itemID, _, _, equipLoc, icon = pcall(f, link)
     if not ok then return nil end
     return itemID, equipLoc, icon
+end
+
+-- The item link inside a text. The game writes links in two ways, with a
+-- color code ("|cffa335ee|Hitem:...") or with a quality code ("|cnIQ4:|Hitem:...").
+function ns.LinkIn(textValue)
+    if type(textValue) ~= "string" then return nil end
+    return textValue:match("(|c[^|]*|H.-|h.-|h|r)") or textValue:match("(|H.-|h.-|h)")
+end
+
+-- The link and the name of an item we only know the number of. The game may
+-- not have the item loaded yet, then it is asked for and nil comes back.
+function ns.ItemById(itemID)
+    if not itemID then return nil end
+    local f = pick(C_Item, "GetItemInfo", "GetItemInfo")
+    if f then
+        local ok, name, link = pcall(f, itemID)
+        if ok and type(link) == "string" then return link, name end
+    end
+    if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemID) end
+    return nil
 end
 
 function ns.After(seconds, fn)
