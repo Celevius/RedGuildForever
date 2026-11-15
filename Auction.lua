@@ -21,21 +21,38 @@ local EPSILON = 0.000001
 ------------------------------------------------------------------------
 -- Sorting
 ------------------------------------------------------------------------
+-- A guest is a player outside the guild, a pug that fills a spot. Guests
+-- can bid, rank after the guild members, roll among themselves and pay no GP.
+function ns.IsGuest(name)
+    local full = ns.Resolve(name)
+    if not full then return false end
+    return ns.members[full] == nil and ns.members[ns.MainOf(full)] == nil
+end
+
 local function refreshBid(bid)
     local ep, gp, pr, main = ns.GetPoints(bid.name)
     bid.ep, bid.gp, bid.pr, bid.main = ep, gp, pr, main
-    bid.newcomer = ep < ns.Setting("minEP")
+    bid.guest = ns.IsGuest(bid.name)
+    bid.newcomer = not bid.guest and ep < ns.Setting("minEP")
 end
 
--- Returns all bids in winning order, then main spec, off spec and passes.
-function ns.SortedBids(auction)
-    local ms, os, passed = {}, {}, {}
+local function byRoll(a, b)
+    if (a.roll or -1) ~= (b.roll or -1) then return (a.roll or -1) > (b.roll or -1) end
+    return a.name < b.name
+end
+
+-- The bids in sections, in the order they win:
+--   guild main spec, guest main spec, guild off spec, guest off spec
+-- or with the rule "guests after guild off spec": guild main, guild off, guest main, guest off.
+-- Each section is { key = "MS" or "OS", guest = bool, label = text, list = bids }.
+function ns.BidSections(auction)
+    local ms, os, gms, gos, passed = {}, {}, {}, {}, {}
     for _, bid in pairs(auction.bids) do
         refreshBid(bid)
         if bid.spec == "MS" then
-            table.insert(ms, bid)
+            table.insert(bid.guest and gms or ms, bid)
         elseif bid.spec == "OS" then
-            table.insert(os, bid)
+            table.insert(bid.guest and gos or os, bid)
         else
             table.insert(passed, bid)
         end
@@ -44,43 +61,73 @@ function ns.SortedBids(auction)
     table.sort(ms, function(a, b)
         if a.newcomer ~= b.newcomer then return not a.newcomer end
         if math.abs(a.pr - b.pr) > EPSILON then return a.pr > b.pr end
-        if (a.roll or -1) ~= (b.roll or -1) then return (a.roll or -1) > (b.roll or -1) end
-        return a.name < b.name
+        return byRoll(a, b)
     end)
-    table.sort(os, function(a, b)
-        if (a.roll or -1) ~= (b.roll or -1) then return (a.roll or -1) > (b.roll or -1) end
-        return a.name < b.name
-    end)
-    local all = {}
-    for _, b in ipairs(ms) do table.insert(all, b) end
-    for _, b in ipairs(os) do table.insert(all, b) end
+    table.sort(os, byRoll)
+    table.sort(gms, byRoll)
+    table.sort(gos, byRoll)
+    local guildMS = { key = "MS", guest = false, label = "Main Spec", list = ms }
+    local guildOS = { key = "OS", guest = false, label = "Off Spec", list = os }
+    local guestMS = { key = "MS", guest = true, label = "Guests, Main Spec", list = gms }
+    local guestOS = { key = "OS", guest = true, label = "Guests, Off Spec", list = gos }
+    local sections
+    if ns.Rule("guestMS") == 0 then
+        sections = { guildMS, guildOS, guestMS, guestOS }
+    else
+        sections = { guildMS, guestMS, guildOS, guestOS }
+    end
+    return sections, passed
+end
+
+-- Returns all bids in winning order, then every main spec bid, every off spec bid and the passes.
+function ns.SortedBids(auction)
+    local sections, passed = ns.BidSections(auction)
+    local all, ms, os = {}, {}, {}
+    for _, sec in ipairs(sections) do
+        for _, b in ipairs(sec.list) do
+            table.insert(all, b)
+            table.insert(sec.key == "MS" and ms or os, b)
+        end
+    end
     return all, ms, os, passed
 end
 
 -- Everything the loot master needs to see: who bid what and who is still missing.
 function ns.AuctionOverview(auction)
-    local all, ms, os, passed = ns.SortedBids(auction)
+    local sections, passed = ns.BidSections(auction)
+    local all, ms, os = ns.SortedBids(auction)
     local waiting = {}
     for _, name in ipairs(auction.expected or {}) do
         if not auction.bids[name] then table.insert(waiting, name) end
     end
     table.sort(waiting)
-    return { all = all, ms = ms, os = os, passed = passed, waiting = waiting, winner = all[1] }
+    local guests = 0
+    for _, b in ipairs(all) do if b.guest then guests = guests + 1 end end
+    return { all = all, ms = ms, os = os, passed = passed, waiting = waiting, winner = all[1],
+        sections = sections, guests = guests }
 end
 
 -- Bidders that are tied for first place and still need to /roll.
 function ns.TiedForFirst(auction)
-    local _, ms, os = ns.SortedBids(auction)
+    local sections = ns.BidSections(auction)
+    -- the first section with bids decides
+    local first
+    for _, sec in ipairs(sections) do
+        if #sec.list > 0 then first = sec break end
+    end
+    if not first then return {} end
     local group = {}
-    if #ms > 0 then
-        local top = ms[1]
-        for _, b in ipairs(ms) do
+    if first.key == "MS" and not first.guest then
+        -- guild main spec: only the ones with the best priority are tied
+        local top = first.list[1]
+        for _, b in ipairs(first.list) do
             if b.newcomer == top.newcomer and math.abs(b.pr - top.pr) <= EPSILON then
                 table.insert(group, b)
             end
         end
-    elseif #os > 1 then
-        group = os
+    else
+        -- off spec and guests have no priority, everyone in the section rolls
+        group = first.list
     end
     if #group < 2 then return {} end
     -- once everyone in the group rolled and the top roll is unique, the tie is solved
@@ -125,7 +172,7 @@ local function bidsText(list, limit)
             break
         end
         local text = ns.ShortName(b.name)
-        if b.spec == "MS" then
+        if b.spec == "MS" and not b.guest then
             text = text .. " " .. ns.FormatPR(b.pr)
             if b.newcomer then text = text .. " new" end
         end
@@ -307,13 +354,17 @@ function ns.CloseBidding(auction)
     if not a or not a.open then return end
     a.open = false
     ns.lastClosed = { link = a.link, at = GetTime and GetTime() or 0 }
-    local all, ms, os = ns.SortedBids(a)
+    local all = ns.SortedBids(a)
     if #all == 0 then
         say(a, "Bids closed for " .. a.link .. ". Nobody wants it, it goes to the guild bank or gets disenchanted.")
     else
         local text = "Bids closed for " .. a.link .. "."
-        if #ms > 0 then text = text .. " Main spec " .. bidsText(ms, 5) .. "." end
-        if #os > 0 then text = text .. " Off spec " .. bidsText(os, 5) .. "." end
+        for _, sec in ipairs(ns.BidSections(a)) do
+            if #sec.list > 0 then
+                local label = (sec.guest and "Guests " or "") .. (sec.key == "MS" and "main spec" or "off spec")
+                text = text .. " " .. label:sub(1, 1):upper() .. label:sub(2) .. " " .. bidsText(sec.list, 5) .. "."
+            end
+        end
         say(a, text)
         local tied = ns.TiedForFirst(a)
         if #tied > 0 then ns.RequestRolls(a) end
@@ -347,11 +398,16 @@ local function closeOwnPopup(a, winner)
 end
 
 -- Every bid of an auction as it stands now: name, answer, priority and roll
+-- Guests have no priority, that is how the loot history tells them apart.
 function ns.BidSnapshot(a)
     local list = {}
     local all, _, _, passed = ns.SortedBids(a)
-    for _, b in ipairs(all) do table.insert(list, { n = b.name, s = b.spec, pr = b.pr, roll = b.roll }) end
-    for _, b in ipairs(passed) do table.insert(list, { n = b.name, s = "PASS", pr = b.pr }) end
+    for _, b in ipairs(all) do
+        table.insert(list, { n = b.name, s = b.spec, pr = not b.guest and b.pr or nil, roll = b.roll })
+    end
+    for _, b in ipairs(passed) do
+        table.insert(list, { n = b.name, s = "PASS", pr = not b.guest and b.pr or nil })
+    end
     return list
 end
 
@@ -363,11 +419,13 @@ function ns.RecordLoot(a, winner, cost, spec, awardId, bids)
 end
 
 -- What a player would pay for the item, and whether as main spec or off spec.
+-- A guest pays nothing.
 function ns.AwardCost(a, name)
     local bid = a.bids[ns.Resolve(name)]
     local spec = bid and bid.spec or "MS"
     if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
-    return spec == "MS" and a.price or ns.OffSpecCost(a.price), spec
+    if ns.IsGuest(name) then return 0, spec, true end
+    return spec == "MS" and a.price or ns.OffSpecCost(a.price), spec, false
 end
 
 -- Award to a bidder or to the guild bank (name nil).
@@ -387,10 +445,25 @@ function ns.Award(name, auction)
     end
     local full = ns.Resolve(name)
     local bid = a.bids[full]
-    local spec = bid and bid.spec or "MS"
-    if spec == "PASS" then spec = "MS" end -- given to someone who passed, normal price
-    local cost = spec == "MS" and a.price or ns.OffSpecCost(a.price)
+    local cost, spec, guest = ns.AwardCost(a, full)
     local bidsThen = ns.BidSnapshot(a) -- the priorities before the price is paid
+    if guest then
+        -- a guest takes the item for free: no points change, only the loot history knows
+        if not ns.CanChange() then return false end
+        ns.RecordLoot(a, full, 0, spec == "OS" and "GO" or "GM", nil, bidsThen)
+        say(a, string.format("%s (guest) gets %s%s. Guests pay no GP.", ns.ShortName(full), a.link, spec == "OS" and " for off spec" or ""))
+        if channel then ns.SendComm(table.concat({ "C", a.id, full, 0, spec, a.link }, SEP), channel) end
+        closeOwnPopup(a, full)
+        ns.Fire("RGF_WINNER", { name = full, link = a.link, cost = 0, spec = spec, test = a.test, guest = true })
+        if full ~= ns.PlayerName() and not a.test then
+            ns.SendChat("You got " .. a.link .. " as a guest, it costs you nothing. Thanks for raiding with us.",
+                "WHISPER", bid and bid.raw or ns.ShortName(full))
+        end
+        ns.lastAward = { link = a.link, name = full, cost = 0 }
+        removeAuction(a)
+        ns.Fire("RGF_AUCTION_CHANGED")
+        return true
+    end
     ns.BeginAction(ns.ShortName(full) .. " " .. a.link .. " " .. cost .. " GP", { kind = "loot", item = a.itemID })
     local main = ns.Adjust(full, 0, cost)
     local action = ns.EndAction()
@@ -532,7 +605,13 @@ ns.On("CHAT_MSG_WHISPER", function(text, sender)
         a = open[1]
     end
     if a then
-        if ns.RecordBid(sender, spec, a) then ns.SendChat(bidReply(a, spec), "WHISPER", sender) end
+        if ns.RecordBid(sender, spec, a) then
+            local answer = bidReply(a, spec)
+            if spec ~= "PASS" and ns.IsGuest(sender) then
+                answer = answer .. " You are a guest: guild members go first, guests roll for it and pay nothing."
+            end
+            ns.SendChat(answer, "WHISPER", sender)
+        end
         return
     end
     -- nothing to bid on: answer real bids, but not a "+" for a raid invite

@@ -195,6 +195,10 @@ local function fillCard(c, inc, total)
         .. "|r, after a win |cffffd100" .. ns.FormatPR(after) .. "|r"
     local osCost = ns.OffSpecCost(price)
     if osCost > 0 then note = note .. ".  Off spec " .. osCost .. " GP" end
+    -- the loot master is not in our guild: we fill a spot in their raid
+    if inc.owner ~= me and ns.members[inc.owner] == nil then
+        note = "You are a guest: the guild goes first, guests roll and pay nothing."
+    end
     c.unusable = ns.CanUseItem(inc.link) == false
     if c.unusable then note = "|cffff5555You cannot use this item.|r  " .. price .. " GP" end
     c.note:SetText(note)
@@ -324,7 +328,8 @@ local function showNextWinner()
     f.title:SetText((me and "You win" or (ns.ShortName(w.name) .. " wins")) .. (w.test and "  |cffff8040Test|r" or ""))
     f.title:SetTextColor(classColor(m and m.class))
     f.item:SetText(w.link)
-    f.detail:SetText((w.spec == "OS" and "Off spec" or "Main spec") .. ", " .. (w.cost > 0 and (w.cost .. " GP") or "free"))
+    f.detail:SetText((w.spec == "OS" and "Off spec" or "Main spec") .. ", " .. (w.cost > 0 and (w.cost .. " GP") or "free")
+        .. (w.guest and ", guest" or ""))
     f:Show()
     if me then sound("UI_EPICLOOT_TOAST") end
     winnerShown = winnerShown + 1

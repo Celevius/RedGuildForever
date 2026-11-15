@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.name = ADDON or "RedGuildForever"
-ns.version = "2.4.1"
+ns.version = "2.5.0"
 ns.prefix = "RGFEPGP2" -- addon message prefix, max 16 characters, new for the event sync of 2.0
 
 ------------------------------------------------------------------------
@@ -34,6 +34,7 @@ ns.RULES = {
     { key = "decayPercent", label = "Weekly decay in percent", default = 10, min = 0, max = 100 },
 
     { section = "Bidding", key = "bidSeconds", label = "Bidding time in seconds", default = 30, min = 10, max = 300 },
+    { key = "guestMS", label = "Guests' main spec before guild off spec, 1 yes or 0 no", default = 1, min = 0, max = 1 },
 }
 ns.RULE = {}
 for _, r in ipairs(ns.RULES) do ns.RULE[r.key] = r end

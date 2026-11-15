@@ -2742,5 +2742,115 @@ test("item links in the new format of the game, and items known only by number",
     noErrors()
 end)
 
+test("guests fill spots: guild first, guests roll, pay nothing and get no EP", function()
+    setup(guild())
+    W.inRaid = true
+    W.raid = { "Cel Dru", "Lisa Brightwater", "Anna Frost", "Pug One", "Pug Two" }
+    ns.SetSetting("confirmAward", false)
+    eq(ns.IsGuest("Pug One"), true)
+    eq(ns.IsGuest("Lisa Brightwater"), false)
+    eq(ns.IsGuest("Tom Spark"), false, "an alt of a member is no guest")
+    local ring, helm, cloak = W.link(35, "Guest Ring"), W.link(36, "Guest Helm"), W.link(37, "Guest Cloak")
+
+    -- a guild member wants it for main spec: the guests come after, also with a bid
+    local a = ns.StartAuction(ring)
+    local list, answer = whisper("ms", "Pug One")
+    assert(answer:find("You are a guest: guild members go first, guests roll for it and pay nothing"), answer)
+    ns.RecordBid("Pug Two", "MS")
+    ns.RecordBid("Lisa Brightwater", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    local order = {}
+    for _, b in ipairs(ns.SortedBids(a)) do table.insert(order, ns.ShortName(b.name)) end
+    eq(table.concat(order, ","), "Lisa Brightwater,Pug One,Pug Two,Anna Frost", "guild main, guest main, guild off")
+    -- the window marks the guests and gives them their own section
+    local f = ns.lootFrame
+    local labels = {}
+    for i = 1, 9 do
+        local row = f.list:Row(i)
+        if row:IsShown() and row.section:IsShown() then table.insert(labels, (row.section:GetText():gsub("  .*", ""))) end
+    end
+    eq(table.concat(labels, "|"), "Main Spec|Guests, Main Spec|Off Spec|No answer yet", "sections in winning order")
+    assert(f.counts:GetText():find("Guests 2"), f.counts:GetText())
+    W.chat = {}
+    ns.CloseBidding(a)
+    assert(raidChat():find("Main spec Lisa Brightwater 2.00%. Guests main spec Pug One, Pug Two%. Off spec Anna Frost%."), raidChat())
+    eq(#ns.TiedForFirst(a), 0, "the guild member wins without a roll")
+    ns.Award("Lisa Brightwater")
+    eq(note("Lisa Brightwater"), "1000,600")
+
+    -- only guests want it: they roll, the winner pays nothing
+    a = ns.StartAuction(helm)
+    ns.RecordBid("Pug One", "MS")
+    ns.RecordBid("Pug Two", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    W.chat = {}
+    ns.CloseBidding(a)
+    assert(raidChat():find("Tie for .- between Pug One, Pug Two%. Please /roll now"), raidChat())
+    ns.Fire("CHAT_MSG_SYSTEM", "Pug One rolls 20 (1-100)")
+    ns.Fire("CHAT_MSG_SYSTEM", "Pug Two rolls 80 (1-100)")
+    eq(ns.SortedBids(a)[1].name, "Pug Two-Forever", "the highest roll among the guests")
+    eq(f.primary:GetText(), "Award to Pug Two  (guest, main spec, free)")
+    local events = 0
+    for _ in pairs(ns.Data().events) do events = events + 1 end
+    W.chat = {}
+    f.primary:Click()
+    eq(#ns.auctions, 0, "the award to a guest works")
+    assert(raidChat():find("Pug Two %(guest%) gets .-Guest Helm.-%. Guests pay no GP%."), raidChat())
+    local told
+    for _, c in ipairs(W.chat) do if c.channel == "WHISPER" and c.target == "Pug Two" then told = c.msg end end
+    assert(told and told:find("as a guest, it costs you nothing"), tostring(told))
+    eq(ns.Players()["Pug Two-Forever"], nil, "no points for the guest, not in the standings")
+
+    -- with the other rule the guild off spec goes before the guests
+    assert(ns.SetRules({ guestMS = 0 }))
+    a = ns.StartAuction(cloak)
+    ns.RecordBid("Pug One", "MS")
+    ns.RecordBid("Anna Frost", "OS")
+    eq(ns.SortedBids(a)[1].name, "Anna Frost-Forever", "guild off spec first with the rule turned off")
+    ns.Award("Pug One")
+    eq(note("Anna Frost"), "500,200", "she did not pay, the guest got it by hand")
+
+    -- the loot history knows the guests
+    local h = ns.LootHistory()
+    eq(h[2].itemName, "Guest Helm")
+    eq(h[2].winner, "Pug Two-Forever") eq(h[2].guest, true) eq(h[2].cost, 0) eq(h[2].spec, "MS")
+    eq(h[2].bids[1].pr, nil, "a guest bid has no priority")
+    eq(h[2].bids[1].roll, 80)
+    ns.ToggleStandings(ns.TAB.loot)
+    local page = ns.mainFrame.pages[ns.TAB.loot]
+    eq(page.list:Row(2).cells.spec:GetText(), "|cffff8040Guest|r")
+    page.list:Row(2):Click()
+    assert(page.detail.sub:GetText():find("Won by |cffffffffPug Two|r |cffff8040%(guest%)|r for |cfffffffffree|r, main spec"), page.detail.sub:GetText())
+    eq(page.detail.list:Row(1).cells.note:GetText(), "|cffffd100Winner|r, |cffff8040guest|r")
+    eq(page.detail.undo:IsShown(), false, "nothing to take back, no GP were paid")
+    -- the loot of the raid and the Discord text have the guest too
+    local textValue = ns.RaidLootText({ start = 0, seen = {}, by = "Cel Dru-Forever" })
+    assert(textValue:find("Guest Helm  Pug Two  guest, free"), textValue)
+    assert(textValue:find("Guest Ring  Lisa Brightwater  100 GP"), textValue)
+
+    -- EP still only goes to the guild
+    W.printed = {}
+    ns.Command("raid")
+    eq(ns.Players()["Pug One-Forever"], nil)
+    local said
+    for _, p in ipairs(W.printed) do if p:find("not in the guild, no EP Pug One, Pug Two") then said = true end end
+    assert(said, "the guests are named")
+    noErrors()
+end)
+
+test("a guest with the addon sees on the bid card that he is a guest", function()
+    setup(guild())
+    W.canEdit = false
+    W.rank = 5
+    -- the loot master is nobody from our guild
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^515151^30^100^1^" .. W.link(38, "Other Guild Item"), "RAID", "Stranger Lead-Forever")
+    assert(ns.bidCards[1].note:GetText():find("You are a guest: the guild goes first, guests roll and pay nothing"), ns.bidCards[1].note:GetText())
+    ns.bidCards[1].pass:Click()
+    -- with our own loot master the card shows the priority
+    ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^525252^30^100^1^" .. W.link(39, "Own Guild Item"), "RAID", "Anna Frost-Forever")
+    assert(ns.bidCards[1].note:GetText():find("Your priority"), ns.bidCards[1].note:GetText())
+    noErrors()
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

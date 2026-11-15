@@ -2,6 +2,21 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.5.0 (15 November 2026)
+
+### Added
+* **Guests.** Players outside the guild who fill a spot can now win loot: the guild goes first, guests roll among themselves, pay no GP and get no EP
+* The order is guild main spec, guest main spec, guild off spec, guest off spec. The new guild rule **Guests' main spec before guild off spec** turns that around when set to 0
+* The Loot Master window marks guests and shows them in their own sections, in the order they win. The big button says for example "Award to Pug (guest, main spec, free)"
+* A guest who bids by whisper is told that the guild goes first. A guest with the addon sees it on the bid card
+* The loot history, the loot of the raid and the Discord list show what a guest won, marked as guest
+
+### Fixed
+* Awarding an item to a player outside the guild did nothing but print "is not in the guild". The only way out was Bank or Disenchant, and the loot history lost who got the item
+
+### Changed
+* The loot of the raid, the item tooltips and `!loot` now come from the loot history, so they agree with it
+
 ## 2.4.1 (14 November 2026)
 
 ### Fixed

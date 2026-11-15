@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.4.1, updated on 14 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.5.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -64,6 +64,7 @@ All values below are the defaults from the guild rule book. The guild leader and
 | Weekly decay of EP and GP | 10 percent |
 | New members until | 300 EP |
 | Bidding time | 30 seconds |
+| Guests' main spec before guild off spec | 1, so yes. 0 puts the guild's off spec first |
 | Off spec costs | 0 percent of the price, so free |
 | Who may change data | the guild leader and the editors, see below |
 
@@ -92,6 +93,15 @@ Who wins
 3. Then the highest priority wins, priority is EP divided by GP
 4. A tie is decided by `/roll`, the addon reads the rolls and shows the winner
 5. Off spec costs the off spec percent of the price, free by default. If several people want it they roll
+
+**Guests.** A guest is a player outside the guild, a pug who fills a spot. The guild goes first, guests roll.
+
+* Guests bid like everyone else, with the bid card if they have the addon, or by whisper. The answer tells them that they are a guest
+* The order is guild main spec, guest main spec, guild off spec, guest off spec. With the rule set to 0, the guild's off spec goes before all guests
+* Guests have no priority. When several guests want an item and no guild member is ahead of them, the addon asks them to `/roll`
+* A guest pays no GP and gets no EP, and never shows up in the standings
+* The Loot Master window marks guests and lists them in their own sections. The loot history and the loot list of the raid show what a guest won, marked as guest
+* A guest who joins the guild later starts as a new member
 
 **Raid EP once per night.** The EP for the raid night and the on time bonus count once per player in 12 hours. With two raids on one evening, a player on the bench, or an alt in the second raid, gets them once. The addon lists who already got them.
 

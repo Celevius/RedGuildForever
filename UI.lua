@@ -1264,6 +1264,7 @@ local PERIODS = { { nil, "All time" }, { 7, "Last 7 days" }, { 30, "Last 30 days
 
 local function specText(l)
     if not l.winner then return "|cff999999none|r" end
+    if l.guest then return "|cffff8040Guest|r" end
     if l.spec == "OS" then return "|cff66c7ffOff spec|r" end
     if l.spec == "MS" then return "|cff40ff40Main spec|r" end
     return ""
@@ -1720,7 +1721,8 @@ local function refreshLootPage(page)
     d.title:SetText(l.link)
     local sub
     if l.winner then
-        sub = string.format("Won by |cffffffff%s|r for |cffffffff%s|r%s", ns.ShortName(l.winner), l.cost > 0 and (l.cost .. " GP") or "free",
+        sub = string.format("Won by |cffffffff%s|r%s for |cffffffff%s|r%s", ns.ShortName(l.winner),
+            l.guest and " |cffff8040(guest)|r" or "", l.cost > 0 and (l.cost .. " GP") or "free",
             l.spec and (l.spec == "OS" and ", off spec" or ", main spec") or "")
     else
         sub = "Nobody took it, it went to the bank or was disenchanted"
@@ -1733,7 +1735,8 @@ local function refreshLootPage(page)
         sub2 = sub2 .. string.format(".  %d main spec, %d off spec, %d passed", ms, os, pass)
     end
     d.sub2:SetText(sub2)
-    d.undo:SetShown(ns.CanEdit() and l.winner ~= nil and not l.undone)
+    -- a guest paid nothing, so there is nothing to take back
+    d.undo:SetShown(ns.CanEdit() and l.winner ~= nil and l.ref ~= nil and not l.undone)
 
     -- EP and GP as they were right before the item was given out
     local before = #l.bids > 0 and ns.PointsBefore(l) or nil
@@ -1745,12 +1748,16 @@ local function refreshLootPage(page)
         row.cells.name:SetTextColor(classColor(m and m.class))
         row.cells.spec:SetText(b.s == "MS" and "|cff40ff40Main spec|r" or (b.s == "OS" and "|cff66c7ffOff spec|r" or "|cff999999Pass|r"))
         local ep, gp = before(b.n)
-        row.cells.ep:SetText(ep)
-        row.cells.gp:SetText(gp)
+        -- a bid without a priority came from a guest
+        local guest = b.pr == nil and not l.old
+        row.cells.ep:SetText(guest and "" or ep)
+        row.cells.gp:SetText(guest and "" or gp)
         row.cells.pr:SetText(b.pr and ns.FormatPR(b.pr) or "")
         row.cells.roll:SetText(b.roll or "")
         local note = ""
-        if b.n == l.winner then
+        if guest then
+            note = (b.n == l.winner and "|cffffd100Winner|r, " or "") .. "|cffff8040guest|r"
+        elseif b.n == l.winner then
             note = "|cffffd100Winner|r, then " .. ns.FormatPR(ep / math.max(gp + l.cost, 1))
         elseif b.s == "MS" and ep < minEP then
             note = "|cff66c7ffnew member|r"
