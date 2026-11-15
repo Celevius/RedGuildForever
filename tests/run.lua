@@ -2907,7 +2907,8 @@ test("the Characters tab: the guild leader links mains and alts", function()
     page.role:Click()
     eq(page.role:GetText(), "Alts")
     eq(#page.shown, 2)
-    page.role:Click() page.role:Click()
+    page.role:Click() page.role:Click() page.role:Click()
+    eq(page.role:GetText(), "All characters")
     page.search:SetText("tom")
     page.search:GetScript("OnTextChanged")(page.search)
     eq(#page.shown, 2)
@@ -2933,6 +2934,55 @@ test("the Characters tab: the guild leader links mains and alts", function()
     W.printed = {}
     ns.Command("alts")
     assert(W.printed[#W.printed]:find("Tom Hammer: Tom Spark") or W.printed[#W.printed - 1]:find("Tom Hammer: Tom Spark"), "everyone else gets the list in chat")
+    noErrors()
+end)
+
+test("the Characters tab: the guild leader picks editors with a click", function()
+    setup(guild())
+    W.rank = 0
+    ns.ToggleStandings(ns.TAB.characters)
+    local page = ns.mainFrame.pages[ns.TAB.characters]
+    local function pick(name)
+        for i, c in ipairs(page.shown) do
+            if ns.ShortName(c.name) == name then page.list:Row(i):Click() return page.list:Row(i) end
+        end
+        error("no row for " .. name)
+    end
+    -- the guild leader himself
+    local row = pick("Cel Dru")
+    eq(row.cells.rights:GetText(), "|cffffd100leader|r")
+    eq(page.editor:IsShown(), false, "the leader cannot remove himself")
+    -- the list is still empty: the old rank rule, and a button to start from it
+    pick("Ben Swift")
+    eq(page.editor:GetText(), "Make editor")
+    assert(page.editorText:GetText():find("The editor list is still empty"), page.editorText:GetText())
+    eq(page.rankEditors:IsShown(), true)
+    -- one click makes Ben, rank 3, an editor
+    page.editor:Click()
+    eq(ns.IsEditor("Ben Swift"), true)
+    eq(page.editor:GetText(), "Remove editor")
+    assert(page.editorText:GetText():find("^|cff40ff40Editor|r"), page.editorText:GetText())
+    eq(page.rankEditors:IsShown(), false, "the list is in use now")
+    eq(pick("Ben Swift").cells.rights:GetText(), "|cff40ff40editor|r")
+    eq(pick("Anna Frost").cells.rights:GetText(), "", "the rank rule does not count anymore")
+    -- an alt can be an editor too
+    pick("Tom Spark")
+    eq(page.editor:IsShown(), true)
+    page.editor:Click()
+    eq(ns.IsEditor("Tom Spark"), true)
+    -- the filter shows the editors: the leader and the two picked ones
+    for _ = 1, 4 do page.role:Click() end
+    eq(page.role:GetText(), "Editors")
+    local names = {}
+    for _, c in ipairs(page.shown) do table.insert(names, ns.ShortName(c.name)) end
+    eq(table.concat(names, ","), "Ben Swift,Cel Dru,Tom Spark")
+    -- and takes the right away again
+    pick("Ben Swift")
+    page.editor:Click()
+    eq(ns.IsEditor("Ben Swift"), false)
+    eq(#page.shown, 2, "gone from the editors")
+    -- the same list as in the game's Options
+    assert(ns.OpenSettings("settings").editorList:GetText():find("Tom Spark"), "the Options show the same list")
     noErrors()
 end)
 

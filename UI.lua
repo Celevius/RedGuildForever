@@ -1428,8 +1428,9 @@ end
 -- chosen one and the characters that can be linked to it.
 ------------------------------------------------------------------------
 local characterColumns = {
-    { key = "name", label = "Character", w = 176 },
-    { key = "role", label = "Role", w = 124 },
+    { key = "name", label = "Character", w = 150 },
+    { key = "role", label = "Role", w = 110 },
+    { key = "rights", label = "Rights", w = 56 },
 }
 local altColumns = {
     { key = "name", label = "Alts of this main", w = 190 },
@@ -1441,7 +1442,8 @@ local candidateColumns = {
     { key = "info", label = "Brings along", w = 110 },
     { key = "action", label = "", w = 90 },
 }
-local ROLE_FILTERS = { { nil, "All characters" }, { "main", "Mains with alts" }, { "alt", "Alts" }, { "single", "Not linked" } }
+local ROLE_FILTERS = { { nil, "All characters" }, { "main", "Mains with alts" }, { "alt", "Alts" }, { "single", "Not linked" },
+    { "editor", "Editors" } }
 local characterFilter = { text = "", role = nil, add = "" }
 
 local function nameMatches(full, wanted)
@@ -1470,7 +1472,7 @@ function ns.BuildCharactersPage(parent)
         ns.RefreshStandings()
     end)
     page.role:SetPoint("LEFT", page.search, "RIGHT", 6, 0)
-    tip(page.role, "Which characters", "Click to switch between all characters, mains with alts, alts, and characters that are not linked.")
+    tip(page.role, "Which characters", "Click to switch between all characters, mains with alts, alts, characters that are not linked, and editors.")
 
     local left = CreateFrame("Frame", nil, page)
     left:SetPoint("TOPLEFT", 0, -28)
@@ -1518,11 +1520,35 @@ function ns.BuildCharactersPage(parent)
     page.discord = button(right, "Copy for Discord", 130, function() ns.ShowCopyText("Mains and alts", ns.AltsText()) end)
     page.discord:SetPoint("RIGHT", page.help, "LEFT", -8, 0)
 
+    -- editor rights: who may run the loot and change points, whatever the guild rank is
+    page.editor = button(right, "Make editor", 130, function()
+        if not page.selected then return end
+        local ok, result = ns.SetEditor(page.selected, not ns.IsEditor(page.selected))
+        if not ok then ns.Print(result) end
+        ns.RefreshStandings()
+    end)
+    page.editor:SetPoint("TOPLEFT", 8, -50)
+    tip(page.editor, "Editors and loot masters", {
+        "An editor may run the Loot Master window, start and end the raid, give EP, change points and the guild rules. Loot masters are editors.",
+        "Any guild rank works. Only you as the guild leader add or remove editors, Sync shares the list with everyone.",
+    })
+    page.editorText = text(right, "GameFontHighlightSmall")
+    page.editorText:SetPoint("LEFT", page.editor, "RIGHT", 8, 0)
+    page.editorText:SetWidth(250)
+    page.editorText:SetWordWrap(true)
+    page.rankEditors = button(right, "Add the current officer ranks", 210, function()
+        local count = ns.AddRankEditors()
+        ns.Print("added " .. count .. (count == 1 and " editor" or " editors") .. " from the officer ranks")
+        ns.RefreshStandings()
+    end)
+    page.rankEditors:SetPoint("TOPLEFT", page.editor, "BOTTOMLEFT", 0, -4)
+    tip(page.rankEditors, "Start the editor list", "Makes everyone an editor who may edit by the old rank rule. After that only the list counts, and you add or remove single players here.")
+
     -- for an alt: one button back to a main, and one to its main
     page.unlinkSelf = button(right, "Make main again", 140, function()
         if page.selected and ns.UnsetAlt(page.selected) then ns.RefreshStandings() end
     end)
-    page.unlinkSelf:SetPoint("TOPLEFT", 8, -60)
+    page.unlinkSelf:SetPoint("TOPLEFT", 8, -112)
     tip(page.unlinkSelf, "Make main again", "The character gets its own points again and starts at 0 EP. Undo brings the link back.")
     page.goMain = button(right, "Show the main", 120, function()
         if page.mainOfSelected then
@@ -1534,9 +1560,9 @@ function ns.BuildCharactersPage(parent)
 
     -- for a main: its alts
     local altHolder = CreateFrame("Frame", nil, right)
-    altHolder:SetPoint("TOPLEFT", 0, -52)
-    altHolder:SetPoint("TOPRIGHT", 0, -52)
-    altHolder:SetHeight(142)
+    altHolder:SetPoint("TOPLEFT", 0, -104)
+    altHolder:SetPoint("TOPRIGHT", 0, -104)
+    altHolder:SetHeight(122)
     page.altHolder = altHolder
     headerRow(altHolder, altColumns)
     page.alts = scrollList(altHolder, 20, function(row)
@@ -1555,7 +1581,7 @@ function ns.BuildCharactersPage(parent)
 
     -- and the characters that can be linked to it
     local addHolder = CreateFrame("Frame", nil, right)
-    addHolder:SetPoint("TOPLEFT", 0, -200)
+    addHolder:SetPoint("TOPLEFT", 0, -232)
     addHolder:SetPoint("BOTTOMRIGHT")
     page.addHolder = addHolder
     local addLabel = text(addHolder, "GameFontNormalSmall")
@@ -1601,8 +1627,13 @@ function ns.RefreshCharactersPage(page)
     end
     -- the left list
     local list = {}
+    local inUse = ns.EditorsInUse()
     for _, c in ipairs(all) do
-        if (not characterFilter.role or c.role == characterFilter.role) and nameMatches(c.name, characterFilter.text) then
+        c.leader = ns.IsGuildLeader(c.name)
+        c.editor = not c.left and ns.IsEditor(c.name)
+        local roleOk = not characterFilter.role or c.role == characterFilter.role
+        if characterFilter.role == "editor" then roleOk = c.editor end
+        if roleOk and nameMatches(c.name, characterFilter.text) then
             table.insert(list, c)
         end
     end
@@ -1620,6 +1651,7 @@ function ns.RefreshCharactersPage(page)
         else
             row.cells.role:SetText("")
         end
+        row.cells.rights:SetText(c.leader and "|cffffd100leader|r" or (c.editor and "|cff40ff40editor|r" or ""))
         row.selected:SetShown(c.name == page.selected)
         row:Show()
     end
@@ -1631,6 +1663,22 @@ function ns.RefreshCharactersPage(page)
     if not c then return linked end
     page.title:SetText(ns.ShortName(c.name))
     page.title:SetTextColor(classColor(c.class))
+    -- editor rights of this character
+    page.editor:SetShown(not c.leader and not c.left)
+    page.editor:SetText(c.editor and inUse and "Remove editor" or "Make editor")
+    page.rankEditors:SetShown(not inUse)
+    if c.leader then
+        page.editorText:SetText("|cffffd100Guild leader|r, can always edit and picks the editors.")
+    elseif c.left then
+        page.editorText:SetText("|cff808080Left the guild.|r")
+    elseif not inUse then
+        page.editorText:SetText((c.editor and "|cff40ff40Editor by guild rank.|r " or "No editor. ")
+            .. "The editor list is still empty, so rank 1 to " .. ns.OfficerRank() .. " may edit.")
+    elseif c.editor then
+        page.editorText:SetText("|cff40ff40Editor|r: runs the loot, gives EP and changes points.")
+    else
+        page.editorText:SetText("No editor. Can bid and look at the lists.")
+    end
     local isAlt = c.role == "alt"
     page.mainOfSelected = isAlt and c.main or nil
     page.unlinkSelf:SetShown(isAlt)

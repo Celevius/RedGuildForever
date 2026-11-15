@@ -2,6 +2,12 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.6.1 (15 November 2026)
+
+### Added
+* **Editors in the Characters tab.** The guild leader clicks a character and then **Make editor** or **Remove editor**, no name to type. A **Rights** column shows who is an editor and who is the guild leader, and the list can show only the editors
+* **Add the current officer ranks** is in the tab too, while the editor list is still empty
+
 ## 2.6.0 (15 November 2026)
 
 ### Added

@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.6.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.6.1, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -197,7 +197,7 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
 * **EPGP history** with every EP and GP change of every editor: raid EP, the on time bonus, decay, edits, alt links and undos. A search box finds a player, an editor or a kind of change. GP from loot is left out, tick **Also show GP from loot** to see it here too. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Data** with sync, the weekly decay, the backups and the imports
-* **Characters**, only for the guild leader, to link mains and alts. See [Alts](#for-editors) below
+* **Characters**, only for the guild leader, to link mains and alts and to pick the editors. See [Alts](#for-editors) below
 
 **Key bindings.** In the game's key binding settings, under **Red Guild EPGP**, you can set keys to open the standings, open the Loot Master window, and to bid Main Spec, Off Spec or Pass.
 
@@ -212,7 +212,9 @@ The settings and the guild rules are not in the addon window. They are in the ga
 
 The guild leader and the editors can change all data: points, bidding and awards, the rules, decay and the backup import.
 
-**Adding editors.** Only the guild leader adds or removes editors. Any guild rank works.
+**Adding editors.** Only the guild leader adds or removes editors. Any guild rank works. Loot masters are editors, there is one role for both.
+
+* In the **Characters** tab of the `/rgf` window: click a character and click **Make editor**, or **Remove editor**. The list shows who is an editor in the **Rights** column, and the button at the top can show only the editors. While the list is still empty, **Add the current officer ranks** starts it
 
 * In the game's Options under **AddOns**, **Red Guild EPGP**, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
 * Or type `/rgf editor add Cel Dru` and `/rgf editor remove Cel Dru`. `/rgf editors` shows the list, everyone can use it
