@@ -932,7 +932,7 @@ local function buildSettingsContent(holder, top, parts)
     -- Editors
     heading("Editors", "GameFontNormalLarge")
     local editorHelp = helpIcon(parent, "Editors", {
-        "Editors may change points, run the bidding, award loot and change the rules, whatever their guild rank is.",
+        "Editors may change points, run the bidding, award loot and change the rules. The guild rank plays no part.",
         "Only the guild leader adds or removes them. Sync shares the list with everyone.",
     })
     editorHelp:SetPoint("TOPLEFT", 90, y + 22)
@@ -969,13 +969,6 @@ local function buildSettingsContent(holder, top, parts)
     view.addEditor:SetPoint("LEFT", view.editorBox, "RIGHT", 6, 0)
     view.removeEditor = button(parent, "Remove", 80, function() changeEditor(false) end)
     view.removeEditor:SetPoint("LEFT", view.addEditor, "RIGHT", 4, 0)
-    y = y - 30
-    view.rankEditors = button(parent, "Add the current officer ranks", 210, function()
-        local count = ns.AddRankEditors()
-        view.editorStatus:SetText(GREEN .. "Added " .. count .. (count == 1 and " editor." or " editors.") .. "|r")
-        ns.RefreshSettings()
-    end)
-    view.rankEditors:SetPoint("TOPLEFT", 14, y)
     y = y - 30
     view.editorStatus = paragraph(nil, 2)
     y = y - 10
@@ -1065,13 +1058,10 @@ function ns.RefreshSettings()
 
     -- who may edit
     local editorText
-    if ns.EditorsInUse() then
+    do
         local names = {}
         for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
         editorText = "Editors besides the guild leader: |cffffffff" .. (#names > 0 and table.concat(names, ", ") or "nobody") .. "|r"
-    else
-        editorText = "The list is still empty, so the old rank rule applies: the guild leader and rank 1 to " .. ns.OfficerRank()
-            .. " may edit. Once the guild leader adds the first editor, only the list counts."
     end
     if not canManage then
         editorText = editorText .. "\n|cff999999Only the guild leader can change the list.|r"
@@ -1103,7 +1093,6 @@ function ns.RefreshSettings()
             view.editorBox:SetEnabled(canManage)
             view.addEditor:SetEnabled(canManage)
             view.removeEditor:SetEnabled(canManage)
-            view.rankEditors:SetShown(canManage and not ns.EditorsInUse())
         end
 
         if view.save then
@@ -1530,20 +1519,12 @@ function ns.BuildCharactersPage(parent)
     page.editor:SetPoint("TOPLEFT", 8, -50)
     tip(page.editor, "Editors and loot masters", {
         "An editor may run the Loot Master window, start and end the raid, give EP, change points and the guild rules. Loot masters are editors.",
-        "Any guild rank works. Only you as the guild leader add or remove editors, Sync shares the list with everyone.",
+        "The guild rank plays no part. Only you as the guild leader add or remove editors, Sync shares the list with everyone.",
     })
     page.editorText = text(right, "GameFontHighlightSmall")
     page.editorText:SetPoint("LEFT", page.editor, "RIGHT", 8, 0)
     page.editorText:SetWidth(250)
     page.editorText:SetWordWrap(true)
-    page.rankEditors = button(right, "Add the current officer ranks", 210, function()
-        local count = ns.AddRankEditors()
-        ns.Print("added " .. count .. (count == 1 and " editor" or " editors") .. " from the officer ranks")
-        ns.RefreshStandings()
-    end)
-    page.rankEditors:SetPoint("TOPLEFT", page.editor, "BOTTOMLEFT", 0, -4)
-    tip(page.rankEditors, "Start the editor list", "Makes everyone an editor who may edit by the old rank rule. After that only the list counts, and you add or remove single players here.")
-
     -- for an alt: one button back to a main, and one to its main
     page.unlinkSelf = button(right, "Make main again", 140, function()
         if page.selected and ns.UnsetAlt(page.selected) then ns.RefreshStandings() end
@@ -1627,7 +1608,6 @@ function ns.RefreshCharactersPage(page)
     end
     -- the left list
     local list = {}
-    local inUse = ns.EditorsInUse()
     for _, c in ipairs(all) do
         c.leader = ns.IsGuildLeader(c.name)
         c.editor = not c.left and ns.IsEditor(c.name)
@@ -1665,15 +1645,11 @@ function ns.RefreshCharactersPage(page)
     page.title:SetTextColor(classColor(c.class))
     -- editor rights of this character
     page.editor:SetShown(not c.leader and not c.left)
-    page.editor:SetText(c.editor and inUse and "Remove editor" or "Make editor")
-    page.rankEditors:SetShown(not inUse)
+    page.editor:SetText(c.editor and "Remove editor" or "Make editor")
     if c.leader then
         page.editorText:SetText("|cffffd100Guild leader|r, can always edit and picks the editors.")
     elseif c.left then
         page.editorText:SetText("|cff808080Left the guild.|r")
-    elseif not inUse then
-        page.editorText:SetText((c.editor and "|cff40ff40Editor by guild rank.|r " or "No editor. ")
-            .. "The editor list is still empty, so rank 1 to " .. ns.OfficerRank() .. " may edit.")
     elseif c.editor then
         page.editorText:SetText("|cff40ff40Editor|r: runs the loot, gives EP and changes points.")
     else
@@ -2450,6 +2426,14 @@ function ns.ShowWelcome()
     welcome:Show()
     RedGuildForeverDB.welcomed = true
 end
+
+-- The guild leader without any editor: say once per session where they are added
+ns.On("RGF_READY", function()
+    ns.After(20, function()
+        if ns.IsTest() or not ns.CanManageEditors() or #ns.Editors() > 0 then return end
+        ns.Print("you are the only one who can give out loot and EP. Add editors and loot masters in the Characters tab, /rgf alts opens it")
+    end)
+end)
 
 -- once, a few seconds after the first login with the addon
 ns.On("RGF_READY", function()

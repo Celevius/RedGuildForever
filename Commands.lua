@@ -330,11 +330,8 @@ function ns.Command(line)
     elseif cmd == "editors" or (cmd == "editor" and not w[2]) then
         local names = {}
         for _, full in ipairs(ns.Editors()) do table.insert(names, ns.ShortName(full)) end
-        if ns.EditorsInUse() then
-            ns.Print("editors besides the guild leader, " .. (#names > 0 and table.concat(names, ", ") or "nobody"))
-        else
-            ns.Print("the editor list is still empty, the guild leader and rank 1 to " .. ns.OfficerRank() .. " can change data. The guild leader adds editors with /rgf editor add Name")
-        end
+        ns.Print("editors besides the guild leader, " .. (#names > 0 and table.concat(names, ", ")
+            or "nobody. The guild leader adds them in the Characters tab or with /rgf editor add Name"))
 
     elseif cmd == "editor" then
         local sub = (w[2] or ""):lower()

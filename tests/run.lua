@@ -100,6 +100,11 @@ local function guild()
     }
 end
 
+-- the guild leader made this player an editor some time ago
+local function makeEditor(name)
+    ns.EditorList()[ns.FullName(name)] = { on = true, t = W.server - 200, by = "Cel Dru-Forever" }
+end
+
 -- the saved data of a player in the old note style, "ep,gp" or "@Main"
 local function note(name)
     local e = ns.Players()[ns.FullName(name)]
@@ -777,15 +782,20 @@ test("without loaded data officers cannot change anything until sync or start fr
     eq(note("Lisa Brightwater"), "100,100")
 end)
 
-test("who may edit, guild leader, officer ranks and the guild info setting", function()
+test("who may edit: the guild leader always, everyone else only by hand", function()
     setup(guild())
     W.rank = 0 eq(ns.CanEdit(), true, "guild leader")
-    W.rank = 1 eq(ns.CanEdit(), true, "officer rank 1")
-    W.rank = 2 eq(ns.CanEdit(), false, "rank 2 by default")
+    -- no guild rank gives the right, also not with the old line in the guild information
     W.guildInfo = "Welcome!\nEPGP officers 2"
-    eq(ns.CanEdit(), true, "rank 2 after the guild leader allowed it")
-    eq(ns.IsOfficer("Lisa Brightwater"), true, "Lisa is rank 2")
-    W.rank = 3 eq(ns.CanEdit(), false)
+    W.rank = 1 eq(ns.CanEdit(), false, "rank 1 is no editor by itself")
+    W.rank = 2 eq(ns.CanEdit(), false)
+    eq(ns.IsEditor("Lisa Brightwater"), false, "Lisa is rank 2, not on the list")
+    eq(ns.OfficerRank, nil, "the rank rule is gone")
+    -- only the list counts
+    makeEditor("Lisa Brightwater")
+    eq(ns.IsEditor("Lisa Brightwater"), true)
+    ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
+    W.rank = 7 eq(ns.CanEdit(), true, "the lowest rank can be an editor")
 end)
 
 -- collect the data messages one editor would send with everything it has
@@ -905,7 +915,7 @@ end
 
 test("changes made at the same time on two computers both count", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna Frost is rank 2 and an editor
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -933,7 +943,7 @@ end)
 
 test("a new computer gets everything and members never send", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     ns.AwardEP({ "Lisa Brightwater", "Tom Spark" }, 100, "Raid night", "raid")
     ns.SetAlt("Ben Swift", "Max Ironhide")
@@ -956,7 +966,7 @@ end)
 
 test("sync sends only what is missing", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -975,7 +985,7 @@ end)
 
 test("a lost piece is asked for again", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -997,7 +1007,7 @@ test("a big guild goes out in small messages, a few per second", function()
     table.insert(roster, 1, { "Cel Dru", 0, "", "DRUID" })
     table.insert(roster, 2, { "Anna Frost", 2, "", "MAGE" })
     setup(roster)
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     for i = 1, 60 do ns.Adjust("Player Number" .. i, i, 0) end
     W.flush()
@@ -1281,7 +1291,7 @@ end)
 
 test("real messages from other players are ignored in test mode", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     set("Lisa Brightwater", "7777,100")
     local fromAnna = dataMessages()
     set("Lisa Brightwater", "1000,500")
@@ -1491,7 +1501,7 @@ end)
 
 test("rules travel with sync, the newest change wins", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna Frost counts as officer
+    makeEditor("Anna Frost")
     -- Anna changed the end boss price, we changed raid EP later
     assert(ns.SetRules({ tier_boss = 180 }))
     local fromAnna = dataMessages()
@@ -1510,7 +1520,7 @@ end)
 
 test("rules from sync outside the limits or from members are ignored", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     transferFrom("Anna Frost", { "#baseGP,0," .. (W.server + 5), "#unknown,5," .. (W.server + 5), "#raidEP,140," .. (W.server + 5) })
     eq(ns.Setting("baseGP"), 100, "a base GP of 0 is refused")
     eq(ns.Data().rules.unknown, nil)
@@ -1522,7 +1532,7 @@ end)
 
 test("fixed item prices are shared and clearing them too", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     W.itemSlots = { [94] = "INVTYPE_HAND" }
     local gloves = W.link(94, "Gloves")
     ns.Command("price " .. gloves .. " 250")
@@ -1602,19 +1612,17 @@ end)
 ------------------------------------------------------------------------
 local function syncFrom(sender, entries) transferFrom(sender, entries) end
 
-test("the guild leader picks editors of any rank and the rank rule stops counting", function()
+test("the guild leader picks editors of any rank", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
-    eq(ns.IsEditor("Anna Frost"), true, "rank rule before the list is used")
-    eq(ns.EditorsInUse(), false)
+    eq(ns.IsEditor("Anna Frost"), false, "nobody is an editor by rank")
     W.rank = 0
     assert(ns.SetEditor("Ben Swift", true))
-    eq(ns.EditorsInUse(), true)
     eq(ns.IsEditor("Ben Swift"), true, "rank 3 is an editor now")
-    eq(ns.IsEditor("Anna Frost"), false, "the rank rule does not count anymore")
+    eq(ns.IsEditor("Anna Frost"), false)
     eq(ns.IsEditor("Cel Dru"), true, "the guild leader always edits")
     eq(select(2, ns.SetEditor("Cel Dru", true)), "Cel Dru is the guild leader and can always edit")
     eq(select(2, ns.SetEditor("Ben Swift", true)), "Ben Swift is already an editor")
+    eq(select(2, ns.SetEditor("Anna Frost", false)), "Anna Frost is not an editor")
     -- an editor without officer rank can change data
     ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
     W.rank = 4
@@ -1626,24 +1634,20 @@ test("the guild leader picks editors of any rank and the rank rule stops countin
     W.rank = 0
     assert(ns.SetEditor("Ben Swift", false))
     eq(ns.IsEditor("Ben Swift"), false)
-    eq(ns.EditorsInUse(), true, "a removed editor keeps the list in use")
     eq(#ns.Editors(), 1)
+    -- the guild leader with no editors is told where to add them, once at login
+    ns.EditorList()["Cel Dru-Forever"] = nil
+    W.printed = {}
+    ns.Fire("RGF_READY") W.flush()
+    local said
+    for _, p in ipairs(W.printed) do if p:find("Add editors and loot masters in the Characters tab") then said = true end end
+    assert(said, "hint for the guild leader")
     noErrors()
-end)
-
-test("starting the list from the current officer ranks", function()
-    setup(guild())
-    W.guildInfo = "EPGP officers 2"
-    W.rank = 0
-    eq(ns.AddRankEditors(), 5, "every rank 1 and 2 member")
-    eq(ns.IsEditor("Anna Frost"), true)
-    eq(ns.IsEditor("Ben Swift"), false, "rank 3 stays out")
-    eq(ns.AddRankEditors(), 0, "nothing twice")
 end)
 
 test("the editor list travels with sync, only changes by the guild leader count", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2" -- Anna counts as editor while the list is empty
+    makeEditor("Anna Frost")
     local t = W.server + 10
     syncFrom("Anna Frost", {
         "@Ben Swift,1," .. t .. ",Cel Dru",    -- made by the guild leader, Anna passes it on
@@ -1653,7 +1657,9 @@ test("the editor list travels with sync, only changes by the guild leader count"
     eq(ns.IsEditor("Ben Swift"), true, "change by the guild leader accepted")
     eq(ns.EditorList()["Tom Hammer-Forever"], nil, "change by an editor ignored")
     eq(note("Lisa Brightwater"), "1234,500", "points from Anna merged")
-    eq(ns.IsEditor("Anna Frost"), false, "the list counts now")
+    -- the guild leader takes Anna off the list, Ben passes that on
+    syncFrom("Ben Swift", { "@Anna Frost,0," .. (t + 1) .. ",Cel Dru" })
+    eq(ns.IsEditor("Anna Frost"), false, "removed by the guild leader")
     -- Anna is no editor anymore, Ben is
     syncFrom("Anna Frost", { "Max Ironhide,9999,100," .. (t + 5) })
     eq(note("Max Ironhide"), "1000,100", "data from a former editor ignored")
@@ -1714,7 +1720,7 @@ end)
 
 test("undo works after a reload and for changes of other editors", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -1749,7 +1755,7 @@ end)
 
 test("raid EP and on time EP count once per night, also with two raids", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     local me = network()
     local anna = addComputer("Anna Frost", 2, true)
     local computers = { me, anna }
@@ -2118,7 +2124,7 @@ end)
 
 test("the weekly decay reminds when it is due and warns before a second one", function()
     setup(guild())
-    W.guildInfo = "EPGP officers 2"
+    makeEditor("Anna Frost")
     eq(ns.DecayDue(), false, "no changes yet, nothing is due")
     ns.Adjust("Lisa Brightwater", 10, 0)
     W.server = W.server + 8 * 86400
@@ -2926,6 +2932,7 @@ test("the Characters tab: the guild leader links mains and alts", function()
     assert(textValue:find("Lisa Brightwater: Ben Swift"), textValue)
     assert(textValue:find("Tom Hammer: Tom Spark"), textValue)
     -- an editor who is not the guild leader does not get the tab
+    ns.EditorList()["Cel Dru-Forever"] = { on = true, t = W.server }
     W.rank = 1
     ns.ToggleStandings(ns.TAB.characters)
     eq(f.selectedTab, ns.TAB.standings)
@@ -2952,19 +2959,18 @@ test("the Characters tab: the guild leader picks editors with a click", function
     local row = pick("Cel Dru")
     eq(row.cells.rights:GetText(), "|cffffd100leader|r")
     eq(page.editor:IsShown(), false, "the leader cannot remove himself")
-    -- the list is still empty: the old rank rule, and a button to start from it
+    -- nobody is an editor by rank, also not Anna with her higher rank
+    eq(pick("Anna Frost").cells.rights:GetText(), "")
     pick("Ben Swift")
     eq(page.editor:GetText(), "Make editor")
-    assert(page.editorText:GetText():find("The editor list is still empty"), page.editorText:GetText())
-    eq(page.rankEditors:IsShown(), true)
+    assert(page.editorText:GetText():find("^No editor"), page.editorText:GetText())
     -- one click makes Ben, rank 3, an editor
     page.editor:Click()
     eq(ns.IsEditor("Ben Swift"), true)
     eq(page.editor:GetText(), "Remove editor")
     assert(page.editorText:GetText():find("^|cff40ff40Editor|r"), page.editorText:GetText())
-    eq(page.rankEditors:IsShown(), false, "the list is in use now")
     eq(pick("Ben Swift").cells.rights:GetText(), "|cff40ff40editor|r")
-    eq(pick("Anna Frost").cells.rights:GetText(), "", "the rank rule does not count anymore")
+    eq(pick("Anna Frost").cells.rights:GetText(), "", "a higher guild rank changes nothing")
     -- an alt can be an editor too
     pick("Tom Spark")
     eq(page.editor:IsShown(), true)

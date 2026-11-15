@@ -2,6 +2,14 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.7.0 (15 November 2026)
+
+### Changed
+* **Editors are no longer tied to guild ranks.** The guild leader can always edit, everyone else only when the guild leader made them an editor by hand, in the Characters tab, the game's Options or with `/rgf editor add Name`
+* **After this update only the guild leader can edit until the editors are picked.** Until now, guild rank 1 could edit as long as the editor list was empty. Guild leaders: add your officers and loot masters in the Characters tab before the next raid. The addon reminds you at login while the list is empty
+* The line `EPGP officers 2` in the Guild Information no longer does anything
+* The buttons **Add the current officer ranks** are gone, they came from the rank rule
+
 ## 2.6.1 (15 November 2026)
 
 ### Added

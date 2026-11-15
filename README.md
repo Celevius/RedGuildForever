@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.6.1, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.7.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -212,16 +212,16 @@ The settings and the guild rules are not in the addon window. They are in the ga
 
 The guild leader and the editors can change all data: points, bidding and awards, the rules, decay and the backup import.
 
-**Adding editors.** Only the guild leader adds or removes editors. Any guild rank works. Loot masters are editors, there is one role for both.
+**Adding editors.** The guild leader can always edit. Everyone else only when the guild leader made them an editor by hand. The guild rank plays no part, an officer rank gives no rights and a low rank takes none away. Loot masters are editors, there is one role for both.
 
-* In the **Characters** tab of the `/rgf` window: click a character and click **Make editor**, or **Remove editor**. The list shows who is an editor in the **Rights** column, and the button at the top can show only the editors. While the list is still empty, **Add the current officer ranks** starts it
+* In the **Characters** tab of the `/rgf` window: click a character and click **Make editor**, or **Remove editor**. The list shows who is an editor in the **Rights** column, and the button at the top can show only the editors.
 
 * In the game's Options under **AddOns**, **Red Guild EPGP**, section **Editors**. Type a name and click **Add** or **Remove**, or leave the box empty to use your target
 * Or type `/rgf editor add Cel Dru` and `/rgf editor remove Cel Dru`. `/rgf editors` shows the list, everyone can use it
 
 The list is saved with the guild data and shared with **Sync** and the backup. Everyone only accepts list changes the guild leader made, an editor can pass them on but cannot change the list.
 
-**Coming from version 1.6 or older?** Until the guild leader adds the first editor, the old rank rule still applies: the guild leader and rank 1, or more ranks with `EPGP officers 2` in the **Guild Information** text. Once the list has one entry, only the list counts. To keep the current officers, click **Add the current officer ranks** once, it adds everyone the old rule allowed.
+**Coming from version 2.6 or older?** Until 2.6, guild rank 1 could edit as long as the guild leader had not picked any editor, and a line like `EPGP officers 2` in the Guild Information could allow more ranks. That is gone. After the update only the guild leader can edit until the editors are on the list, so add your officers and loot masters in the **Characters** tab before the next raid. The addon reminds the guild leader at login while the list is empty.
 
 ## For editors
 

@@ -216,21 +216,9 @@ end
 -- /rgf editor add Name. The list is saved with the guild data and shared
 -- with Sync, everyone only accepts list changes made by the guild leader.
 --
--- Until the guild leader adds the first editor, the old rank rule still
--- applies, so updating the addon never locks anyone out: rank 0 and 1, or
--- what "EPGP officers 2" in the guild information allows.
+-- The guild rank plays no part: the guild leader can always edit, everyone
+-- else only when the guild leader put them on the list.
 ------------------------------------------------------------------------
-function ns.OfficerRank()
-    if GetGuildInfoText then
-        local ok, info = pcall(GetGuildInfoText)
-        if ok and type(info) == "string" then
-            local rank = info:lower():match("epgp%s+officers?%s*[=:]?%s*(%d+)")
-            if rank then return tonumber(rank) end
-        end
-    end
-    return ns.Setting("officerRank")
-end
-
 function ns.MyRank()
     if not GetGuildInfo then return nil end
     local _, _, rankIndex = GetGuildInfo("player")
@@ -249,11 +237,6 @@ function ns.EditorList()
     return data.editors
 end
 
--- true once the guild leader added or removed an editor
-function ns.EditorsInUse()
-    return next(ns.EditorList()) ~= nil
-end
-
 function ns.IsGuildLeader(full)
     full = full and ns.Resolve(full)
     return full ~= nil and rankOf(full) == 0
@@ -264,11 +247,8 @@ function ns.IsEditor(full)
     if not full then return false end
     local rank = rankOf(full)
     if rank == 0 then return true end
-    if ns.EditorsInUse() then
-        local e = ns.EditorList()[full]
-        return e ~= nil and e.on == true
-    end
-    return rank ~= nil and rank <= ns.OfficerRank()
+    local e = ns.EditorList()[full]
+    return e ~= nil and e.on == true
 end
 ns.IsOfficer = ns.IsEditor -- older name
 
@@ -307,9 +287,7 @@ function ns.SetEditor(name, on)
     if e and e.on == on then
         return nil, ns.ShortName(full) .. (on and " is already an editor" or " is not an editor")
     end
-    if not e and not on and not ns.EditorsInUse() then
-        return nil, "the editor list is still empty, add the editors you want first"
-    end
+    if not e and not on then return nil, ns.ShortName(full) .. " is not an editor" end
     local me = ns.PlayerName()
     list[full] = { on = on, t = ns.Now(), by = me }
     ns.AddLogEntry(ns.ShortName(full) .. (on and " is now an editor" or " is no editor anymore"), 1)
@@ -317,23 +295,6 @@ function ns.SetEditor(name, on)
     ns.Fire("RGF_POINTS_CHANGED")
     ns.Fire("RGF_LOCAL_CHANGE", { state = true })
     return true, full
-end
-
--- Start the list with everyone the old rank rule allows, without the guild leader.
--- Returns the number of added editors.
-function ns.AddRankEditors()
-    if not ns.CanManageEditors() then return 0 end
-    local limit, names = ns.OfficerRank(), {}
-    for full, m in pairs(ns.members) do
-        if m.rank and m.rank > 0 and m.rank <= limit then table.insert(names, full) end
-    end
-    table.sort(names)
-    local count = 0
-    for _, full in ipairs(names) do
-        local e = ns.EditorList()[full]
-        if not (e and e.on) and ns.SetEditor(full, true) then count = count + 1 end
-    end
-    return count
 end
 
 -- Every change goes through here, it explains why a change is not possible.
