@@ -634,6 +634,61 @@ function ns.AltsOf(main)
     return list
 end
 
+------------------------------------------------------------------------
+-- Mains and alts, for the Characters tab of the guild leader
+------------------------------------------------------------------------
+-- Every guild character with its role: "main" (has alts), "alt" or "single".
+-- Characters that left the guild but are still linked are in it too.
+function ns.Characters()
+    local players = ns.Players()
+    local list, seen = {}, {}
+    local function add(full)
+        if seen[full] then return end
+        seen[full] = true
+        local e = players[full]
+        local m = ns.members[full]
+        local c = { name = full, class = m and m.class, left = m == nil }
+        if e and e.main then
+            c.role, c.main = "alt", e.main
+        else
+            c.alts = ns.AltsOf(full)
+            c.role = #c.alts > 0 and "main" or "single"
+            c.ep, c.gp = ns.GetPoints(full)
+        end
+        table.insert(list, c)
+    end
+    for full in pairs(ns.members) do add(full) end
+    for full, e in pairs(players) do
+        if e.main then add(full) add(e.main) end
+    end
+    table.sort(list, function(a, b) return a.name < b.name end)
+    return list
+end
+
+-- The characters that can become an alt of main: in the guild, not linked
+-- yet and without alts of their own.
+function ns.AltCandidates(main)
+    local list = {}
+    for _, c in ipairs(ns.Characters()) do
+        if c.role == "single" and c.name ~= main and not c.left then table.insert(list, c) end
+    end
+    return list
+end
+
+-- Every main with its alts as text, for Discord
+function ns.AltsText()
+    local lines = { "Mains and alts on " .. date("%d.%m.%Y") }
+    for _, c in ipairs(ns.Characters()) do
+        if c.role == "main" then
+            local names = {}
+            for _, a in ipairs(c.alts) do table.insert(names, ns.ShortName(a)) end
+            table.insert(lines, ns.ShortName(c.name) .. ": " .. table.concat(names, ", "))
+        end
+    end
+    if #lines == 1 then table.insert(lines, "No characters are linked yet.") end
+    return table.concat(lines, "\n")
+end
+
 -- Returns ep, gp, priority and the main for any character.
 function ns.GetPoints(name)
     local main = ns.MainOf(name)

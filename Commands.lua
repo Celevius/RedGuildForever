@@ -103,6 +103,7 @@ local help = {
     "/rgf welcome  show the short introduction again",
     "/rgf discord  the standings as text for Discord, with the search and class of the window",
     "|cffffd100Guild leader|r",
+    "/rgf alts  open the Characters tab to link mains and alts, everyone else gets the list in chat",
     "/rgf editors  show who may change data",
     "/rgf editor add Cel Dru  let a player change data, any guild rank works",
     "/rgf editor remove Cel Dru  take it away again",
@@ -357,6 +358,13 @@ function ns.Command(line)
     elseif cmd == "sync" then
         ns.RequestRoster()
         ns.Sync()
+
+    elseif cmd == "alts" then
+        if ns.CanManageEditors() then
+            ns.ToggleStandings(ns.TAB.characters)
+        else
+            for line in ns.AltsText():gmatch("[^\n]+") do ns.Print(line) end
+        end
 
     elseif cmd == "welcome" then
         ns.ShowWelcome()

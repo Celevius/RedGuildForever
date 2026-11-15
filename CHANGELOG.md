@@ -2,6 +2,15 @@
 
 All changes to Red Guild EPGP, newest version first.
 
+## 2.6.0 (15 November 2026)
+
+### Added
+* **Characters tab** for the guild leader, to link mains and alts with clicks. The left side lists every character with its role, the right side shows the alts of the chosen main with **Unlink**, and every character that can be linked with **Link**
+* The list of characters to link says what each one brings along to the main, for example "300 EP, 150 GP"
+* A search, and a button to show only mains with alts, only alts, or only characters that are not linked
+* **Copy for Discord** for the list of all mains with their alts
+* `/rgf alts` opens the tab for the guild leader. Everyone else gets the list of mains and alts in chat
+
 ## 2.5.0 (15 November 2026)
 
 ### Added

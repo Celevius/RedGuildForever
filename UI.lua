@@ -411,8 +411,17 @@ local function showPage(id)
     if not main then return end
     -- members get the standings and the loot history, the other tabs are for editors
     local canEdit = ns.CanEdit()
+    local leader = ns.CanManageEditors()
     if not canEdit and id ~= ns.TAB.loot then id = ns.TAB.standings end
-    for i, tab in ipairs(main.Tabs or {}) do tab:SetShown(canEdit or i <= ns.TAB.loot) end
+    -- the Characters tab, where mains and alts are linked, is for the guild leader
+    if id == ns.TAB.characters and not leader then id = ns.TAB.standings end
+    for i, tab in ipairs(main.Tabs or {}) do
+        if i == ns.TAB.characters then
+            tab:SetShown(leader)
+        else
+            tab:SetShown(canEdit or i <= ns.TAB.loot)
+        end
+    end
     selectTab(main, id)
     for i, page in ipairs(main.pages) do page:SetShown(i == id) end
     main.standingsButtons:SetShown(id == ns.TAB.standings and ns.CanEdit())
@@ -1413,6 +1422,266 @@ local function buildLootPage(parent)
     return page
 end
 
+------------------------------------------------------------------------
+-- Characters tab, only for the guild leader: which characters belong
+-- together. Left every character with its role, right the alts of the
+-- chosen one and the characters that can be linked to it.
+------------------------------------------------------------------------
+local characterColumns = {
+    { key = "name", label = "Character", w = 176 },
+    { key = "role", label = "Role", w = 124 },
+}
+local altColumns = {
+    { key = "name", label = "Alts of this main", w = 190 },
+    { key = "info", label = "", w = 110 },
+    { key = "action", label = "", w = 90 },
+}
+local candidateColumns = {
+    { key = "name", label = "Link as alt", w = 190 },
+    { key = "info", label = "Brings along", w = 110 },
+    { key = "action", label = "", w = 90 },
+}
+local ROLE_FILTERS = { { nil, "All characters" }, { "main", "Mains with alts" }, { "alt", "Alts" }, { "single", "Not linked" } }
+local characterFilter = { text = "", role = nil, add = "" }
+
+local function nameMatches(full, wanted)
+    return wanted == "" or ns.ShortName(full):lower():find(wanted, 1, true) ~= nil
+end
+
+function ns.BuildCharactersPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetAllPoints()
+
+    -- left: every character
+    local searchLabel = text(page, "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", 10, -10)
+    searchLabel:SetText("Search")
+    page.search = ns.UIInputBox(page, 120, false)
+    page.search:SetMaxLetters(30)
+    page.search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    page.search:SetScript("OnTextChanged", function(self)
+        characterFilter.text = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    page.role = button(page, "All characters", 124, function()
+        local nextOne = 1
+        for i, r in ipairs(ROLE_FILTERS) do if r[1] == characterFilter.role then nextOne = i % #ROLE_FILTERS + 1 end end
+        characterFilter.role = ROLE_FILTERS[nextOne][1]
+        ns.RefreshStandings()
+    end)
+    page.role:SetPoint("LEFT", page.search, "RIGHT", 6, 0)
+    tip(page.role, "Which characters", "Click to switch between all characters, mains with alts, alts, and characters that are not linked.")
+
+    local left = CreateFrame("Frame", nil, page)
+    left:SetPoint("TOPLEFT", 0, -28)
+    left:SetPoint("BOTTOMLEFT", 0, 0)
+    left:SetWidth(330)
+    headerRow(left, characterColumns)
+    page.list = scrollList(left, 18, function(row)
+        rowCells(row, characterColumns)
+        row.selected = row:CreateTexture(nil, "BACKGROUND")
+        row.selected:SetAllPoints()
+        row.selected:SetColorTexture(1, 0.82, 0, 0.14)
+        row:SetScript("OnClick", function(self)
+            if not self.entry then return end
+            sound("U_CHAT_SCROLL_BUTTON")
+            page.selected = self.entry.name
+            ns.RefreshStandings()
+        end)
+    end)
+    page.list:SetPoint("TOPLEFT", 4, -30)
+    page.list:SetPoint("BOTTOMRIGHT", -26, 4)
+    local divider = left:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPRIGHT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", 0, 4)
+    divider:SetWidth(1)
+    divider:SetColorTexture(1, 0.82, 0, 0.25)
+
+    -- right: the chosen character
+    local right = CreateFrame("Frame", nil, page)
+    right:SetPoint("TOPLEFT", left, "TOPRIGHT", 4, 28)
+    right:SetPoint("BOTTOMRIGHT")
+    page.right = right
+    page.title = text(right, "GameFontNormalLarge")
+    page.title:SetPoint("TOPLEFT", 10, -10)
+    page.title:SetWidth(250)
+    page.sub = text(right, "GameFontHighlightSmall")
+    page.sub:SetPoint("TOPLEFT", page.title, "BOTTOMLEFT", 0, -3)
+    page.sub:SetWidth(380)
+    page.sub:SetWordWrap(true)
+    page.help = helpIcon(right, "Mains and alts", {
+        "All characters of a player share one set of points: the points of the main.",
+        "Choose the main on the left, then click Link next to each of its alts. The alt's EP and its GP above the start move to the main.",
+        "Unlink makes an alt a main again, it then starts at 0 EP. Undo takes a link or an unlink back.",
+    })
+    page.help:SetPoint("TOPRIGHT", -10, -10)
+    page.discord = button(right, "Copy for Discord", 130, function() ns.ShowCopyText("Mains and alts", ns.AltsText()) end)
+    page.discord:SetPoint("RIGHT", page.help, "LEFT", -8, 0)
+
+    -- for an alt: one button back to a main, and one to its main
+    page.unlinkSelf = button(right, "Make main again", 140, function()
+        if page.selected and ns.UnsetAlt(page.selected) then ns.RefreshStandings() end
+    end)
+    page.unlinkSelf:SetPoint("TOPLEFT", 8, -60)
+    tip(page.unlinkSelf, "Make main again", "The character gets its own points again and starts at 0 EP. Undo brings the link back.")
+    page.goMain = button(right, "Show the main", 120, function()
+        if page.mainOfSelected then
+            page.selected = page.mainOfSelected
+            ns.RefreshStandings()
+        end
+    end)
+    page.goMain:SetPoint("LEFT", page.unlinkSelf, "RIGHT", 4, 0)
+
+    -- for a main: its alts
+    local altHolder = CreateFrame("Frame", nil, right)
+    altHolder:SetPoint("TOPLEFT", 0, -52)
+    altHolder:SetPoint("TOPRIGHT", 0, -52)
+    altHolder:SetHeight(142)
+    page.altHolder = altHolder
+    headerRow(altHolder, altColumns)
+    page.alts = scrollList(altHolder, 20, function(row)
+        rowCells(row, altColumns)
+        row.unlink = button(row, "Unlink", 80, function()
+            if row.name and ns.UnsetAlt(row.name) then ns.RefreshStandings() end
+        end)
+        row.unlink:SetHeight(18)
+        row.unlink:SetPoint("RIGHT", -4, 0)
+    end)
+    page.alts:SetPoint("TOPLEFT", 4, -30)
+    page.alts:SetPoint("BOTTOMRIGHT", -26, 0)
+    page.altsEmpty = text(altHolder, "GameFontDisableSmall")
+    page.altsEmpty:SetPoint("TOPLEFT", 12, -40)
+    page.altsEmpty:SetText("No alts yet. Link one from the list below.")
+
+    -- and the characters that can be linked to it
+    local addHolder = CreateFrame("Frame", nil, right)
+    addHolder:SetPoint("TOPLEFT", 0, -200)
+    addHolder:SetPoint("BOTTOMRIGHT")
+    page.addHolder = addHolder
+    local addLabel = text(addHolder, "GameFontNormalSmall")
+    addLabel:SetPoint("TOPLEFT", 10, -6)
+    addLabel:SetText("Find")
+    page.addSearch = ns.UIInputBox(addHolder, 150, false)
+    page.addSearch:SetMaxLetters(30)
+    page.addSearch:SetPoint("LEFT", addLabel, "RIGHT", 8, 0)
+    page.addSearch:SetScript("OnTextChanged", function(self)
+        characterFilter.add = (self:GetText() or ""):lower()
+        ns.RefreshStandings()
+    end)
+    tip(page.addSearch, "Find a character", "Type a part of the name of the alt you want to link.")
+    local candHolder = CreateFrame("Frame", nil, addHolder)
+    candHolder:SetPoint("TOPLEFT", 0, -26)
+    candHolder:SetPoint("BOTTOMRIGHT")
+    headerRow(candHolder, candidateColumns)
+    page.candidates = scrollList(candHolder, 20, function(row)
+        rowCells(row, candidateColumns)
+        row.link = button(row, "Link", 80, function()
+            if row.name and page.selected and ns.SetAlt(row.name, page.selected) then ns.RefreshStandings() end
+        end)
+        row.link:SetHeight(18)
+        row.link:SetPoint("RIGHT", -4, 0)
+    end)
+    page.candidates:SetPoint("TOPLEFT", 4, -30)
+    page.candidates:SetPoint("BOTTOMRIGHT", -26, 4)
+    page.candEmpty = text(candHolder, "GameFontDisableSmall")
+    page.candEmpty:SetPoint("TOPLEFT", 12, -40)
+    return page
+end
+
+-- Returns the number of linked alts.
+function ns.RefreshCharactersPage(page)
+    local all = ns.Characters()
+    local byName, linked = {}, 0
+    for _, c in ipairs(all) do
+        byName[c.name] = c
+        if c.role == "alt" then linked = linked + 1 end
+    end
+    for _, r in ipairs(ROLE_FILTERS) do
+        if r[1] == characterFilter.role then page.role:SetText(r[2]) end
+    end
+    -- the left list
+    local list = {}
+    for _, c in ipairs(all) do
+        if (not characterFilter.role or c.role == characterFilter.role) and nameMatches(c.name, characterFilter.text) then
+            table.insert(list, c)
+        end
+    end
+    page.shown = list
+    if not (page.selected and byName[page.selected]) then page.selected = list[1] and list[1].name or nil end
+    for i, c in ipairs(list) do
+        local row = page.list:Row(i)
+        row.entry = c
+        row.cells.name:SetText(ns.ShortName(c.name) .. (c.left and " |cff808080(left)|r" or ""))
+        row.cells.name:SetTextColor(classColor(c.class))
+        if c.role == "alt" then
+            row.cells.role:SetText("|cff999999alt of " .. ns.ShortName(c.main) .. "|r")
+        elseif c.role == "main" then
+            row.cells.role:SetText("|cffffd100main, " .. #c.alts .. (#c.alts == 1 and " alt" or " alts") .. "|r")
+        else
+            row.cells.role:SetText("")
+        end
+        row.selected:SetShown(c.name == page.selected)
+        row:Show()
+    end
+    page.list:SetCount(#list)
+
+    -- the right side
+    local c = page.selected and byName[page.selected]
+    page.right:SetShown(c ~= nil)
+    if not c then return linked end
+    page.title:SetText(ns.ShortName(c.name))
+    page.title:SetTextColor(classColor(c.class))
+    local isAlt = c.role == "alt"
+    page.mainOfSelected = isAlt and c.main or nil
+    page.unlinkSelf:SetShown(isAlt)
+    page.goMain:SetShown(isAlt)
+    page.altHolder:SetShown(not isAlt)
+    page.addHolder:SetShown(not isAlt)
+    if isAlt then
+        local ep, gp, pr = ns.GetPoints(c.main)
+        page.sub:SetText(string.format("Alt of |cffffffff%s|r. It uses the points of the main: %d EP, %d GP, priority %s.",
+            ns.ShortName(c.main), ep, gp, ns.FormatPR(pr)))
+        return linked
+    end
+    page.sub:SetText(string.format("%s, %d EP, %d GP. Its alts share these points.",
+        c.role == "main" and "Main" or "Not linked", c.ep, c.gp))
+    for i, alt in ipairs(c.alts) do
+        local row = page.alts:Row(i)
+        row.name = alt
+        row.cells.name:SetText(ns.ShortName(alt))
+        local m = ns.members[alt]
+        row.cells.name:SetTextColor(classColor(m and m.class))
+        row.cells.info:SetText(m and "" or "|cff808080left the guild|r")
+        row:Show()
+    end
+    page.alts:SetCount(#c.alts)
+    page.altsEmpty:SetShown(#c.alts == 0)
+
+    local base = ns.Setting("baseGP")
+    local n = 0
+    for _, cand in ipairs(ns.AltCandidates(c.name)) do
+        if nameMatches(cand.name, characterFilter.add) then
+            n = n + 1
+            local row = page.candidates:Row(n)
+            row.name = cand.name
+            row.cells.name:SetText(ns.ShortName(cand.name))
+            row.cells.name:SetTextColor(classColor(cand.class))
+            -- what moves to the main when this character is linked
+            local extra = math.max(0, (cand.gp or base) - base)
+            if (cand.ep or 0) ~= 0 or extra > 0 then
+                row.cells.info:SetText((cand.ep or 0) .. " EP, " .. extra .. " GP")
+            else
+                row.cells.info:SetText("|cff808080nothing|r")
+            end
+            row:Show()
+        end
+    end
+    page.candidates:SetCount(n)
+    page.candEmpty:SetShown(n == 0)
+    page.candEmpty:SetText(characterFilter.add ~= "" and "Nobody matches." or "Every other character is linked already.")
+    return linked
+end
+
 local function buildMain()
     local name = "RedGuildForeverFrame"
     local f = window(name, 740, 560, "Red Guild EPGP", ICON_STANDINGS)
@@ -1437,6 +1706,7 @@ local function buildMain()
         buildRaidPage(f.Inset),
         buildHistoryPage(f.Inset),
         buildSyncPage(f.Inset),
+        ns.BuildCharactersPage(f.Inset),
     }
 
     -- bottom strip, only editors get buttons. Sync runs by itself and is in the Data tab
@@ -1492,7 +1762,7 @@ local function buildMain()
     end)
     add:SetPoint("RIGHT", clear, "LEFT", -2, 0)
 
-    tabs(f, name, { "Standings", "Loot history", "Raid", "EPGP history", "Data" }, showPage)
+    tabs(f, name, { "Standings", "Loot history", "Raid", "EPGP history", "Data", "Characters" }, showPage)
     f:HookScript("OnShow", function() showPage(f.selectedTab or 1) end)
     return f
 end
@@ -1775,8 +2045,9 @@ function ns.RefreshStandings()
     if not main or not main:IsShown() then return end
     local tab = main.selectedTab or 1
     local T = ns.TAB
-    if tab ~= T.standings and tab ~= T.loot and not ns.CanEdit() then
-        showPage(T.standings) -- no editor anymore, back to the standings
+    if (tab ~= T.standings and tab ~= T.loot and not ns.CanEdit())
+        or (tab == T.characters and not ns.CanManageEditors()) then
+        showPage(T.standings) -- no editor or no guild leader anymore, back to the standings
         return
     end
     local count = 0
@@ -1791,6 +2062,8 @@ function ns.RefreshStandings()
         refreshHistoryPage(main.pages[T.history])
     elseif tab == T.data then
         refreshSyncPage(main.pages[T.data])
+    elseif tab == T.characters then
+        count = ns.RefreshCharactersPage(main.pages[T.characters])
     end
     setTitle(main, ns.IsTest() and "Red Guild EPGP  |cffff8040Test mode|r" or "Red Guild EPGP")
     main.lootMaster:SetShown(ns.CanEdit())
@@ -1812,6 +2085,8 @@ function ns.RefreshStandings()
         status = "Every EP and GP change of every editor"
     elseif tab == T.data then
         status = "Sync, decay and backup"
+    elseif tab == T.characters then
+        status = count .. " characters are linked as alts. Alts share the points of their main"
     elseif not ns.HasData() then
         status = "|cffff8040No data yet, click Sync|r"
     else

@@ -2316,7 +2316,7 @@ test("settings and rules are in the game's Options, not in the addon window", fu
     eq(W.openedCategory, W.categories[2])
     -- the addon window only has the four tabs for the game itself
     ns.ToggleStandings(ns.TAB.data)
-    eq(#ns.mainFrame.pages, 5)
+    eq(#ns.mainFrame.pages, 6)
     eq(ns.TAB.settings, nil) eq(ns.TAB.rules, nil)
     -- during a fight the game refuses to open the Options, the addon says where to click
     _G.Settings.OpenToCategory = function() error("blocked in combat") end
@@ -2488,7 +2488,7 @@ test("a calmer main window: members see the standings only, your own row, bars a
     eq(f.selectedTab, ns.TAB.standings)
     eq(f.Tabs[ns.TAB.standings]:IsShown(), true)
     eq(f.Tabs[ns.TAB.loot]:IsShown(), true, "members get the loot history too")
-    for i = 3, 5 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
+    for i = 3, 6 do eq(f.Tabs[i]:IsShown(), false, "no tab " .. i .. " for members") end
     eq(f.pages[ns.TAB.history]:IsShown(), false)
     eq(f.standingsButtons:IsShown(), false)
     noErrors()
@@ -2849,6 +2849,90 @@ test("a guest with the addon sees on the bid card that he is a guest", function(
     -- with our own loot master the card shows the priority
     ns.Fire("CHAT_MSG_ADDON", ns.prefix, "A^525252^30^100^1^" .. W.link(39, "Own Guild Item"), "RAID", "Anna Frost-Forever")
     assert(ns.bidCards[1].note:GetText():find("Your priority"), ns.bidCards[1].note:GetText())
+    noErrors()
+end)
+
+test("the Characters tab: the guild leader links mains and alts", function()
+    setup(guild())
+    W.rank = 0
+    ns.ToggleStandings(ns.TAB.characters)
+    local f = ns.mainFrame
+    local page = f.pages[ns.TAB.characters]
+    eq(f.Tabs[ns.TAB.characters]:IsShown(), true, "the guild leader has the tab")
+    eq(page:IsShown(), true)
+    -- every character with its role
+    local roles = {}
+    for _, c in ipairs(page.shown) do roles[ns.ShortName(c.name)] = c.role end
+    eq(roles["Tom Hammer"], "main") eq(roles["Tom Spark"], "alt") eq(roles["Lisa Brightwater"], "single")
+    eq(#page.shown, 7, "the whole guild")
+    -- choose Lisa as the main and link Ben to her
+    local function pick(name)
+        for i, c in ipairs(page.shown) do
+            if ns.ShortName(c.name) == name then page.list:Row(i):Click() return end
+        end
+        error("no row for " .. name)
+    end
+    pick("Lisa Brightwater")
+    eq(page.title:GetText(), "Lisa Brightwater")
+    assert(page.sub:GetText():find("Not linked, 1000 EP, 500 GP"), page.sub:GetText())
+    eq(page.altsEmpty:IsShown(), true)
+    set("Ben Swift", "300,250")
+    ns.RefreshStandings()
+    local benRow
+    for i = 1, 6 do
+        local row = page.candidates:Row(i)
+        if row:IsShown() and rawget(row, "name") == "Ben Swift-Forever" then benRow = row end
+        assert(rawget(row, "name") ~= "Tom Spark-Forever", "an alt cannot be linked again")
+        assert(rawget(row, "name") ~= "Tom Hammer-Forever", "a main with alts cannot become an alt")
+        assert(rawget(row, "name") ~= "Lisa Brightwater-Forever", "not to itself")
+    end
+    eq(benRow.cells.info:GetText(), "300 EP, 150 GP", "what Ben brings along")
+    benRow.link:Click()
+    eq(note("Ben Swift"), "@Lisa Brightwater", "linked with one click")
+    eq(note("Lisa Brightwater"), "1300,650", "his points moved to the main")
+    eq(page.alts:Row(1).cells.name:GetText(), "Ben Swift")
+    assert(page.sub:GetText():find("^Main, 1300 EP, 650 GP"), page.sub:GetText())
+    eq(f.status:GetText(), "2 characters are linked as alts. Alts share the points of their main")
+    -- an alt on the left shows its main
+    pick("Ben Swift")
+    assert(page.sub:GetText():find("Alt of |cffffffffLisa Brightwater|r"), page.sub:GetText())
+    eq(page.unlinkSelf:IsShown(), true)
+    eq(page.altHolder:IsShown(), false)
+    page.goMain:Click()
+    eq(page.selected, "Lisa Brightwater-Forever")
+    -- the filter and the search
+    page.role:Click()
+    eq(page.role:GetText(), "Mains with alts")
+    eq(#page.shown, 2, "Lisa and Tom Hammer")
+    page.role:Click()
+    eq(page.role:GetText(), "Alts")
+    eq(#page.shown, 2)
+    page.role:Click() page.role:Click()
+    page.search:SetText("tom")
+    page.search:GetScript("OnTextChanged")(page.search)
+    eq(#page.shown, 2)
+    page.search:SetText("")
+    page.search:GetScript("OnTextChanged")(page.search)
+    -- unlink from the list of alts, undo brings it back
+    pick("Lisa Brightwater")
+    page.alts:Row(1).unlink:Click()
+    eq(note("Ben Swift"), "0,100", "a main again, starting at 0 EP")
+    ns.Command("undo")
+    eq(note("Ben Swift"), "@Lisa Brightwater")
+    -- the list for Discord
+    page.discord:Click()
+    local textValue = ns.copyFrame.box:GetText()
+    assert(textValue:find("Lisa Brightwater: Ben Swift"), textValue)
+    assert(textValue:find("Tom Hammer: Tom Spark"), textValue)
+    -- an editor who is not the guild leader does not get the tab
+    W.rank = 1
+    ns.ToggleStandings(ns.TAB.characters)
+    eq(f.selectedTab, ns.TAB.standings)
+    eq(f.Tabs[ns.TAB.characters]:IsShown(), false, "only the guild leader")
+    eq(f.Tabs[ns.TAB.data]:IsShown(), true, "the editor tabs stay")
+    W.printed = {}
+    ns.Command("alts")
+    assert(W.printed[#W.printed]:find("Tom Hammer: Tom Spark") or W.printed[#W.printed - 1]:find("Tom Hammer: Tom Spark"), "everyone else gets the list in chat")
     noErrors()
 end)
 

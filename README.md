@@ -2,7 +2,7 @@
 
 An EPGP loot addon for our guild on World of Warcraft Forever. It follows the guild loot rule book, so the addon and the Discord rules always agree.
 
-Version 2.5.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
+Version 2.6.0, updated on 15 November 2026 for World of Warcraft Forever 1.60.1 (interface 16001).
 
 ## What it does
 
@@ -197,6 +197,7 @@ Turn it on in the game's Options under **AddOns**, **Red Guild EPGP**, or with `
 * **Raid** with **Start raid** and **End raid**, the bench and the loot of the raid. Editors can add their target to the bench or clear it
 * **EPGP history** with every EP and GP change of every editor: raid EP, the on time bonus, decay, edits, alt links and undos. A search box finds a player, an editor or a kind of change. GP from loot is left out, tick **Also show GP from loot** to see it here too. Editors can undo any change with **Undo** in its row, also an old one or one of another editor. Undone changes stay in the list, marked as undone
 * **Data** with sync, the weekly decay, the backups and the imports
+* **Characters**, only for the guild leader, to link mains and alts. See [Alts](#for-editors) below
 
 **Key bindings.** In the game's key binding settings, under **Red Guild EPGP**, you can set keys to open the standings, open the Loot Master window, and to bid Main Spec, Off Spec or Pass.
 
@@ -229,6 +230,15 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 * link the player as an alt of a main, or make an alt a main again
 * put the player on the bench or take them off
 
+**Alts in the Characters tab.** The guild leader has a **Characters** tab, `/rgf alts` opens it.
+
+* The left side lists every character of the guild with its role: main with its number of alts, alt of someone, or not linked. Search by name, or switch the list to mains, alts or characters that are not linked
+* Click the main. The right side shows its alts, each with **Unlink**, and below them every character that can be linked, each with **Link**. The list says what the character brings along, for example "300 EP, 150 GP"
+* Click an alt on the left to see whose alt it is. **Make main again** separates it, **Show the main** jumps to the main
+* **Copy for Discord** gives the list of all mains with their alts as text
+
+Editors who are not the guild leader link alts in the player editor or with `/rgf alt`, as before.
+
 **Alts.** When you link an alt, its EP and the GP above the start move to the main. Undo takes the link back and the alt has its own points again. An alt that becomes a main again starts at 0 EP.
 
 **Undo.** **Undo last change** takes back your newest change, also one from an earlier day. The **EPGP history** tab can undo any change, and the **Loot history** tab can take an award back.
@@ -247,6 +257,7 @@ The list is saved with the guild data and shared with **Sync** and the backup. E
 | `/rgf gp Cel Dru 100` | give or take GP |
 | `/rgf alt Cel Rog, Cel Dru` | link the alt Cel Rog to the main Cel Dru, they share points from now on |
 | `/rgf unalt Cel Rog` | the alt becomes a main again |
+| `/rgf alts` | the guild leader opens the Characters tab, everyone else gets the list of mains and alts in chat |
 | `/rgf decay` | weekly decay, asks before it runs |
 | `/rgf undo` | undo your newest change |
 | `/rgf price [item] 250` | fixed price for one item, `clear` removes it |
